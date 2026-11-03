@@ -56,6 +56,8 @@
 | 凭据位置 | `C://Users//1//.zframe-github-token`（**仓库外**，一行 token） |
 | 推送命令 | `git push -u origin main` |
 | 中断后怎么办 | **直接重跑上面那条命令**；git 会重传，不需要别的清理 |
+| **当前卡点** | ❌ 推送被拒：token 缺 `workflow` scope（`refusing to allow a PAT to create or update workflow .github/workflows/ci.yml`）。**classic token 的 scope 生成后不可改，必须重新生成**（勾 `repo` + `workflow` 两项），覆盖 `C://Users//1//.zframe-github-token` |
+| 网络实测 | 54MB / 36 秒（**1.86 MiB/s**）——网络不是瓶颈，别为速度做任何妥协 |
 
 ⚠️ **token 已经在对话里明文出现过，这个仓库跑通后建议去 GitHub 吊销重发一个**，
 重新写进 `C://Users//1//.zframe-github-token` 即可，代码不用改。

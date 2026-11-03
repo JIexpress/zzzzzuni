@@ -57,6 +57,23 @@
 git config core.hooksPath .githooks
 ```
 
+## 五½、首次推送失败的坑（2026-11-03 23:37）
+
+`git push` 把 54MB 传完（1.86 MiB/s，36 秒）后**被服务端拒绝**：
+
+```
+! [remote rejected] main -> main (refusing to allow a Personal Access Token to
+  create or update workflow `.github/workflows/ci.yml` without `workflow` scope)
+```
+
+**原因**：classic PAT 只勾了 `repo`，没勾 `workflow`。只要提交里包含
+`.github/workflows/*.yml`，就必须有 `workflow` scope。
+
+**关键教训**：
+1. **classic token 的 scope 生成后不能修改**，只能重新生成一个。所以第一次就该勾全。
+2. 这个失败发生在**数据传完之后**（服务端校验引用时才拒），所以"传得很顺"不代表会成功。
+3. 顺带验证了网络：**54MB / 36 秒 / 1.86 MiB/s**，GitHub 推送在这台机器上不是瓶颈。
+
 ## 六、待办（阻塞项）
 
 用户需完成两步，之后可推送：
