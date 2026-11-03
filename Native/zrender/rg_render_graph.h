@@ -316,6 +316,20 @@ public:
     RgLifetime LifetimeOf(RgHandle resource) const;
     /// 全图 Pass 总数（含被剔除者）
     uint32_t PassCount() const { return static_cast<uint32_t>(m_passes.size()); }
+
+    // ---- 编译产物导出查询（TASK-B-R9-16：rg.export 数据源，纯只读）------------
+    /// 声明序号的 Pass 名（越界返回空串；被剔除者同可查——供导出标注 culled）
+    const char* PassNameAt(uint32_t declIndex) const;
+    /// 声明序号 Pass 的访问声明列表（越界返回 nullptr；供导出 pass 读/写集）
+    const std::vector<RgPassAccess>* PassAccessesAt(uint32_t declIndex) const;
+    /// 图内资源描述数量（RgHandle.index 的合法取值范围 [0, ResourceCount())）
+    uint32_t ResourceCount() const { return static_cast<uint32_t>(m_resources.size()); }
+    /// 资源描述（index 越界返回 nullptr）
+    const RgResourceDesc* ResourceDescAt(uint32_t index) const;
+    /// 资源句柄（含 gen——LifetimeOf/SlotOf 的入参须带真实 gen，勿手工拼 1）
+    RgHandle ResourceHandleAt(uint32_t index) const;
+    /// 依赖边（declIdx -> 后继 declIdx 列表，声明序；Compile 后有效）
+    const std::vector<std::vector<uint32_t>>& Edges() const { return m_edges; }
     /// 最近一次 Execute 期间 RgContext 记录的未声明使用总数
     uint32_t LastExecuteUndeclaredUses() const { return m_lastExecuteUndeclaredUses; }
 

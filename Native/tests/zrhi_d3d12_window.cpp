@@ -157,13 +157,21 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+// TASK-B-R9-16：--devconsole 的 TCP 传输层——winsock2.h 必须先于 windows.h
+// （否则拉进 winsock1 冲突）；LEAN_AND_MEAN 下仍需显式 ws2tcpip.h（inet_addr）
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <windows.h>
 
 #include "zrhi/d3d12/zrhi_d3d12_device.h"
 #include "zrender/cluster_lighting.h"
+#include "zrender/devconsole_proto.h" // TASK-B-R9-16：--devconsole 协议纯逻辑
 #include "zrender/draw_list.h"
 #include "zrender/gi_probes.h"
+#include "zrender/gpu_hud.h"           // TASK-B-R9-16：HUD 统计聚合
+#include "zrender/rg_export.h"         // TASK-B-R9-16：RG 编译产物导出
 #include "zrender/rg_render_graph.h"
+#include "zrender/renderdoc_capture.h" // TASK-B-R9-16：RenderDoc 应用内 API
 #include "zrender/shadows.h"
 #include "zrender/ssr_pass.h"
 #include "zrender/zmesh.h"
@@ -171,12 +179,18 @@
 #include "zupscaler/fg_ffx.h"    // TASK-B-R8-02：FrameGenerator（--fg 模式）
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
+#include <string>
+#include <thread>
 #include <vector>
 
 #include "bench_json.h" // TASK-B-R9-10：--lights --json 单行帧耗输出
@@ -12956,6 +12970,815 @@ static int RunResizeModeVulkan()
 #endif // ZR_HAS_VULKAN
 
 
+// =============================================================================
+// ---- TASK-B-R9-16：--devconsole 模式（GPU 工具链运行时入口，方案 §5.7）----------
+//
+// 机制沿用 A-DEV-03（Unity 侧运行期 DevConsole）的契约落到原生窗口程序：
+//   - 传输：TCP 只绑 127.0.0.1（绝不 0.0.0.0），端口缺省 17323（避开 Editor
+//     17321 与 Unity 运行期 17322），可 --devconsole-port <n> 覆盖；
+//   - 协议：一行一条请求、一行一条 JSON 响应，单行上限 4KB；
+//   - 白名单（硬编码，解析/信封在 zrender/devconsole_proto.* 纯逻辑层）：
+//       help | hud | rg.export [path] [json|text] | renderdoc.capture [name] | quit
+//   - 线程纪律：监听线程只做 socket 收发；命令在渲染线程的帧循环内执行
+//     （设备统计/RG/RenderDoc 均不跨线程），响应在命令执行点回写。
+//
+// 三件交付在此汇合：
+//   1. hud   —— 每帧 DrawCall 计数（CubeDrawPass 内真实计数）+ RT 分辨率 +
+//               显存字节估算（本模式自建资源台账，ZrEstimate* 纯函数）+
+//               ZrDeviceStats 透传，经 ZrHudAggregator 滑窗聚合；
+//   2. renderdoc.capture —— RenderDoc 应用内 API 一键捕获：进程被 RenderDoc
+//               UI 启动注入后自动挂接（GetModuleHandleA 探测）；未挂接 →
+//               明确错误 {"ok":false,"error":"renderdoc_not_attached"}（不
+//               静默假成功——RenderDoc 本体仍是用户手动启动，本程序不注入）；
+//   3. rg.export —— 当帧 RgGraph 编译产物经 RgExportJson/RgExportText 落盘。
+// =============================================================================
+
+namespace devconsole {
+
+/// 捕获/导出的固定落盘目录（相对仓库根调用约定，与其它模式一致）
+constexpr const char* kDefaultOutputDir = "Native/build/renderdoc";
+/// 监听端口缺省值（17321/17322 已被 Editor/Unity DevConsole 占用）
+constexpr uint16_t kDefaultPort = 17323u;
+/// 待执行请求队列上限（超出即回 server_busy——不无限积压）
+constexpr size_t kMaxQueuedRequests = 64u;
+/// 单连接读行超时（毫秒）：客户端连上后须立即发整行
+constexpr DWORD kRecvTimeoutMs = 5000u;
+
+// ---- TCP 白名单控制台（监听线程只收发；执行在渲染线程）---------------------------
+class DevConsoleServer {
+public:
+    struct Request {
+        SOCKET client;
+        std::string line;
+    };
+
+    DevConsoleServer() = default;
+    DevConsoleServer(const DevConsoleServer&) = delete;
+    DevConsoleServer& operator=(const DevConsoleServer&) = delete;
+    ~DevConsoleServer() { Stop(); }
+
+    bool Start(uint16_t port, std::string& outError)
+    {
+        WSADATA wsa {};
+        if (::WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
+            outError = "WSAStartup failed";
+            return false;
+        }
+        m_wsaStarted = true;
+        m_listener = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (m_listener == INVALID_SOCKET) {
+            outError = "socket() failed";
+            return false;
+        }
+        // 只绑 127.0.0.1——本控制台能触发捕获/写盘，绝不暴露给外部（A-DEV-03 铁律）
+        sockaddr_in addr {};
+        addr.sin_family = AF_INET;
+        addr.sin_port = ::htons(port);
+        if (::inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr) != 1) {
+            outError = "inet_pton(127.0.0.1) failed";
+            return false;
+        }
+        if (::bind(m_listener, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr))
+            == SOCKET_ERROR) {
+            outError = "bind(127.0.0.1:" + std::to_string(port) + ") failed (errno "
+                + std::to_string(::WSAGetLastError()) + ")";
+            return false;
+        }
+        if (::listen(m_listener, 4) == SOCKET_ERROR) {
+            outError = "listen() failed";
+            return false;
+        }
+        m_running.store(true, std::memory_order_release);
+        m_thread = std::thread([this]() { ListenLoop(); });
+        return true;
+    }
+
+    void Stop()
+    {
+        if (m_running.exchange(false)) {
+            if (m_thread.joinable()) {
+                m_thread.join(); // select 超时循环 100ms 内自然退出（不在阻塞点关闭）
+            }
+        }
+        if (m_listener != INVALID_SOCKET) {
+            ::closesocket(m_listener);
+            m_listener = INVALID_SOCKET;
+        }
+        // 未发送完的挂起连接一律关闭（进程通常即将退出）
+        std::vector<Request> leftovers;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            leftovers.swap(m_queue);
+        }
+        for (const Request& r : leftovers) {
+            ::closesocket(r.client);
+        }
+        if (m_wsaStarted) {
+            ::WSACleanup();
+            m_wsaStarted = false;
+        }
+    }
+
+    /// 渲染线程每帧取走已到达的请求（此后 socket 归渲染线程所有）
+    std::vector<Request> Drain()
+    {
+        std::vector<Request> out;
+        std::lock_guard<std::mutex> lock(m_mutex);
+        out.swap(m_queue);
+        return out;
+    }
+
+    /// 回一行 JSON 响应并关闭连接（单行协议：响应追加 '\n'；处理部分发送）
+    static void SendAndClose(SOCKET client, const std::string& response)
+    {
+        if (client == INVALID_SOCKET) {
+            return;
+        }
+        std::string line = response;
+        line += '\n';
+        const char* cursor = line.data();
+        size_t remaining = line.size();
+        while (remaining > 0u) {
+            const int sent = ::send(client, cursor, static_cast<int>(remaining), 0);
+            if (sent == SOCKET_ERROR || sent <= 0) {
+                break; // 对端已关：丢弃响应（客户端违约）
+            }
+            cursor += sent;
+            remaining -= static_cast<size_t>(sent);
+        }
+        ::shutdown(client, SD_BOTH);
+        ::closesocket(client);
+    }
+
+private:
+    void ListenLoop()
+    {
+        while (m_running.load(std::memory_order_acquire)) {
+            // select 超时轮询 accept：Stop() 无需在阻塞点下关 socket
+            fd_set readSet;
+            FD_ZERO(&readSet);
+            FD_SET(m_listener, &readSet);
+            timeval timeout {};
+            timeout.tv_sec = 0;
+            timeout.tv_usec = 100 * 1000; // 100ms
+            const int ready = ::select(0, &readSet, nullptr, nullptr, &timeout);
+            if (ready <= 0) {
+                continue; // 超时/错误：回看 running 标志
+            }
+            sockaddr_in from {};
+            int fromLen = sizeof(from);
+            const SOCKET client
+                = ::accept(m_listener, reinterpret_cast<sockaddr*>(&from), &fromLen);
+            if (client == INVALID_SOCKET) {
+                continue;
+            }
+            HandleConnection(client);
+        }
+    }
+
+    void HandleConnection(SOCKET client)
+    {
+        // 一行一请求：读到 '\n' 为止；单行 >4KB 即回错误并断开（防 OOM 口径）
+        DWORD timeoutMs = kRecvTimeoutMs;
+        ::setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeoutMs),
+            sizeof(timeoutMs));
+        std::string line;
+        char buffer[512];
+        bool overflow = false;
+        bool gotLine = false;
+        while (!overflow) {
+            const int got = ::recv(client, buffer, sizeof(buffer), 0);
+            if (got <= 0) {
+                break; // 超时/断开且无完整行：客户端违约，直接关闭
+            }
+            line.append(buffer, static_cast<size_t>(got));
+            if (line.size() > zrender::kZrDevConsoleMaxLineBytes) {
+                overflow = true;
+                break;
+            }
+            const size_t newline = line.find('\n');
+            if (newline != std::string::npos) {
+                line.resize(newline);
+                gotLine = true;
+                break;
+            }
+        }
+        if (overflow) {
+            SendAndClose(client,
+                zrender::ZrDevConsoleError("line_too_long", "request line exceeds 4096 bytes"));
+            return;
+        }
+        if (!gotLine) {
+            ::closesocket(client);
+            return;
+        }
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            if (m_queue.size() >= kMaxQueuedRequests) {
+                // 满载拒收标记（锁外回写——渲染线程卡死时客户端也能拿到明确错误）
+                overflow = true; // 复用 overflow 作为"待拒收"标记
+            } else {
+                m_queue.push_back(Request { client, line });
+                return;
+            }
+        }
+        SendAndClose(client, zrender::ZrDevConsoleError("server_busy",
+            "request queue full (>64) - render thread stalled?"));
+    }
+
+    std::thread m_thread;
+    std::mutex m_mutex;
+    std::vector<Request> m_queue;
+    std::atomic<bool> m_running { false };
+    SOCKET m_listener = INVALID_SOCKET;
+    bool m_wsaStarted = false;
+};
+
+} // namespace devconsole
+
+// --devconsole 模式主体（返回进程退出码；参数见 main 分发处注释）
+static int RunDevConsoleMode(int argc, char** argv)
+{
+    // ---- 参数（本模式自有选项；zmesh/hlsl 缺省与 --draw 同源）--------------------
+    uint16_t port = devconsole::kDefaultPort;
+    uint32_t maxFrames = 0u; // 0 = 不限（quit / 窗口关闭 / 百万帧安全闸退出）
+    const char* zmeshPath = "Native/tests/data/cube.zmesh";
+    const char* hlslPath = "Native/shaders/first_draw.hlsl";
+    std::string outputDir = devconsole::kDefaultOutputDir;
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--devconsole-port") == 0 && i + 1 < argc) {
+            port = static_cast<uint16_t>(std::atoi(argv[++i]));
+        } else if (std::strcmp(argv[i], "--devconsole-frames") == 0 && i + 1 < argc) {
+            maxFrames = static_cast<uint32_t>(std::atoi(argv[++i]));
+        } else if (std::strcmp(argv[i], "--devconsole-zmesh") == 0 && i + 1 < argc) {
+            zmeshPath = argv[++i];
+        } else if (std::strcmp(argv[i], "--devconsole-hlsl") == 0 && i + 1 < argc) {
+            hlslPath = argv[++i];
+        } else if (std::strcmp(argv[i], "--devconsole-dir") == 0 && i + 1 < argc) {
+            outputDir = argv[++i];
+        }
+    }
+    std::printf("zrhi_d3d12_window: --devconsole mode (TASK-B-R9-16): port=%u zmesh='%s' "
+                "hlsl='%s' dir='%s' frames=%s\n",
+        static_cast<unsigned>(port), zmeshPath, hlslPath, outputDir.c_str(),
+        maxFrames == 0u ? "unbounded" : std::to_string(maxFrames).c_str());
+
+    // ---- 设备 / 队列 / 命令表（--draw 同构）--------------------------------------
+    ZrD3D12Device* device = ZrD3D12CreateDevice();
+    if (device == nullptr) {
+        std::printf("zrhi_d3d12_window: --devconsole FAILED to create D3D12 device\n");
+        return 1;
+    }
+    IZrQueue* queue = device->GetQueue(ZrQueueType::Graphics);
+    ZrCommandList cmdHandle = device->CreateCommandList(ZrQueueType::Graphics);
+    IZrCommandList* cmdList = device->GetCommandList(cmdHandle);
+    ID3D12GraphicsCommandList* nativeCmd = device->D3D12CommandListOf(cmdHandle);
+    if (queue == nullptr || !cmdHandle.IsValid() || cmdList == nullptr
+        || nativeCmd == nullptr) {
+        std::printf("zrhi_d3d12_window: --devconsole FAILED to create queue/command list\n");
+        ZrD3D12DestroyDevice(device);
+        return 1;
+    }
+
+    // ---- 窗口 + 交换链（失败自动降级离屏；离屏用 RenderDoc 手动帧捕获半边）--------
+    HWND hWnd = TryCreateWindow(kWidth, kHeight);
+    ZrSwapchain swapchainHandle {};
+    IZrSwapchain* swapchain = nullptr;
+    if (hWnd != nullptr) {
+        ZrSwapchainDesc scDesc {};
+        scDesc.width = kWidth;
+        scDesc.height = kHeight;
+        scDesc.windowHandle = hWnd;
+        swapchainHandle = device->CreateSwapchain(scDesc);
+        swapchain = device->GetSwapchain(swapchainHandle);
+        if (!swapchainHandle.IsValid() || swapchain == nullptr) {
+            std::printf("zrhi_d3d12_window: --devconsole swapchain FAILED, falling back to "
+                        "offscreen target\n");
+            DestroyWindow(hWnd);
+            hWnd = nullptr;
+        }
+    } else {
+        std::printf("zrhi_d3d12_window: --devconsole window rejected (GetLastError=%lu), "
+                    "falling back to offscreen target\n",
+            GetLastError());
+    }
+    const bool windowMode = (swapchain != nullptr);
+    if (windowMode) {
+        ShowWindow(hWnd, SW_SHOWNORMAL);
+    }
+
+    // ---- 渲染目标（离屏降级）+ 深度 + DSV -----------------------------------------
+    ZrImage offscreenTarget {};
+    ZrImageView offscreenRtv {};
+    ZrImageDesc swapchainImageDesc {};
+    swapchainImageDesc.format = ZrFormat::BGRA8Unorm;
+    swapchainImageDesc.width = kWidth;
+    swapchainImageDesc.height = kHeight;
+    if (!windowMode) {
+        ZrImageDesc rtDesc {};
+        rtDesc.format = ZrFormat::RGBA8Unorm;
+        rtDesc.width = kWidth;
+        rtDesc.height = kHeight;
+        rtDesc.usage = ZrImageUsage::ColorAttachment | ZrImageUsage::TransferSrc;
+        offscreenTarget = device->CreateImage(rtDesc);
+        ZrImageViewDesc rtvViewDesc {};
+        rtvViewDesc.image = offscreenTarget;
+        rtvViewDesc.viewType = ZrImageViewType::Rtv;
+        offscreenRtv = device->CreateImageView(rtvViewDesc);
+        if (!offscreenTarget.IsValid() || !offscreenRtv.IsValid()) {
+            std::printf("zrhi_d3d12_window: --devconsole FAILED to create offscreen target\n");
+            ZrD3D12DestroyDevice(device);
+            return 1;
+        }
+    }
+    ZrImageDesc depthDesc {};
+    depthDesc.format = ZrFormat::D32Float;
+    depthDesc.width = kWidth;
+    depthDesc.height = kHeight;
+    depthDesc.usage = ZrImageUsage::DepthStencilAttachment;
+    ZrImage depthImage = device->CreateImage(depthDesc);
+    ZrImageViewDesc dsvViewDesc {};
+    dsvViewDesc.image = depthImage;
+    dsvViewDesc.viewType = ZrImageViewType::Dsv;
+    ZrImageView dsvView = device->CreateImageView(dsvViewDesc);
+    if (!depthImage.IsValid() || !dsvView.IsValid()) {
+        std::printf("zrhi_d3d12_window: --devconsole FAILED to create depth image/DSV\n");
+        ZrD3D12DestroyDevice(device);
+        return 1;
+    }
+
+    // ---- zmesh → VB/IB → 3 个逐绘常量缓冲 → PSO（--draw 同构）----------------------
+    std::vector<char> meshBytes;
+    if (!ReadWholeFile(zmeshPath, meshBytes)) {
+        std::printf("zrhi_d3d12_window: --devconsole FAILED to open zmesh '%s'\n", zmeshPath);
+        ZrD3D12DestroyDevice(device);
+        return 1;
+    }
+    ZmeshData mesh {};
+    if (zmesh_Parse(meshBytes.data(), meshBytes.size(), &mesh) != ZMESH_OK) {
+        std::printf("zrhi_d3d12_window: --devconsole zmesh parse FAILED\n");
+        ZrD3D12DestroyDevice(device);
+        return 1;
+    }
+    const uint32_t indexCount = mesh.stats.indexCount;
+    std::vector<FirstDrawVertex> vertices(mesh.stats.vertexCount);
+    for (uint32_t i = 0; i < mesh.stats.vertexCount; ++i) {
+        std::memcpy(vertices[i].pos, &mesh.positions[i * 3u], sizeof(float) * 3u);
+        std::memcpy(vertices[i].normal, &mesh.normals[i * 3u], sizeof(float) * 3u);
+        std::memcpy(vertices[i].uv, &mesh.uvs[i * 2u], sizeof(float) * 2u);
+    }
+    std::vector<uint32_t> indices(indexCount);
+    std::memcpy(indices.data(), mesh.indices, sizeof(uint32_t) * indexCount);
+
+    ZrBufferDesc vbDesc {};
+    vbDesc.size = static_cast<uint64_t>(vertices.size()) * sizeof(FirstDrawVertex);
+    vbDesc.usage = ZrBufferUsage::Vertex | ZrBufferUsage::TransferDst;
+    ZrBuffer vb = device->CreateBuffer(vbDesc, vertices.data());
+    ZrBufferDesc ibDesc {};
+    ibDesc.size = static_cast<uint64_t>(indices.size()) * sizeof(uint32_t);
+    ibDesc.usage = ZrBufferUsage::Index | ZrBufferUsage::TransferDst;
+    ZrBuffer ib = device->CreateBuffer(ibDesc, indices.data());
+    if (!vb.IsValid() || !ib.IsValid()) {
+        std::printf("zrhi_d3d12_window: --devconsole FAILED to create VB/IB\n");
+        ZrD3D12DestroyDevice(device);
+        return 1;
+    }
+
+    constexpr uint32_t kDrawItems = 3u; // 3 个 cube → 每帧 3 次 DrawIndexedInstanced
+    ZrBuffer cbHandles[kDrawItems] = {};
+    void* cbMapped[kDrawItems] = {};
+    for (uint32_t i = 0; i < kDrawItems; ++i) {
+        ZrBufferDesc cbDesc {};
+        cbDesc.size = 256u; // 根 CBV 对齐裕量（常量实际 96B）
+        cbDesc.usage = ZrBufferUsage::Uniform;
+        cbDesc.hostVisible = true;
+        cbHandles[i] = device->CreateBuffer(cbDesc);
+        IZrBuffer* iface = device->GetBuffer(cbHandles[i]);
+        cbMapped[i] = (iface != nullptr && cbHandles[i].IsValid()) ? iface->Map() : nullptr;
+        if (cbMapped[i] == nullptr) {
+            std::printf("zrhi_d3d12_window: --devconsole FAILED to create/map CB %u\n", i);
+            ZrD3D12DestroyDevice(device);
+            return 1;
+        }
+    }
+
+    std::vector<char> hlsl;
+    if (!ReadWholeFile(hlslPath, hlsl)) {
+        std::printf("zrhi_d3d12_window: --devconsole FAILED to open hlsl '%s'\n", hlslPath);
+        ZrD3D12DestroyDevice(device);
+        return 1;
+    }
+    const ZrShader vs = device->CompileHlsl(ZrShaderStage::Vertex, hlsl.data(), hlsl.size(),
+        "VsMain");
+    const ZrShader ps = device->CompileHlsl(ZrShaderStage::Pixel, hlsl.data(), hlsl.size(),
+        "PsMain");
+    if (!vs.IsValid() || !ps.IsValid()) {
+        std::printf("zrhi_d3d12_window: --devconsole shader compilation FAILED\n");
+        ZrD3D12DestroyDevice(device);
+        return 1;
+    }
+    ZrGraphicsPsoDesc psoDesc {};
+    psoDesc.vertexShader = vs;
+    psoDesc.pixelShader = ps;
+    psoDesc.rtvFormat = windowMode ? ZrFormat::BGRA8Unorm : ZrFormat::RGBA8Unorm;
+    psoDesc.dsvFormat = ZrFormat::D32Float;
+    psoDesc.blend = ZrBlendMode::Opaque;
+    psoDesc.depthTest = true;
+    psoDesc.depthWrite = true;
+    psoDesc.cullMode = ZrCullMode::None; // --draw 同款：烘焙 cube 绕序实证 None 才可见
+    ZrPipelineState pso = device->CreatePipelineState(psoDesc);
+    if (!pso.IsValid()) {
+        std::printf("zrhi_d3d12_window: --devconsole FAILED to create graphics PSO\n");
+        ZrD3D12DestroyDevice(device);
+        return 1;
+    }
+
+    // ---- RTV 视图（窗口模式按后台缓冲缓存）+ 显存字节台账 --------------------------
+    ZrImageView rtvViews[3] = {};
+    uint64_t memoryBytes = 0u; // 本模式自建资源的估算字节（调用方口径，见 gpu_hud.h）
+    if (windowMode) {
+        memoryBytes += zrender::ZrEstimateImageBytes(swapchainImageDesc) * 3u; // 三缓冲
+    } else {
+        ZrImageDesc offDesc {};
+        offDesc.format = ZrFormat::RGBA8Unorm;
+        offDesc.width = kWidth;
+        offDesc.height = kHeight;
+        memoryBytes += zrender::ZrEstimateImageBytes(offDesc);
+    }
+    memoryBytes += zrender::ZrEstimateImageBytes(depthDesc);
+    memoryBytes += zrender::ZrEstimateBufferBytes(vbDesc) + zrender::ZrEstimateBufferBytes(ibDesc)
+        + 256ull * kDrawItems;
+
+    // ---- RenderDoc 挂接（进程内无 renderdoc.dll → 明确的未挂接态，不静默）----------
+    std::filesystem::create_directories(std::filesystem::path(outputDir));
+    const std::string captureTemplate = outputDir + "/zframe";
+    zrender::ZrRenderDocCapture renderdoc;
+    const zrender::ZrRenderDocError rdError = renderdoc.Attach();
+    if (renderdoc.IsAttached()) {
+        renderdoc.SetCaptureFilePathTemplate(captureTemplate.c_str());
+        std::printf("zrhi_d3d12_window: --devconsole RenderDoc ATTACHED (API 1.6.0) - captures "
+                    "to '%s'\n",
+            outputDir.c_str());
+    } else {
+        std::printf("zrhi_d3d12_window: --devconsole RenderDoc NOT attached (%s) - "
+                    "renderdoc.capture will report renderdoc_not_attached\n",
+            zrender::ZrRenderDocErrorText(rdError));
+    }
+    uint32_t reportedCaptures = 0u;
+    std::string lastCapturePath;
+    bool manualCaptureOpen = false; // 离屏模式：Start/End 手动半边跨帧状态
+
+    // ---- DevConsole 服务（127.0.0.1:port）-----------------------------------------
+    devconsole::DevConsoleServer server;
+    std::string serverError;
+    if (!server.Start(port, serverError)) {
+        std::printf("zrhi_d3d12_window: --devconsole server FAILED to start: %s\n",
+            serverError.c_str());
+        ZrD3D12DestroyDevice(device);
+        return 1;
+    }
+    std::printf("zrhi_d3d12_window: DEVCONSOLE listening on 127.0.0.1:%u "
+                "(help|hud|rg.export|renderdoc.capture|quit)\n",
+        static_cast<unsigned>(port));
+
+    // ---- 帧循环（quit / 窗口关闭 / --devconsole-frames / 百万帧安全闸退出）---------
+    const float lightDir[3] = {0.5f, 0.8f, 0.6f};
+    const float invLen = 1.0f
+        / std::sqrt(lightDir[0] * lightDir[0] + lightDir[1] * lightDir[1]
+              + lightDir[2] * lightDir[2]);
+    const float lightColor[4] = {1.0f, 0.95f, 0.9f, 1.0f};
+    float proj[16];
+    MatPerspectiveFovLH(3.14159265f / 3.0f, static_cast<float>(kWidth) / static_cast<float>(kHeight),
+        0.1f, 100.0f, proj);
+    const float view[16] = {1.0f, 0, 0, 0, 0, 1.0f, 0, 0, 0, 0, 1.0f, 0, 0, 0, 0, 1.0f};
+
+    zrender::ZrHudAggregator hud(60u);
+    uint32_t frame = 0u;
+    uint32_t exportsWritten = 0u;
+    bool quitRequested = false;
+    constexpr uint32_t kSafetyFrameCap = 1000000u;
+
+    while (!quitRequested && (maxFrames == 0u || frame < maxFrames)
+        && frame < kSafetyFrameCap) {
+        const auto frameStart = std::chrono::steady_clock::now();
+
+        // ---- 帧首取请求：即时响应型就地处理；rg.export 等编译产物 → 帧内延后回写 --
+        struct PendingExport {
+            SOCKET client;
+            std::string path;
+            std::string format;
+        };
+        std::vector<devconsole::DevConsoleServer::Request> requests = server.Drain();
+        std::vector<PendingExport> pendingExports;
+        for (const devconsole::DevConsoleServer::Request& req : requests) {
+            const zrender::ZrDevConsoleRequest parsed = zrender::ZrDevConsoleParse(req.line);
+            if (!parsed.valid) {
+                devconsole::DevConsoleServer::SendAndClose(req.client,
+                    zrender::ZrDevConsoleError(parsed.error, parsed.detail));
+                continue;
+            }
+            switch (parsed.command) {
+            case zrender::ZrDevConsoleCommand::Help: {
+                std::string payload = "\"commands\":[";
+                const std::vector<std::string> names = zrender::ZrDevConsoleCommandNames();
+                for (size_t ci = 0; ci < names.size(); ++ci) {
+                    if (ci != 0u) {
+                        payload += ',';
+                    }
+                    payload += '"' + zrender::ZrDevConsoleJsonEscape(names[ci]) + '"';
+                }
+                payload += ']';
+                devconsole::DevConsoleServer::SendAndClose(req.client,
+                    zrender::ZrDevConsoleOk(payload));
+                break;
+            }
+            case zrender::ZrDevConsoleCommand::Hud: {
+                // 统计 = 聚合器当前窗口（含上一帧样本；见 ZrHudFormatJson 字段）。
+                // ZrHudFormatJson 是独立单对象 JSON——经 MergeObject 剥外壳并入信封，
+                // 整体仍是合法单行 JSON（{"ok":true,"drawCalls":...}）。
+                const zrender::ZrHudFrameStats stats = hud.Snapshot();
+                devconsole::DevConsoleServer::SendAndClose(req.client,
+                    zrender::ZrDevConsoleOk(
+                        zrender::ZrDevConsoleMergeObject(zrender::ZrHudFormatJson(stats))));
+                break;
+            }
+            case zrender::ZrDevConsoleCommand::RenderDocCapture: {
+                if (!renderdoc.IsAttached()) {
+                    // 简报硬要求：未挂接 → 明确报错（不静默、不假成功）
+                    devconsole::DevConsoleServer::SendAndClose(req.client,
+                        zrender::ZrDevConsoleError("renderdoc_not_attached",
+                            std::string("start this exe via RenderDoc UI (File > Launch "
+                                        "Application) - ")
+                                + zrender::ZrRenderDocErrorText(rdError)));
+                    break;
+                }
+                // 可选 [name]：换捕获名（模板 = <dir>/<name>，RenderDoc 追加 _帧号.rdc）
+                if (!parsed.args.empty()) {
+                    const std::string tmpl = outputDir + "/" + parsed.args[0];
+                    renderdoc.SetCaptureFilePathTemplate(tmpl.c_str());
+                }
+                bool requested = false;
+                if (windowMode) {
+                    requested = renderdoc.TriggerCapture(); // present 边界落盘
+                } else {
+                    // 离屏无 present：手动半边（Start 就地 / End 在 Submit 后）
+                    requested = renderdoc.StartFrameCapture(device->D3D12Device(), nullptr);
+                    manualCaptureOpen = requested;
+                }
+                if (!requested) {
+                    devconsole::DevConsoleServer::SendAndClose(req.client,
+                        zrender::ZrDevConsoleError("renderdoc_request_failed",
+                            zrender::ZrRenderDocErrorText(renderdoc.LastError())));
+                    break;
+                }
+                std::string payload = "\"requested\":true,\"frame\":" + std::to_string(frame)
+                    + ",\"dir\":\"" + zrender::ZrDevConsoleJsonEscape(outputDir)
+                    + "\",\"capturesSoFar\":" + std::to_string(reportedCaptures);
+                if (!lastCapturePath.empty()) {
+                    payload += ",\"lastCapturePath\":\""
+                        + zrender::ZrDevConsoleJsonEscape(lastCapturePath) + "\"";
+                }
+                devconsole::DevConsoleServer::SendAndClose(req.client,
+                    zrender::ZrDevConsoleOk(payload));
+                break;
+            }
+            case zrender::ZrDevConsoleCommand::RgExport: {
+                // 参数校验（格式值域在本执行层——协议层只管形状）
+                std::string path = outputDir + "/rg_export.json";
+                std::string format = "json";
+                if (!parsed.args.empty()) {
+                    path = parsed.args[0];
+                }
+                if (parsed.args.size() >= 2u) {
+                    format = parsed.args[1];
+                }
+                if (format != "json" && format != "text") {
+                    devconsole::DevConsoleServer::SendAndClose(req.client,
+                        zrender::ZrDevConsoleError("bad_format",
+                            "usage: rg.export [path] [json|text] (got '" + format + "')"));
+                    break;
+                }
+                pendingExports.push_back(PendingExport { req.client, path, format });
+                break;
+            }
+            case zrender::ZrDevConsoleCommand::Quit: {
+                devconsole::DevConsoleServer::SendAndClose(req.client,
+                    zrender::ZrDevConsoleOk(""));
+                quitRequested = true;
+                break;
+            }
+            case zrender::ZrDevConsoleCommand::None:
+            default:
+                // 解析层已覆盖全部枚举值；此分支只兜底（不崩溃）
+                devconsole::DevConsoleServer::SendAndClose(req.client,
+                    zrender::ZrDevConsoleError("unknown_command", "unhandled command enum"));
+                break;
+            }
+        }
+
+        // ---- 常量写入（mvp 随帧旋转；--draw 同构）----------------------------------
+        const float angle = 6.2831853f * static_cast<float>(frame % 60u) / 60.0f;
+        float rotY[16];
+        MatRotationY(angle, rotY);
+        float rotX[16];
+        MatRotationX(0.35f, rotX);
+        float rx[16];
+        MatMultiply(rotX, rotY, rx);
+        for (uint32_t i = 0; i < kDrawItems; ++i) {
+            const float tx = (static_cast<float>(i) - 1.0f) * 1.6f;
+            float trans[16] = {};
+            MatTranslation(tx, 0.0f, 3.2f, trans);
+            float model[16];
+            MatMultiply(trans, rx, model);
+            float pv[16];
+            MatMultiply(proj, view, pv);
+            float mvp[16];
+            MatMultiply(pv, model, mvp);
+            DrawConstants constants;
+            std::memcpy(constants.mvp, mvp, sizeof(mvp));
+            constants.lightDir[0] = lightDir[0] * invLen;
+            constants.lightDir[1] = lightDir[1] * invLen;
+            constants.lightDir[2] = lightDir[2] * invLen;
+            constants.lightDir[3] = 0.0f;
+            std::memcpy(constants.lightColor, lightColor, sizeof(lightColor));
+            std::memcpy(cbMapped[i], &constants, sizeof(constants));
+        }
+
+        // ---- 取后台缓冲 + RTV ------------------------------------------------------
+        ZrImage backbuffer {};
+        ZrImageView rtvView {};
+        if (windowMode) {
+            const uint32_t index = swapchain->AcquireNextImage();
+            backbuffer = swapchain->GetCurrentImage();
+            if (!rtvViews[index].IsValid()) {
+                ZrImageViewDesc rtvViewDesc {};
+                rtvViewDesc.image = backbuffer;
+                rtvViewDesc.viewType = ZrImageViewType::Rtv;
+                rtvViews[index] = device->CreateImageView(rtvViewDesc);
+            }
+            rtvView = rtvViews[index];
+        } else {
+            backbuffer = offscreenTarget;
+            rtvView = offscreenRtv;
+        }
+
+        // ---- 每帧 RG：Import 后台/深度 → ClearPass → CubeDrawPass（真实计数）→ Present
+        constexpr float kConsoleClearColor[4] = {0.05f, 0.10f, 0.15f, 1.0f};
+        uint32_t frameDrawCalls = 0u; // HUD 的 DrawCall 数据源（命令表插桩计数器）
+        cmdList->Begin();
+        RgGraph graph;
+        RgHandle backH = graph.Import(RgResourceDesc::ImportImage("backbuffer", backbuffer));
+        RgHandle depthH = graph.Import(RgResourceDesc::ImportImage("depth", depthImage));
+        graph.AddPass("ClearPass",
+            [&](RgPass& pass) {
+                pass.Write(backH, ZrImageLayout::ColorAttachmentOptimal,
+                    ZrAccessBits::ColorAttachmentWrite,
+                    ZrPipelineStageBits::ColorAttachmentOutput);
+                pass.Write(depthH, ZrImageLayout::DepthStencilAttachmentOptimal,
+                    ZrAccessBits::DepthStencilAttachmentWrite,
+                    ZrPipelineStageBits::LateFragmentTests);
+            },
+            [&](RgContext& ctx) {
+                cmdList->ClearColorImage(ctx.GetImage(backH),
+                    ZrImageLayout::ColorAttachmentOptimal, kConsoleClearColor,
+                    ZrSubresourceRange::All());
+                nativeCmd->ClearDepthStencilView(device->D3D12ViewCpuOf(dsvView),
+                    D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0u, 0u, nullptr);
+            });
+        graph.AddPass("CubeDrawPass",
+            [&](RgPass& pass) {
+                pass.Write(backH, ZrImageLayout::ColorAttachmentOptimal,
+                    ZrAccessBits::ColorAttachmentWrite,
+                    ZrPipelineStageBits::ColorAttachmentOutput);
+                pass.Write(depthH, ZrImageLayout::DepthStencilAttachmentOptimal,
+                    ZrAccessBits::DepthStencilAttachmentWrite,
+                    ZrPipelineStageBits::LateFragmentTests);
+            },
+            [&](RgContext&) {
+                cmdList->SetPipelineState(pso);
+                cmdList->SetRenderTarget(rtvView, dsvView);
+                cmdList->SetViewportScissor(kWidth, kHeight);
+                ZrBuffer vbs[1] = {vb};
+                cmdList->SetVertexBuffers(vbs, 1u);
+                cmdList->SetIndexBuffer(ib);
+                for (uint32_t i = 0; i < kDrawItems; ++i) {
+                    cmdList->SetGraphicsConstantBuffer(0u, cbHandles[i]);
+                    cmdList->DrawIndexedInstanced(indexCount, 1u, 0u, 0u, 0u);
+                    frameDrawCalls += 1u; // HUD DrawCall 计数器（真实调用点插桩）
+                }
+            });
+        if (windowMode) {
+            graph.AddPass("PresentPass", [&](RgPass& pass) { pass.Present(backH).MarkRoot(); },
+                nullptr);
+        }
+
+        bool frameCompiled = false;
+        if (graph.Compile()) {
+            frameCompiled = true;
+
+            // ---- rg.export：本帧编译产物落盘（pending 请求在此回写）----------------
+            for (const PendingExport& pe : pendingExports) {
+                const std::string content = pe.format == "text" ? zrender::RgExportText(graph)
+                                                                : zrender::RgExportJson(graph);
+                std::ofstream out(pe.path, std::ios::binary);
+                if (!out) {
+                    devconsole::DevConsoleServer::SendAndClose(pe.client,
+                        zrender::ZrDevConsoleError("write_failed",
+                            "cannot open '" + pe.path + "' for writing"));
+                    continue;
+                }
+                out << content;
+                out.close();
+                if (!out) {
+                    devconsole::DevConsoleServer::SendAndClose(pe.client,
+                        zrender::ZrDevConsoleError("write_failed",
+                            "short write on '" + pe.path + "'"));
+                    continue;
+                }
+                exportsWritten += 1u;
+                const std::string payload = "\"path\":\""
+                    + zrender::ZrDevConsoleJsonEscape(pe.path) + "\",\"format\":\""
+                    + pe.format + "\",\"bytes\":"
+                    + std::to_string(static_cast<unsigned long long>(content.size()))
+                    + ",\"frame\":" + std::to_string(frame) + ",\"passes\":"
+                    + std::to_string(static_cast<unsigned long long>(graph.CompiledOrder().size()))
+                    + ",\"barriers\":" + std::to_string(graph.BarrierPlan().TotalBarrierCount());
+                devconsole::DevConsoleServer::SendAndClose(pe.client,
+                    zrender::ZrDevConsoleOk(payload));
+            }
+            pendingExports.clear();
+
+            graph.ExecuteAliased(*device, *cmdList); // 本模式无 Transient，统计恒零（留观测位）
+        } else {
+            std::printf("  frame %u: RG Compile FAILED (error=%u)\n", frame + 1u,
+                static_cast<unsigned>(graph.Error()));
+            // pending 导出请求明确失败（不静默丢）
+            for (const PendingExport& pe : pendingExports) {
+                devconsole::DevConsoleServer::SendAndClose(pe.client,
+                    zrender::ZrDevConsoleError("rg_compile_failed", "graph did not compile "
+                                                                 "this frame"));
+            }
+            pendingExports.clear();
+        }
+        cmdList->End();
+        if (frameCompiled) {
+            queue->Submit(cmdHandle);
+            if (windowMode) {
+                swapchain->Present();
+            }
+            if (manualCaptureOpen && !windowMode) {
+                // 离屏手动捕获半边闭合（EndFrameCapture 失败=CaptureFailed，不假成功）
+                renderdoc.EndFrameCapture(device->D3D12Device(), nullptr);
+                manualCaptureOpen = false;
+            }
+        }
+
+        // ---- HUD 采样（每帧一条；含设备统计与显存台账）------------------------------
+        zrender::ZrHudSample sample {};
+        sample.drawCalls = frameDrawCalls;
+        sample.rtWidth = kWidth;
+        sample.rtHeight = kHeight;
+        sample.memoryBytes = memoryBytes;
+        sample.device = device->GetDeviceStats();
+        const auto frameEnd = std::chrono::steady_clock::now();
+        sample.frameMs
+            = std::chrono::duration<double, std::milli>(frameEnd - frameStart).count();
+        hud.Push(sample);
+
+        // ---- RenderDoc 捕获落盘探测（完成后取真实 .rdc 路径）------------------------
+        if (renderdoc.IsAttached()) {
+            const uint32_t captures = renderdoc.GetNumCaptures();
+            if (captures > reportedCaptures) {
+                if (renderdoc.GetCapturePath(captures - 1u, lastCapturePath)) {
+                    std::printf("  DEVCONSOLE: RenderDoc capture written: %s\n",
+                        lastCapturePath.c_str());
+                }
+                reportedCaptures = captures;
+            }
+        }
+
+        // ---- 消息泵（本地版：WM_QUIT 可观测——窗口关闭即优雅退出）-------------------
+        MSG msg {};
+        while (::PeekMessageW(&msg, nullptr, 0u, 0u, PM_REMOVE) != 0) {
+            if (msg.message == WM_QUIT) {
+                quitRequested = true;
+            }
+            ::TranslateMessage(&msg);
+            ::DispatchMessageW(&msg);
+        }
+        frame += 1u;
+    }
+
+    server.Stop();
+    const zrender::ZrHudFrameStats finalStats = hud.Snapshot();
+    std::printf("zrhi_d3d12_window: --devconsole done: frames=%u exports=%u captures=%u\n",
+        frame, exportsWritten, reportedCaptures);
+    std::printf("  final HUD: %s\n", zrender::ZrHudFormatText(finalStats).c_str());
+    std::printf("D3D12 DEVCONSOLE OK\n");
+    ZrD3D12DestroyDevice(device);
+    return 0;
+}
+
 int main(int argc, char** argv)
 {
     bool headless = false;
@@ -13144,6 +13967,15 @@ int main(int argc, char** argv)
         // + 截图 Docs/Parity/assets_gallery.png）。恒离屏（--parity 同策）。
         if (std::strcmp(argv[i], "--assets") == 0) {
             return RunAssetsGalleryMode();
+        }
+        // TASK-B-R9-16：--devconsole —— GPU 工具链运行时入口（方案 §5.7）：
+        // 127.0.0.1 白名单控制台（缺省端口 17323）+ hud 统计 + rg.export +
+        // renderdoc.capture。选项：--devconsole-port <n> / --devconsole-frames <n>
+        // (0=不限，quit/窗口关闭退出) / --devconsole-dir <path>（捕获与导出落盘
+        // 目录，缺省 Native/build/renderdoc）/ --devconsole-zmesh|hlsl <path>。
+        // D3D12 路径（与 --draw 同源 PSO/编译链；RenderDoc 挂接在后端无关层）。
+        if (std::strcmp(argv[i], "--devconsole") == 0) {
+            return RunDevConsoleMode(argc, argv);
         }
         // TASK-B-R4-01：--zmeshcheck <path> —— 加载校验后直接退出。
         if (std::strcmp(argv[i], "--zmeshcheck") == 0) {

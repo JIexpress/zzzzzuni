@@ -205,6 +205,10 @@ endif()
 add_library(zrender_core STATIC
     zrender/zrender.cpp
     zrender/rg_render_graph.cpp
+    zrender/rg_export.cpp       # TASK-B-R9-16：RG 编译产物导出（JSON/文本纯函数）
+    zrender/gpu_hud.cpp         # TASK-B-R9-16：DrawCall/显存 HUD 统计聚合纯函数
+    zrender/devconsole_proto.cpp # TASK-B-R9-16：原生 DevConsole 协议纯逻辑（白名单/信封）
+    zrender/renderdoc_capture.cpp # TASK-B-R9-16：RenderDoc 应用内 API 封装（挂接/捕获）
     zrender/zmesh.cpp
     zrender/draw_list.cpp
     zrender/cluster_lighting.cpp
@@ -215,6 +219,8 @@ add_library(zrender_core STATIC
   # TASK-B-R5-01: cluster_lighting 并入（CPU 簇光源分配+LightData 32B 打包）
   # TASK-B-R5-02: shadows 并入（CascadeSplits 分割+texel snap 级联矩阵+可见性过滤契约）
   # TASK-B-R5-03: gi_probes/ssr_pass 并入（GI 探针辐射缓存+SSR Hi-Z/模糊/RG 声明）
+# TASK-B-R9-16：renderdoc_capture.cpp 的第三方头 include 根（renderdoc/renderdoc_app.h）
+target_include_directories(zrender_core PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty)
 # TASK-B-R6-01：zupscaler 并入超分框架（UpscalerChain 选优/状态机 + Bilinear 基线 +
 # FSR 统一运行时后端）。第三方（ffx-fsr）仅消费官方头 + 预编译 dll（运行时
 # LoadLibrary），无第三方编译单元 → 无需 /WX 豁免 target；ffx 头在
@@ -316,6 +322,10 @@ add_executable(zrender_test
     tests/test_zfg_host_desc.cpp # A-3（代理建链保留宿主 desc：审计场景逐字段断言）
     tests/test_zfg_fg_shutdown.cpp # B-3/B-7（ZFG_FgShutdown 导出路由 + 空 out 拒绝）
     tests/test_bench_json.cpp # TASK-B-R9-10（bench 回归 --json 单行生成器：转义/格式/单行契约）
+    tests/test_rg_export.cpp # TASK-B-R9-16（RG 导出纯函数：JSON/文本/确定性/错误骨架）
+    tests/test_gpu_hud.cpp # TASK-B-R9-16（HUD 聚合纯函数：字节估算/滑窗峰值/JSON 格式）
+    tests/test_renderdoc_capture.cpp # TASK-B-R9-16（RenderDoc 挂接/捕获错误路径 + 假表转发）
+    tests/test_devconsole_proto.cpp # TASK-B-R9-16（DevConsole 白名单解析/参数/信封转义）
     # zfgprobe 的 hook/wrap/dll 三个编译单元并入测试目标（TASK-R10-05 B-3/B-7 需要
     # 直接驱动 HookCreateSwapChainForHwnd / WrapShutdown / ZFG_FgShutdown）。
     # 注意：zfg_dxgi_proxy.cpp **有意不并入**——其 ForwardArgs 会把测试进程内的
@@ -441,6 +451,8 @@ add_executable(zrhi_d3d12_window tests/zrhi_d3d12_window.cpp)
 target_include_directories(zrhi_d3d12_window PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/ffx-fsr/api/include)
 target_link_libraries(zrhi_d3d12_window PRIVATE zrhi zrender_core zupscaler zplugin d3d12 dxgi)
+# TASK-B-R9-16：--devconsole 的 TCP 控制台（winsock2，只绑 127.0.0.1）
+target_link_libraries(zrhi_d3d12_window PRIVATE ws2_32)
 if(ZR_HAS_VULKAN)
     # TASK-B-R7-01：--backend vulkan 双后端路径（ZR_HAS_VULKAN 编译开关 + SPIR-V 产物；
     # vulkan.h/导入库经 zrhi 的 PUBLIC 传播已就位，vulkan-1.lib 直接从 zrhi 传递）

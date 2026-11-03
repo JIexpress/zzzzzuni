@@ -333,6 +333,39 @@ const RgPass& RgGraph::PassAt(uint32_t declIndex) const
     return m_passes[declIndex].pass;
 }
 
+// ---- TASK-B-R9-16：rg.export 导出查询（纯只读，见 rg_export.h）--------------------
+const char* RgGraph::PassNameAt(uint32_t declIndex) const
+{
+    if (declIndex >= m_passes.size()) {
+        return "";
+    }
+    return m_passes[declIndex].pass.Name();
+}
+
+const std::vector<RgPassAccess>* RgGraph::PassAccessesAt(uint32_t declIndex) const
+{
+    if (declIndex >= m_passes.size()) {
+        return nullptr;
+    }
+    return &m_passes[declIndex].pass.Accesses();
+}
+
+const RgResourceDesc* RgGraph::ResourceDescAt(uint32_t index) const
+{
+    if (index >= m_resources.size()) {
+        return nullptr;
+    }
+    return &m_resources[index].desc;
+}
+
+RgHandle RgGraph::ResourceHandleAt(uint32_t index) const
+{
+    if (index >= m_resources.size()) {
+        return RgHandle{};
+    }
+    return RgHandle{ index, m_resources[index].gen };
+}
+
 // =============================================================================
 // RgGraph —— Compile
 // =============================================================================
