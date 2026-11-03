@@ -3,7 +3,7 @@
 > 唯一权威状态源。每任务闭环后由主控刷新。接管者先读本文件，再读 `Docs/交接档案.md`（路线图+环境坑+技术债），再读 TASKS.md。
 > 历史交接记录（R8/R9/R10 各轮）已归档于 git 历史（`git show G-113:HANDOFF.md`），WORKLOG.md 有全部 85+ 任务索引。
 
-**快照时间**: 2026-11-03 22:40（**CI 本地就绪；仓库瘦身 556→101MB**）｜**刷新者**: 主控（WorkBuddy）｜**仓库**: `C:\Users\1\Desktop\zcode\GameFramework`
+**快照时间**: 2026-11-03 23:40（**推送 GitHub 进行中；仓库瘦身 556→101MB**）｜**刷新者**: 主控（WorkBuddy）｜**仓库**: `C:\Users\1\Desktop\zcode\GameFramework`
 
 ## 三十秒速览
 
@@ -45,7 +45,29 @@
 **一条小技术债**：`Tools/dev.ps1` 提交时 Git 报 "LF will be replaced by CRLF"（`.gitattributes` 没覆盖 `.ps1`），
 换行符可能在不同机器上漂移，需要时补规则。
 
-## 🔵 CI 接入（A-CI-01）：本地就绪，待建仓推送
+## 🔵 CI 接入（A-CI-01）：正在推送（2026-11-03 23:36 起）
+
+### 这一刻的状态（中断后从这里接）
+
+| 项 | 值 |
+|---|---|
+| 远程仓库 | `https://github.com/JIexpress/zzzzzuni`（私有，空仓起步） |
+| 推送内容 | 本地 `main`（新根，实际 pack **54MB**） |
+| 凭据位置 | `C://Users//1//.zframe-github-token`（**仓库外**，一行 token） |
+| 推送命令 | `git push -u origin main` |
+| 中断后怎么办 | **直接重跑上面那条命令**；git 会重传，不需要别的清理 |
+
+⚠️ **token 已经在对话里明文出现过，这个仓库跑通后建议去 GitHub 吊销重发一个**，
+重新写进 `C://Users//1//.zframe-github-token` 即可，代码不用改。
+
+### 推送完成后要做的三件事
+
+1. 打开 `https://github.com/JIexpress/zzzzzuni/actions`，看 `CI / Native (build + doctest)` 是否自动跑起来
+2. 把 remote 里的 token 清掉（避免明文留在 `.git/config`）：
+   `git remote set-url origin https://github.com/JIexpress/zzzzzuni.git`
+3. 确认仓库体积接近 54MB（不是 500MB+）——若超了，说明历史被带上了，检查是否误推了 `legacy`
+
+
 
 **分层**：L1 native（云端跑，不需 Unity 许可证/GPU）✅ 已配 ｜ L2 unity ⏸ 未启用（需许可证，建议自托管）
 ｜ L3 playmode/bench/打包 ⏸ 不进云端（无 GPU 会假绿、bench 会误报）。
