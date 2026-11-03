@@ -145,3 +145,5 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | A-GPU-01 | A/GPU | 性能 HUD（DrawCall/SetPass/三角面/显存/FPS，含 release 门控） | doing | Docs/Logs/TASK-A-GPU-01.md | — |
 | A-R9-12 | A/R9 | CommandSystem 命令模式+拾取撤销接线 | done(验收PASS;变异2处复红) | Docs/Logs/TASK-A-R9-12.md | fd010cb |
 | B-R9-16 | B/R9 | GPU 工具链(HUD/RenderDoc/RG导出) | done(验收PASS;301用例) | Docs/Logs/TASK-B-R9-16.md | 724e123 |
+| B-R9-17 | B/R9 | DataKernel C ABI+C# 绑定(玩法通道) | doing | Docs/Logs/TASK-B-R9-17.md | |
+| A-R9-14 | A/R9 | 音频打磨包(SFX 入库+事件接线) | doing | Docs/Logs/TASK-A-R9-14.md | |
