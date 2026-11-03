@@ -81,7 +81,7 @@
 | R10-06 | A/R10 | 修复审计P2 C#批(A-9相机还原) | done(验收PASS with受限 6/6；EditMode 719) | Docs/Logs/TASK-R10-06.md | fa671ba |
 | R10-07 | B/R10 | 补审计漏项(A-10 split屏障 + B-6 采集泄漏) | done(验收PASS with受限 10/10；native 253/711,537) | Docs/Logs/TASK-R10-07.md | 98d377b |
 
-**统计**：done 96 ／ doing 1（A-CI-01）／ todo 0 ／ blocked 0 ／ held 0（审计 9 条：修 7 + 明确接受 2）（按看板行数计；2026-11-01 主控校正过统计口径）
+**统计**：done 97 ／ doing 0 ／ todo 0 ／ blocked 0 ／ held 0（A-CI-01 已推送；Actions 首跑结果待看）（审计 9 条：修 7 + 明确接受 2）（按看板行数计；2026-11-01 主控校正过统计口径）
 
 > **2026-10-28 G-64 文档对齐（接管）**：修三处失真 ①R8 六行原被追加在「里程碑对照」标题**下方**导致表格断裂、`B-R8-03` 仍挂 `doing`（实际已 PASS，commit `be2adcf`）——已并入主表并改正状态
 > ②`HANDOFF.md` 表头仍写「R8 推进 3/4、B-R8-02 待派」（实际 47 任务全闭环）③`README.md` 与 HANDOFF 注意事项里的任务数/用例数/`TestReport.txt` 是否入库均过期。
@@ -141,4 +141,4 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | A-AND-06 | A/AND | IL2CPP 正式包重出（ARM64 可对外，替换 Mono 开发包） | done(验收PASS with受限；arm64/无DEVELOPMENT_BUILD/0.1.0.19；真机待设备) | Docs/Logs/TASK-A-AND-06.md | 9da8db9 |
 | A-AND-07 | A/AND | 发布元数据：versionCode 自增 + 修版本倒挂（0.1.0.19 < 旧包 0.1.0.22） | done(验收PASS 6/6；守卫有牙;EditMode 811) | Docs/Logs/TASK-A-AND-07.md | 2b7e927 |
 | A-AND-08 | A/AND | Release 签名证书（本地自签 keystore，替换 CN=Android Debug） | done(验收PASS 6/6；CN=ZFrame/v2/密钥隔离0命中/缺密码中止) | Docs/Logs/TASK-A-AND-08.md | 88275f0 |
-| A-CI-01 | A/CI | CI 接入（GitHub Actions L1 原生门禁 + pre-push 大文件钩子） | doing(本地就绪;待用户建仓推送) | Docs/Logs/TASK-A-CI-01.md | — |
+| A-CI-01 | A/CI | CI 接入（GitHub Actions L1 原生门禁 + pre-push 大文件钩子） | done(已推 JIexpress/zzzzzuni；Actions 首跑待观察) | Docs/Logs/TASK-A-CI-01.md | 67c3e49 |
