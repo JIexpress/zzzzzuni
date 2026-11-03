@@ -3,7 +3,7 @@
 > 唯一权威状态源。每任务闭环后由主控刷新。接管者先读本文件，再读 `Docs/交接档案.md`（路线图+环境坑+技术债），再读 TASKS.md。
 > 历史交接记录（R8/R9/R10 各轮）已归档于 git 历史（`git show G-113:HANDOFF.md`），WORKLOG.md 有全部 85+ 任务索引。
 
-**快照时间**: 2026-11-03 23:40（**推送 GitHub 进行中；仓库瘦身 556→101MB**）｜**刷新者**: 主控（WorkBuddy）｜**仓库**: `C:\Users\1\Desktop\zcode\GameFramework`
+**快照时间**: 2026-11-04 00:00（**CI 首次通过；仓库已上线**）｜**刷新者**: 主控（WorkBuddy）｜**仓库**: `C:\Users\1\Desktop\zcode\GameFramework`
 
 ## 三十秒速览
 
@@ -45,7 +45,55 @@
 **一条小技术债**：`Tools/dev.ps1` 提交时 Git 报 "LF will be replaced by CRLF"（`.gitattributes` 没覆盖 `.ps1`），
 换行符可能在不同机器上漂移，需要时补规则。
 
-## 🔵 CI 接入（A-CI-01）：正在推送（2026-11-03 23:36 起）
+## ✅ CI 已通过（A-CI-01 闭环，2026-11-03 23:59）
+
+**`CI #4 / 50d4e21` 绿，1 分 4 秒**｜https://github.com/JIexpress/zzzzzuni/actions
+
+| 项 | 值 |
+|---|---|
+| 远程 | `https://github.com/JIexpress/zzzzzuni`（私有） |
+| 分支 | `main`（新根，54MB pack）；`legacy` 仅本地存旧历史 |
+| L1 门禁 | `Native (build + doctest)`：云端 **249 用例 / 764,341 断言** 全绿 |
+| L2/L3 | 未接（Unity 许可证 / GPU），继续本地跑 `Tools/run_tests.ps1` |
+
+### ⚠️ 数字差异是预期的，不是回归
+
+| 环境 | 用例 | 断言 | 原因 |
+|---|---|---|---|
+| 本地（有 Vulkan SDK） | **281** | **771,162** | 含 6 个 Vulkan 测试文件 |
+| 云端（无 Vulkan SDK） | **249** | **764,341** | 上述 32 个用例被条件排除 |
+
+**别看到云端 249 就以为丢了测试**——这是 `if(ZR_HAS_VULKAN)` 的正常分支。
+
+### CI 第一次失败的真实根因（记下来，别再踩）
+
+`error C1083: Cannot open include file: 'vulkan/vulkan.h'`（编译 `test_zrhi_vulkan_bindless.cpp`）。
+
+CMakeLists 宣称「找不到 VULKAN_SDK 就跳过 Vulkan 目标（CI/他机友好）」，`ZR_VULKAN_SOURCES` 确实条件化了，
+**但 6 个 Vulkan 测试文件仍被无条件加进 `add_executable(zrender_test ...)`**，它们经
+`zrhi/vulkan/zrhi_vulkan_device.h` 间接 include vulkan 头。已改为 `if(ZR_HAS_VULKAN) target_sources(...)` 追加。
+
+**本地预演云端条件的办法（可复制）**：把 `VULKAN_SDK` 设成假值后跑 `Tools/build_native.ps1`
+（见 `Docs/Logs/TASK-A-CI-01.md` §五⑤ 的完整命令），应打印 `Vulkan backend: SKIPPED` 且 249 用例全绿——
+这样在本地就能预演云端条件，不用等 CI 试错。
+
+### 推送与凭据
+
+- 推送必须清代理：`env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u all_proxy -u ALL_PROXY git push origin main`
+  （宿主透明代理 `127.0.0.1:60759` 对 git 大流量返回 502）
+- 直连偶发 `Connection was reset` → **重试，通常第 2 次成功**
+- token：`C:\Users\1\.zframe-github-token` + `~/.git-credentials`；需 `repo` + **`workflow`** 两个 scope
+
+### 遗留
+
+- 本地 `Native/build` 当前是**无 Vulkan 配置**（被这次验证改成 SKIPPED）。
+  下次正常跑 `Tools/build_native.ps1`（不设假 `VULKAN_SDK`）会自动重新探测 `C:/VulkanSDK` 并恢复完整构建。
+- `actions/checkout@v4` 有 Node.js 20 deprecated 警告（不影响结果），可择机升 v5。
+- token 已在对话中出现过，建议轮换。
+
+## 🔵 （历史）CI 接入过程记录
+
+
 
 ### 这一刻的状态（中断后从这里接）
 

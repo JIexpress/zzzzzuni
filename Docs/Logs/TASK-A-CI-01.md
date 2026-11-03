@@ -89,6 +89,49 @@ git config core.hooksPath .githooks
 结果：`* [new branch] main -> main`，远程 `refs/heads/main = f83ab85`（与本地一致）。
 之后 remote 已清成干净 URL，凭据转到 `~/.git-credentials`。
 
+## 五⑤、CI 首次通过（2026-11-03 23:59，`CI #4 / 50d4e21`，1m 4s）
+
+### 首次失败根因（与本文件 §五¾ 的推送失败是两回事）
+
+```
+Native/zrhi/vulkan/zrhi_vulkan_device.h(56,10): error C1083:
+Cannot open include file: 'vulkan/vulkan.h'
+(compiling source file 'tests/test_zrhi_vulkan_bindless.cpp')
+```
+
+CMakeLists 的「无 SDK 则跳过 Vulkan」只覆盖了**后端源文件**（`ZR_VULKAN_SOURCES`），
+**6 个 Vulkan 测试文件仍在 `add_executable` 里无条件编译**：
+
+`test_zrhi_vulkan_translate` / `_spv` / `_result` / `_recreate` / `_bindless` / `test_zrhi_barrier_truncate`
+
+修复：移出主列表，改为 `if(ZR_HAS_VULKAN) target_sources(zrender_test PRIVATE ...)`。
+
+### 本地预演云端条件的方法（重要，以后不再靠 CI 试错）
+
+```
+$env:VULKAN_SDK = "C:\__nonexistent__"
+& powershell -NoProfile -ExecutionPolicy Bypass -File Tools\build_native.ps1
+```
+
+预期输出：
+```
+-- ZRender Vulkan backend: SKIPPED (VULKAN_SDK not found ...)
+[doctest] test cases:    249 |    249 passed | 0 failed
+[doctest] assertions: 764341 | 764341 passed | 0 failed
+```
+
+**用例数差异是设计使然，不是回归**：
+
+| 环境 | 用例 | 断言 |
+|---|---|---|
+| 本地（有 Vulkan SDK） | 281 | 771,162 |
+| 云端（无 SDK） | 249 | 764,341 |
+
+差 32 个正是那 6 个文件里的 Vulkan 用例。CI 只验退出码，**不比对具体数字**（workflow 里已注明）。
+
+另注：日志里 `fg: PrepareV2 dispatch FAILED`、`bilinear: CreateGraphicsPipelineState FAILED`
+等都是**负向测试的预期输出**（故意构造错误路径），不是真失败。
+
 ## 六、待办（阻塞项）
 
 用户需完成两步，之后可推送：
