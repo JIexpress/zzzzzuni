@@ -81,7 +81,101 @@ DrawCall/显存/带宽 HUD、自动跑分回归」。现状盘点（已核实）
 
 ## 施工报告（施工代理写）
 
-（待填）
+### 1. 交付物（全部新增，未改动任何既有文件）
+
+| 文件 | 作用 |
+|---|---|
+| `UnityProject/Assets/ZFrame/View/Hud/PerformanceHud.cs` | HUD 宿主（MonoBehaviour）：F3 切换、4 Hz 文本、IMGUI 叠加、懒启动接线 |
+| `UnityProject/Assets/ZFrame/View/Hud/PerformanceHudGate.cs` | 门控纯函数（开发包判定 + `-zfhud` / `ZBF_HUD` 解析） |
+| `UnityProject/Assets/ZFrame/View/Hud/PerformanceHudSampler.cs` | ProfilerRecorder 采样器（Start/Stop 成对，IDisposable） |
+| `UnityProject/Assets/ZFrame/View/Hud/HudTextFormat.cs` | 数值格式化（k/M、MiB、ms、不可用占位） |
+| `UnityProject/Assets/ZFrame/View/Hud/HudRefreshThrottle.cs` | 刷新节流（2–4 Hz 硬约束） |
+| `UnityProject/Assets/ZFrame/Tests/Debug/PerformanceHudTests.cs` | 14 条 EditMode（门控 4 / 格式化 3 / 节流 3 / 组件 4） |
+
+`.meta` 由 Unity 导入时生成；`.cs` 均为 UTF-8 无 BOM + LF。未改 Governor、原生、DevConsole、游戏内容。
+
+### 2. 指标与数据来源（全部 Unity 侧，未从原生取数）
+
+| 行 | 来源 |
+|---|---|
+| `FPS` | 复用既有 `FpsCounter`（30 帧滑动窗口 ≈ 0.5 s @60fps） |
+| `Draw` | `ProfilerRecorder(Render, "Draw Calls Count")` |
+| `SetPass` | `ProfilerRecorder(Render, "SetPass Calls Count")` |
+| `Tris` | `ProfilerRecorder(Render, "Triangles Count")` |
+| `VRAM` | `Profiler.GetAllocatedMemoryForGraphicsDriver()`（graphics driver 分配量，不是显存总量） |
+| `GPU` | `ProfilerRecorder("GPU Frame Time")`，Render → Internal 依次探测（与 `RecorderFrameTelemetry` 同一套写法），纳秒 ×1e-6；平台无此计数器时显示 `—` |
+
+任一 recorder 取不到值（`!Valid` / 无样本 / 批处理不可用）都退化为 `0` 或 `—`，不抛异常、不出 NaN。
+
+### 3. 门控：Release 为什么打不开（两道墙）
+
+**第一道是编译期（最强）：** `PerformanceHud.cs` 从第一行到文件尾都包在
+`#if UNITY_EDITOR || DEVELOPMENT_BUILD || UNITY_INCLUDE_TESTS` 内。Release 玩家包不定义任何
+一个符号 → 发布包托管程序集里**没有这个类型**：没有 F3 的 `Input.GetKeyDown`、没有
+`ProfilerRecorder`、也没有 `TrySetVisible`。这不是"按了没反应"，是代码不存在。
+
+**第二道是运行期：** `PerformanceHudGate` 保持编译，但
+- `IsAvailable(probe)` 只认 `Debug.isDebugBuild`，`null` 探针 fail-closed；
+- `ShouldStartVisible = IsAvailable && IsRequested`，而 `IsRequested` 只解析 `-zfhud` /
+  `ZBF_HUD ∈ {1,true,on,yes}`；
+- 所以 **Release + `-zfhud` + `ZBF_HUD=1` 仍然 false**；`TrySetVisibleForTests` 也先过
+  `IsAvailable`，注入 `() => false` 时**连宿主 GameObject 都不创建**（测试断言 `IsHosted == false`）。
+- 默认（开发包、无参数）不可见；开发包内 F3 才切换。没有"强制打开"的公开入口。
+
+### 4. 关闭时真的不采样
+
+- `ProfilerRecorder` 只在 `SetVisible(true) → Sampler.Start()` 创建；
+  `SetVisible(false) → Stop() + Dispose()`（`internal static LiveSamplerCount` 归零，可机检）。
+- 不可见时 `Update` 只做一次 `GetKeyDown(F3)`（等按键不是采样），随后立即 `return`：
+  不 tick FPS、不读计数器、不拼字符串。
+- 自举 `AutoBoot` 在 `Application.isBatchMode` 直接返回（CI/测试零扰动），非开发包同样返回。
+
+### 5. 节流与"不挡点击"
+
+- `HudRefreshThrottle` 默认 **0.25 s（4 Hz）**；构造器把合法区间钉在 `[0.25, 0.5]`（4–2 Hz），
+  越界直接抛 `ArgumentOutOfRangeException`。首次显示立即刷新一次，之后按节流。
+- 呈现只用 `GUI.Box` / `GUI.Label`：不调用 `Event.current.Use()`，宿主对象没有
+  Canvas / Graphic / Collider / 子物件（测试断言）→ 不产生 GraphicRaycaster，也不参与物理射线。
+  `GUI.depth = -1000` 只决定绘制顺序，不消费事件。
+
+### 6. 开销观察（诚实口径）
+
+- 隐藏：每帧 1 次 `GetKeyDown` + **0 个 recorder / 0 次计数器读取 / 0 次字符串分配**；宿主只是一个空 GameObject。
+- 显示：每帧 1 次 FPS 环形缓冲写入；每 250 ms 3–4 次 recorder 读取 + 1 次约 120 字符的 StringBuilder 重建。
+- 批处理 `-batchmode` 无渲染负载、无 vsync，前后 FPS 差不可信，**没有编数字**；真实 FPS 差与
+  DrawCall 量级核对留给编辑器 Play Mode 的人工验收（V1/V2）。
+
+### 7. 测试与变异
+
+- 新增 **14** 条 EditMode：门控三态（dev 默认关 / dev 参数开 / release 全拒）、环境变量解析、
+  999→`999` / 1234→`1.2k` / 999999→`1.0M`、0 值不出 NaN、ms/fps 占位符、节流 4 Hz 与区间约束、
+  懒采样开关、Release 不建宿主、宿主无射线面。
+- **EditMode 825/825 通过，exit 0**（`TempLogs/hud_editmode_results.xml`；811 基线 + 14 新增）。
+- **PlayMode 41/41 通过，exit 0**（`TempLogs/hud_playmode_results.xml`）。
+- **变异（有牙）**：把 `ShouldStartVisible` 里的 `if (!IsAvailable(...)) return false;` 注释掉 →
+  仅 `ReleaseBuild_RefusesEveryEnableRequest` 变红（4 用例 3 过 1 挂，
+  `TempLogs/hud_mutant_results.xml`）；还原后恢复全绿。
+- 首轮曾有 1 挂：`Count(999999)` 输出 `1000.0k`，已改为进位 `1.0M` 并补断言。
+
+### 8. 未验证项 / 风险
+
+1. **未在 GUI 编辑器里按 F3、未目测数值**：批处理无法合成长按/按键，且无渲染负载。V1/V2 需验收方在
+   Play Mode 人工确认（DrawCall 与 Frame Debugger 同量级）。
+2. **未构建 Release/Dev 玩家包**（按简报不跑真机）。"Release 打不开"由编译期 `#if` + 单测双证据，
+   未做二进制符号检查。
+3. GPU 时间依赖平台计数器；编辑器 D3D11/12 一般可用，批处理下可能 `!Valid` → 显示 `—`，属预期。
+4. 显存口径是 graphics driver 分配量（任务指定），不是整卡占用；换管线/换平台读数会变。
+
+### 9. 现场状态
+
+- **未 git commit**；本任务只新增 6 个 `.cs`（+ Unity 生成的 meta），`TASKS/HANDOFF/WORKLOG/README` 未动。
+- 跑完 `git status`：无 `URP_*.asset` / `QualitySettings.asset` / `ProjectSettings` 被改写。
+- **注意：工作区有并行代理的未提交改动**（`Native/zrender/*`、`Game/*`、`ZFrame/Gameplay/Commands` 等），
+  非本任务产出。最后一次"仅跑 ZFrame.Debug.Tests"的过滤回归时，并行任务的
+  `Game/Tests/View/GameHudUndoTests.cs` 缺 `using Game.View.UI;` 导致整树编译失败（未修，不属本任务边界）。
+  在此之前已完整跑通的 836 用例运行中，我新增的 14 条全部通过；4 条失败均来自并行任务的
+  `CommandManagerTests`×3 与 `GameHudLeakTests`×1，与本任务无关。
+
 
 ---
 
