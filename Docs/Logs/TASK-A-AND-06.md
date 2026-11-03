@@ -204,6 +204,34 @@ Tools/version.json  →  { "version": "0.1.0", "build": 19 }
 
 ---
 
+## 五、真机验证补测（2026-11-04 00:30，V5 解除受限）
+
+设备：华为 `OXF-AN00`（`8UR4C19C03009348`），此前装的是 `0.1.0.22`（Mono debug 签名）。
+
+| 步骤 | 结果 |
+|---|---|
+| `adb uninstall com.ZFrame.ZFrame` | Success（签名从 debug 换 release，必须卸载） |
+| `adb install -r Build/Android/ZFrame.apk` | **Success** |
+| 启动 → 主菜单 | ✅ 标题「ZFrame 垂直切片」+ 开始/设置/退出，**无调试红字、无 Development Build 角标** |
+| 点「开始」→ SCN_Game | ✅ 3D 场景完整渲染（天空/地面/角色/黄色敌人 `Patrol` 标签）、阴影、粒子 |
+| HUD | ✅ 左上「拾取计数: 0」「守卫状态: Patrol」 |
+| 触屏控件 | ✅ 左下虚拟摇杆、右下「暂停」「互动」 |
+| logcat | ✅ 无 FATAL / AndroidRuntime 崩溃 / Unity 异常（`AndroidRuntime` 那几行是正常启动日志） |
+
+**结论：V5 从「未做」转为 PASS。** 静态证据（arm64 / 无 `DEVELOPMENT_BUILD` / release 证书）
+与真机实证现在一致——包内无调试宏，屏幕上确实也没有红字。
+
+### 额外验证：A-AND-03 的修复在真机上成立
+
+「暂停 → 回主菜单 → 再次进入游戏」后，**左下摇杆与右下按钮仍在**，场景正常。
+
+这一点只有真机能验：A-AND-03 修的 `TouchControlsView.Spawn` 去重缺陷（`Destroy` 延迟窗口返回待销毁对象），
+其 PlayMode 用例只锁机制、不锁真机症状，桌面验收永远绿。现在真机确认不复发。
+
+**证据**：`TempLogs/and06/{launch_main,after_start,pause_menu,reentry}.png`（截图）
+
+---
+
 ## 验收清单（供验收代理）
 
 - [ ] V1 `Build/Android/ZFrame.apk` 存在，修改时间是本轮

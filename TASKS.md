@@ -138,7 +138,7 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | A-AUDIT-01 | A/AUDIT | 第二轮独立代码审计（测试绿灯照不到的缺陷） | done(9条:P0×1/P1×3/P2×5;P0为DevServer本地攻击面) | Docs/Logs/TASK-A-AUDIT-01.md | 6a094e6 |
 | A-AUDIT-02 | A/AUDIT | 修审计 A-1/A-2/A-3（DevServer安全+并发上限+触屏去重） | done(验收PASS；恶意Origin→403/PlayMode 38) | Docs/Logs/TASK-A-AUDIT-02.md | b488073 |
 | A-AUDIT-03 | A/AUDIT | 修审计余项 A-4/B-1/B-3/B-5（UIRoot重复canvas/存档原子性/EventSystem持久性/DevConsole超时语义） | done(验收PASS；四条变异全红后还原；EditMode 798/PlayMode 41) | Docs/Logs/TASK-A-AUDIT-03.md | e495ebc |
-| A-AND-06 | A/AND | IL2CPP 正式包重出（ARM64 可对外，替换 Mono 开发包） | done(验收PASS with受限；arm64/无DEVELOPMENT_BUILD/0.1.0.19；真机待设备) | Docs/Logs/TASK-A-AND-06.md | 9da8db9 |
+| A-AND-06 | A/AND | IL2CPP 正式包重出（ARM64 可对外，替换 Mono 开发包） | done(验收PASS；真机补测通过:主菜单→进游戏渲染/无调试红字/二次进摇杆仍在) | Docs/Logs/TASK-A-AND-06.md | 9da8db9 |
 | A-AND-07 | A/AND | 发布元数据：versionCode 自增 + 修版本倒挂（0.1.0.19 < 旧包 0.1.0.22） | done(验收PASS 6/6；守卫有牙;EditMode 811) | Docs/Logs/TASK-A-AND-07.md | 2b7e927 |
 | A-AND-08 | A/AND | Release 签名证书（本地自签 keystore，替换 CN=Android Debug） | done(验收PASS 6/6；CN=ZFrame/v2/密钥隔离0命中/缺密码中止) | Docs/Logs/TASK-A-AND-08.md | 88275f0 |
 | A-CI-01 | A/CI | CI 接入（GitHub Actions L1 原生门禁 + pre-push 大文件钩子） | done(已推 JIexpress/zzzzzuni；Actions 首跑待观察) | Docs/Logs/TASK-A-CI-01.md | 67c3e49 |

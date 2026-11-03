@@ -176,8 +176,9 @@ CMakeLists 宣称「找不到 VULKAN_SDK 就跳过 Vulkan 目标（CI/他机友�
 真机原来那版是 `ZFrame_MonoDev.apk`（`DEVELOPMENT_BUILD` + 调试红字 + DeviceFileLogger），**只能取证不能对外**，
 现在这版才是可对外的正式包。耗时大头是 URP 着色器变体编译（12288 个变体 ≈ 10 分钟）+ IL2CPP C++ 编译（1418 个 .o）+ Gradle。
 
-**真机验证没做**——`adb devices` 是空的。静态证据只证明「包内不含 `DEVELOPMENT_BUILD` 且非 debuggable」，
-**不等同于「屏上无调试红字」**，这一项挂账，等手机插上补测（一条 `adb install -r` + 看屏幕即可）。
+**真机验证已补测通过（2026-11-04 00:30）**——华为 OXF-AN00：卸载旧 debug 包 → 装 release 包 →
+主菜单（无调试红字）→ 点开始 → SCN_Game 完整渲染（HUD/阴影/粒子/触屏摇杆）→ logcat 无崩溃。
+另验「暂停→回主菜单→再次进入」，**摇杆仍在**（A-AND-03 那个只有真机能暴露的缺陷已确认不复发）。
 
 ### 两个"想发布就必须解决"的阻塞（验收顺带查出，已立项）
 
