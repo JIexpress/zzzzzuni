@@ -193,3 +193,45 @@ DevConsole 沿用 A-DEV-03 机制：一行请求/一行 JSON、单行 4KB 上限
 **验收备注（不阻断）**：
 1. 施工报告 §4.3 "`rg.export out.xml` 格式值域 → `bad_format`" 表述不准：单参数语义是 path（格式缺省 json），实测 `rg.export out.xml` 返回 ok:true 并成功写盘（亲证）；`bad_format` 的真实触发是第二参数∉{json,text}（`rg.export out.xml xml`→bad_format，实测通过）。机制本身存在且正确，属报告举例笔误，建议后续任务顺手修正该行。
 2. DrawCall 口径（决策⑥）按"插桩点真值"核对通过：console 模式 3/帧（3 cube，:13667）、--lights 2/帧（:1829/:1835）；简报原"对照 --lights=16"无出处，采纳施工方澄清。
+
+---
+
+### 独立复验（2026-11-04 01:20–01:35，本轮验收代理；与上文自证方为不同代理）
+
+> 前一段结论在本代理取证期间已由另一代理写入并被 `724e123`/`3a5893f` 提交（提交时间 01:24:13/01:24:14，早于本轮裁决完成）。
+> 本代理不复用其结论，以下全部为亲证结果；不一致处以本段为准。
+
+**裁决：PASS with 受限**（三件交付全部可用且亲测；受限=RenderDoc 挂接成功路径无真机端到端、Imported 资源元数据为占位值）
+
+| 判据 | 判定 | 本轮亲证证据 |
+|---|---|---|
+| 回归 | PASS | 亲跑 `Tools/build_native.ps1`（PATH 前置 VS BuildTools cmake）：exit 0、`ALL GREEN`、doctest **301 用例 / 771,417 断言 / 0 failed**；`--lights` exit 0 `D3D12 LIGHTS OK`（centerPass=6 groundLitPass=6 InfoQueue=0）；`--assets` exit 0 `D3D12 ASSETS GALLERY OK (models=4)` |
+| RG 导出端到端 | PASS | 起真进程 `--devconsole`，TCP 客户端 `rg.export`：`{"ok":true,...,"bytes":2183,"passes":3,"barriers":5}`；落盘文件经 Python `json.loads` 严格解析；抽查内容：passes=**[ClearPass, CubeDrawPass, PresentPass]**、perPass 屏障 **[2,2,1] 共 5**、edges=**[0→2,0→1,1→2]**、present 屏障 `color_attachment → present / color_attachment_write → memory_read`；text 格式同源同构（910 B）；错误路径 `rg.export out.xml xml`→`bad_format`、`rg.export Z:/no/such/dir/x.json`→`write_failed` 亲测 |
+| HUD 口径 | PASS（含 1 处口径瑕疵） | 实测 `memoryBytes=4916880`：手算 3×640×480×4(BGRA8) + 640×480×4(D32) + 768(VB 24×32) + 144(IB 36×4) + 3×256(CB) = **4,916,880** 逐项吻合；`drawCalls=3` 与插桩点 `zrhi_d3d12_window.cpp:13667` 每帧 3 次调用一一对应；`fps=90.1936` = 1000/`frameMs 11.0873` 自洽；峰值语义（窗口峰值≠末样本）由变异亲证（见下） |
+| RenderDoc 降级 | PASS（真机） | 本机无 renderdoc.dll：进程启动即打印 `RenderDoc NOT attached (renderdoc.dll not loaded in this process ...)`；`renderdoc.capture`（不带名/带名各一次）均返回 `{"ok":false,"error":"renderdoc_not_attached","detail":"..."}`；进程继续正常渲染、`quit` 优雅退出（exit 0），**不崩、不静默成功**。代码路径：`renderdoc_capture.cpp:71` GetModuleHandleA→nullptr→`:73` ModuleNotFound；DevConsole 侧 `zrhi_d3d12_window.cpp:13506` 先判 `IsAttached()` |
+| 挂接成功路径 | 受限 | 仅假 API 表单测（`test_renderdoc_capture.cpp:155` 逐次转发/回读/CaptureFailed/幂等）+ 代码审查；**无真 .rdc 落盘实测**（本机未装 RenderDoc，不装 >2GB 软件） |
+| DevConsole 来源校验/默认开关/绑定 | PASS（有硬化缺口） | 见下节 |
+| 变异复做 | PASS | `gpu_hud.cpp:74` 峰值改"取末样本"→ 重建 → **恰 1 用例红（test_gpu_hud.cpp:109 CHECK(4==6)、:130 CHECK(90==106)）**，其余 300 用例不动 → 还原（MD5 `0460b571…` 一致）→ 重建 301/771,417 全绿 exit 0 |
+| 文件规范 | PASS | 13 个新/改源文件 BOM=0、CRLF=0、末尾换行齐；`renderdoc_app.h` 本地 SHA256 `0ab27bfa…91b94` 与 `SOURCE.md` 记载一致 |
+
+**DevConsole 安全核查（对照 `TASK-A-AUDIT-01` A-1，逐项）**
+
+| A-1 的错 | 本实现 | 证据 |
+|---|---|---|
+| 默认开启 | **否**，必须显式 `--devconsole`（`main` 分发 `:13977`），且属测试壳 exe（`zrhi_d3d12_window.exe`），不在 Unity 插件/发布包里 | 代码 + 无 flag 时进程正常走其它模式 |
+| 通配 CORS / 任意网页可驱动 | **不适用**：裸 TCP 行协议，非 HTTP；浏览器无法建立裸 TCP/WS 会话，`GET /...` 只会被当作命令名回 `unknown_command` 的 JSON | A-AUDIT-01「已排除 4」同型；本轮实测 `bogus`→`unknown_command` |
+| 无来源校验 | **确无任何 Origin/Host/token/对端 IP 校验**（区间 12974–13780 grep `origin|host|token|auth|peer|sin_addr` 仅命中 `inet_pton` 一次） | 见下"硬化缺口" |
+| 绑 0.0.0.0 | **否**：`inet_pton("127.0.0.1")` + `bind`（`:13037/:13041`）；`netstat -ano` 实测 `TCP 127.0.0.1:17391 ... LISTENING` | 亲测 |
+| SO_REUSEADDR 放弃端口互斥（B-2） | **未设置**；同端口二次启动实测 `bind(127.0.0.1:17391) failed (errno 10048)`、exit 1 | 亲测 |
+
+**硬化缺口（P2，不阻断）**：
+1. **无客户端认证**：任何本机进程可连上并驱动命令。`rg.export` 的 path 参数**未限定在输出目录**（实测 `rg.export Native/build/renderdoc/deep/../audit2.json` 成功），等价于一个"以当前用户身份写任意文件（内容为 JSON/文本）"的本机原语；`renderdoc.capture <name>` 的 name 同样直接拼进路径。对单用户开发机风险低，但若将来把该控制台挪进常用进程，应先加 token + 路径白名单。
+2. **单线程 accept + 5s 读超时**：一个连上不发数据的本地客户端可让后续连接最多等 5s（仅影响控制台自身，不影响渲染帧循环）。
+3. **`--devconsole` 无 peer 校验**（回环绑定已把外部来源挡住，属纵深防御建议）。
+
+**发现的实现瑕疵（P2）**：
+1. **Imported 资源元数据是占位值**：`RgResourceDesc::ImportImage`（`rg_render_graph.h:85-93`）不携带 `ZrImageDesc`，导出里 `depth` 显示为 `RGBA8Unorm 1x1x1 mips=1`（真实为 D32Float 640×480），`backbuffer` 同样是 1x1。导出器对 Imported 资源应标注"desc 不可用"，否则排查黑屏时可能被误导（本任务的 Transient/边/屏障部分均匀正确）。
+2. **估算公式文档与实现不一致**：`gpu_hud.h:33` 写 `ceil(w/2^m)`，实现（`gpu_hud.cpp:36-37`）是逐级 `w/2` 下取整。3×3 两级 mip：实测 40 B（=9×4+1×4），按头文件公式应为 52 B。PoT 尺寸下无差异，非 PoT 时以实现为准。建议改文档。
+3. 施工报告 §4.3 "`rg.export out.xml` → bad_format" 举例有误（单参数是 path，实测 ok）；真实触发是第二参数非法（`rg.export out.xml xml`）。机制正确，仅文字笔误。
+
+**现场**：本轮未 `git commit`；变异/探针文件已按 MD5 与 `cmp` 复原并归档到 `TempLogs/archive_pre_audit/`；`git status` 干净。**但需记录**：本任务在我裁决完成前已由外部提交 `724e123`（提交信息写有"验收PASS"），且 `3a5893f` 把工作区遗留的 `PickupEntity.cs.bak`（173 行，与 `PickupEntity.cs` 字节相同）**提交进了仓库根目录**——交付卫生缺陷，建议后续 `git rm` 清理。

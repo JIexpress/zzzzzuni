@@ -133,3 +133,26 @@
 - **V5 PASS**——新增 9 个 .cs 首三字节均正文（无 BOM）；磁盘态 CRLF 与既有 tracked 文件一致（如 ItemPickedUp.cs 48/48 CRLF，施工报告已如实声明 .gitattributes 提交归一）；新文件 .meta 全部齐备（Commands/ 4+4、Commands.meta、3 个测试 meta）；HUD 漏检基线 2→4 同步扩断言（GameHudLeakTests）；施工日志四节齐全（简报/施工报告①②③④/验收清单/本结论），遗留 4+1 条均为诚实披露（Ctrl+Z 无 EditMode 用例、暂停态可撤销、redo 火花重爆、按钮不置灰）。
 
 **过程记录**：① 验收期间与并行任务（B-R9-16）共享 Unity 单实例，3 次被单实例纪律让路后抢到空闲窗口完成收尾运行——过程性事项，不涉本任务代码。② 附带观察（非缺陷）：`CommandManager.Clear()` 不经 EnterGuard 重入守卫（仅 Execute/Undo/Redo 有守卫），语义上 Clear 无回调窗口、风险极低，留作后续审计观察项。③ 两处变异文件经 cmp 字节级验证恢复原状，工作树除本日志外无验收痕迹。
+
+---
+
+### 独立复验追加（2026-11-04 01:20–01:35，本轮验收代理；与上文自证方为不同代理）
+
+> 上一段结论在本代理取证期间已由另一代理写入并随后被 `fd010cb`(01:24:13)/`3a5893f` 提交，早于本轮裁决完成。
+> 本段全部为本代理亲跑，不复用上文结论；不一致处以本段为准。
+
+**裁决：PASS**
+
+| 判据 | 判定 | 本轮亲证证据 |
+|---|---|---|
+| V1 EditMode 全绿 | PASS | 亲跑 `Tools/run_tests.ps1 -Segments editmode`：exit 0、**852/852、failed=0**（`TempLogs/runtests_editmode.xml`，`start-time 2026-11-03T17:27:09Z`，本轮新鲜产出）；按 `fullname` 逐类核对新用例在册：CommandManagerTests 11、PickupCommandTests 8、GameHudUndoTests 4、InventoryTests 10（含 4 条 TryRemove）、GameHudLeakTests 2 |
+| V2 撤销/重做对称性 | PASS（亲自构造探针） | 现有用例覆盖 exec→undo→redo，但**没有 undo→redo→undo 三点闭环**，故本代理临时写探针 `AuditProbeUndoRedoUndoTests`（已删除并归档）：`Interact → Undo → Redo → Undo` 后 `Count=0 / DistinctCount=0 / TotalCount=0 / IsPickedUp=false / Prompt="按 E 拾取"` 与原点逐项相等（`UndoDepth=0、RedoDepth=1`）。**853/853 通过**（`start 17:31:06Z`），探针用例 `Passed (0.043s)`。机制侧：`CommandManager.cs:92-93`（执行入栈+清 redo）、`:114-116`（Undo 弹栈→撤销→入 redo）、`:138-140`（Redo 弹 redo→重执行→回 undo）三处配对成立；`PickupEntity.ApplyPickup/RevertPickup` 均幂等，故第三次 Undo 与第一次等价 |
+| 变异（有牙） | PASS | 删 `CommandManager.cs:93` 的 `_redoStack.Clear()` → 亲跑 EditMode：**850/852，恰 2 红**：`CommandManagerTests.Execute_AfterUndo_ClearsTheRedoStack_ClassicDoubleStackTrap`、`PickupCommandTests.Undo_ThenRepick_StartsNewTimeline_NoRedo`，失败信息均为 `a new execute must clear the redo chain / the new execute severed the redo chain: Expected False But was True` → 还原后 `MD5 42e547e9…` 与备份一致、`grep MUTANT` 零命中、复跑 **852/852 exit 0** |
+| 既有拾取流程不破 | PASS | 852 全量含既有 `PickupEntityTests` 全部通过；语义审查：无 `ICommandManager` 注册时 `PickupEntity.cs:114-121` 直接 `command.Execute()`（与旧行为等价），`ApplyPickup` 幂等、事件仍走 `ItemPickedUp`+EventBus；`GameBootstrap.cs:230-240` 用 `TryGet` 守卫注册，`:529-537` 场景离场 `Clear()` |
+| V3 Domain 纯度 | PASS | `ArchitectureValidator` exit 0（`TempLogs/arch_report.txt`：纯度扫描 `Assets/ZFrame/Gameplay; Assets/Game/Domain`，**违规数 0**）；另跑 config/naming 校验器 exit 0；`grep -rn "UnityEngine\|UnityEditor" Assets/ZFrame/Gameplay/Commands/` **零命中** |
+| V4 SettingsModel 关系 | PASS | 两套撤销零互调：命令核不引用 Settings，`SettingsModel` 不引用 `ICommand`（上文表格与代码一致）；快照恢复=配置值整包，命令栈=世界状态 LIFO |
+| V5 文件规范 | PASS | 5 个新 .cs 均 BOM=0（磁盘 CRLF=0，符合 `.gitattributes eol=lf`）；`Commands/` 4 文件 + `.meta` 齐备，3 个新测试 `.meta` 齐备；日志四节完整 |
+
+**遗留（沿用施工披露，均不阻断）**：Ctrl+Z 键路径在批处理下不可合成（按钮 onClick 走同一 `TryUndo`，已被用例覆盖）；暂停态可撤销；`CommandManager.Clear()` 不过 EnterGuard（无回调窗口，风险极低）。
+
+**现场**：本轮未 `git commit`；探针与变异均已归档/复原（`TempLogs/archive_pre_audit/`），`git status` 干净。**需记录**：本任务在我裁决前已由外部提交 `fd010cb`（提交信息写有"验收PASS"）。
