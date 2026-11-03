@@ -1,0 +1,13 @@
+ZRender parity metrics (TASK-B-R5-04)
+backend: D3D12 (offscreen RGBA8Unorm, no swapchain / no vsync)
+resolution: 1280x720
+frames: 30 (fixed scene, no animation, shadows on)
+avg_frame_ms: 7.71554  (口径: 30 帧排除首帧取均值; CPU 墙钟覆盖单帧 record+submit+WaitIdle+FlushRetired, 离屏无 vsync)
+frame_ms_min: 6.9912
+frame_ms_max: 8.8679
+draw_calls_per_frame: 16  (口径: DrawIndexedInstanced 调用数/帧 = 阴影 4 级联 x 3 casters = 12 + 主 pass 2 (地面+cube A) + toon 1 + outline 1 = 16)
+screenshot: Docs/Parity/parity_zrender.bmp (24bit BMP, bottom-up, 第 30 帧全帧 readback)
+sanity: toon_probe RGB=(80,27,22) shadow_probe RGB=(14,14,14) lit_ground RGB=(48,47,45)
+device_removed: 0
+infoqueue_errors: 0
+version: 0.1.0

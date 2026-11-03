@@ -1,0 +1,32 @@
+; =============================================================================
+; sl_interposer.def —— Streamline interposer 导入库导出清单（TASK-B-R6-02）
+;
+; 用途：本仓库不下载 276 MB 的官方 SDK zip（release CDN 在本机网络不可达，
+; 详见 SOURCE.md），因此按官方头 sl_core_api.h 的 SL_API 声明（extern "C"，
+; 符号无修饰）本地生成导入库：
+;   lib /def:sl_interposer.def /machine:x64 /out:sl.interposer.lib
+;
+; 该 .lib 只描述 ABI（DLL 名 + 导出名），不含任何 NVIDIA 代码；真机补验时
+; 把官方 sl.interposer.dll 放到 exe 目录即可被同一导入库解析。
+; 仅列出本骨架实际用到的 SL_API（最小面），其余 API 未列入。
+; =============================================================================
+LIBRARY sl.interposer.dll
+EXPORTS
+    slInit
+    slShutdown
+    slIsFeatureSupported
+    slIsFeatureLoaded
+    slSetFeatureLoaded
+    slSetTagForFrame
+    slSetConstants
+    slGetFeatureRequirements
+    slGetFeatureVersion
+    slAllocateResources
+    slFreeResources
+    slEvaluateFeature
+    slUpgradeInterface
+    slGetNativeInterface
+    slGetFeatureFunction
+    slGetNewFrameToken
+    slSetD3DDevice
+    slSetTag

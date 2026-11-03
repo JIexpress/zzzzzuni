@@ -1,0 +1,25 @@
+{
+    "name": "ZFrame.Data.Tests",
+    "rootNamespace": "ZFrame.Data.Tests",
+    "references": [
+        "ZFrame.Core",
+        "ZFrame.Data",
+        "ZFrame.Data.Tests.Support"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll",
+        "Newtonsoft.Json.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

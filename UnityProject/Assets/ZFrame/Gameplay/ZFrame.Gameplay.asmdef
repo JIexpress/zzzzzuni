@@ -1,0 +1,14 @@
+{
+  "name": "ZFrame.Gameplay",
+  "rootNamespace": "ZFrame.Gameplay",
+  "references": ["ZFrame.Core"],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

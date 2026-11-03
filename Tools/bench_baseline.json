@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "created": "2026-10-31",
+  "updated": "2026-10-31",
+  "machine": "AMD Ryzen 7 7840HS w/ Radeon 780M Graphics",
+  "machine_quiet": "QUIET",
+  "metrics": {
+    "migrate_rows_per_sec": 30366421.4859,
+    "compact_ms": 1.3411,
+    "sort_ms_a": 5.0205,
+    "sort_ms_b": 4.1315,
+    "saved_pct_b": 94.88,
+    "frame_ms_avg": 1.9991,
+    "frame_ms_avg_vk": 2.0897
+  }
+}

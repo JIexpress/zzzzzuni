@@ -1,0 +1,18 @@
+{
+    "name": "ZFrame.Render",
+    "rootNamespace": "ZFrame.Render",
+    "references": [
+        "ZFrame.Render.Bindings",
+        "ZFrame.Core",
+        "GUID:15fc0a57446b3144c949da3e2b9737a9"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

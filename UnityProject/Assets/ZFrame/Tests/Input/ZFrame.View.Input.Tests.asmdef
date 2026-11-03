@@ -1,0 +1,25 @@
+{
+    "name": "ZFrame.View.Input.Tests",
+    "rootNamespace": "ZFrame.View.Input.Tests",
+    "references": [
+        "ZFrame.Core",
+        "ZFrame.Gameplay",
+        "ZFrame.View",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

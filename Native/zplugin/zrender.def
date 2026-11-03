@@ -1,0 +1,21 @@
+; zrender.dll 导出清单（TASK-B-R0-01）
+; 仅导出 ZR_ 前缀的 C ABI；模块内部符号不进入导出表。
+; 注意：.def 语法只支持分号注释（LNK4017）。
+; 教训（TASK-B-R4-01）：EXPORTS 节内勿放 UTF-8 中文行内注释——链接器按本地
+; 代码页（GBK）解析 def，多字节序列可能吞掉行尾换行使下一符号静默丢失。
+; TASK-B-R4-01 新增：.zmesh 加载 C ABI（句柄式）三导出。
+; TASK-B-R6-02 新增：超分设置 C ABI 三导出（SetPreferred/GetActive/QueryCaps）。
+; TASK-B-R9-02 新增：FG 输入（depth/MV）交接校验两导出。
+LIBRARY zrender
+EXPORTS
+    ZR_ApiVersion
+    ZR_GetVersion
+    ZR_GetBuildInfo
+    ZR_MeshLoadFromMemory
+    ZR_MeshStatsGet
+    ZR_MeshFree
+    ZR_Upscaler_SetPreferred
+    ZR_Upscaler_GetActive
+    ZR_Upscaler_QueryCaps
+    ZR_FrameGen_InputBytesPerPixel
+    ZR_FrameGen_ValidateInputs

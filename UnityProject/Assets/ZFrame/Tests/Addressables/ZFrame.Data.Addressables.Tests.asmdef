@@ -1,0 +1,27 @@
+{
+  "name": "ZFrame.Data.Addressables.Tests",
+  "rootNamespace": "ZFrame.Data.Addressables.Tests",
+  "references": [
+    "ZFrame.Data",
+    "ZFrame.Data.Addressables",
+    "ZFrame.Data.Tests.Support",
+    "Unity.Addressables",
+    "Unity.ResourceManager",
+    "Unity.Addressables.Editor"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "nunit.framework.dll"
+  ],
+  "autoReferenced": false,
+  "defineConstraints": [
+    "UNITY_INCLUDE_TESTS"
+  ],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

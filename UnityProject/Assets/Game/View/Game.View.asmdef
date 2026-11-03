@@ -1,0 +1,14 @@
+{
+  "name": "Game.View",
+  "rootNamespace": "Game.View",
+  "references": ["ZFrame.Core","ZFrame.Data","ZFrame.Gameplay","ZFrame.View","Game.Domain"],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

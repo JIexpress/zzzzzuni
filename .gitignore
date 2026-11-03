@@ -1,0 +1,60 @@
+# Unity
+UnityProject/Library/
+UnityProject/Temp/
+UnityProject/Obj/
+UnityProject/Logs/
+UnityProject/UserSettings/
+UnityProject/Build/
+UnityProject/Builds/
+UnityProject/Assets/AssetStoreTools*
+UnityProject/MemoryCaptures/
+UnityProject/Recordings/
+*.csproj
+*.sln
+*.user
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+sysinfo.log
+*.apk
+*.unitypackage
+crashlytics-build.properties
+
+# Native
+Native/build/
+Native/out/
+*.obj
+*.lib
+*.exp
+*.ilk
+*.pdb
+*.ipch
+.vs/
+.vscode/
+CMakeUserPresets.json
+
+# OS / IDE
+Thumbs.db
+.DS_Store
+*.swp
+
+# tool state
+.mimosa/
+
+# task temp logs
+TempLogs/
+Native/ThirdParty/ffx-fsr/*.zip
+Native/ThirdParty/ffx-fsr/dl_err.log
+
+# test report artifact
+TestReport.txt
+
+# player build output (TASK-B-R9-15: Build/Windows64/ + build_report.txt)
+/Build/
+
+# 仓库根 Temp（Unity 批处理在外层 CWD 跑时会生成）
+/Temp/
+_asset_staging/
+
+# 456MB 安装器，误提交（TASK-A-CI-01 清理）——不该入库
+Tools/android_support_installer.exe

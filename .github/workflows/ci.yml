@@ -1,0 +1,79 @@
+name: CI
+
+# 分层策略（见 Docs/交接档案.md §CI）：
+#   L1 native  —— 本文件，云端可跑，不需要 Unity 许可证、不需要 GPU
+#   L2 unity   —— 需要 Unity 许可证 + 完整 Unity 安装，默认不启用（见文末注释）
+#   L3 heavy   —— playmode/bench/打包 需要 GPU 与稳定机器，只能自托管，不进云端
+#
+# 为什么只跑 L1：Unity 批处理需要激活许可；playmode 的像素对比与 bench 基线
+# 在云端（软件渲染 + 性能波动）会假绿或天天误报。
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: Native (build + doctest)
+    runs-on: windows-2022
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (CMake / VS2022)
+        # VULKAN_SDK 不存在时 CMakeLists 会自动跳过 Vulkan 目标（D3D12 路径不受影响），
+        # 所以云端不需要安装 Vulkan SDK。
+        run: cmake -S Native -B Native/build -G "Visual Studio 17 2022" -A x64
+
+      - name: Build (Release)
+        run: cmake --build Native/build --config Release --parallel
+
+      - name: Run doctest suite
+        # 必须在仓库根执行：tests/test_zrhi_vulkan_spv.cpp 通过相对路径找 SPIR-V 产物。
+        # 注意：无 Vulkan SDK 时用例数会少于本地的 281（Vulkan 相关被跳过），
+        # 所以这里只验退出码，不比对具体数字。
+        run: Native/build/bin/Release/zrender_test.exe --success=false
+
+      - name: Upload test log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-build-logs
+          path: |
+            Native/build/**/*.log
+            Native/build/Testing/**
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # L2：Unity 层（editmode 811 + arch/config/naming 三个校验器）
+  #
+  # 默认不启用。启用前必须解决两件事：
+  #   1) Unity 许可证：用 game-ci/unity-test-runner 需要 UNITY_LICENSE / UNITY_EMAIL /
+  #      UNITY_PASSWORD 三个 secret（Personal 版也支持，许可证文件会过期需轮换）。
+  #   2) 镜像体积：unityci/editor 镜像数 GB，拉取很慢。
+  #
+  # 折中建议：Unity 层跑自托管 runner（本机环境已齐，editmode 走常驻服务 6 秒），
+  # 云端只留 L1。真要启用时把下面整段取消注释并把 runs-on 改成 self-hosted。
+  #
+  # unity:
+  #   name: Unity (editmode + validators)
+  #   runs-on: self-hosted
+  #   timeout-minutes: 40
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: EditMode
+  #       run: powershell -NoProfile -ExecutionPolicy Bypass -File Tools/run_tests.ps1 -Only editmode
+  #     - name: Validators (arch / config / naming)
+  #       run: |
+  #         powershell -NoProfile -ExecutionPolicy Bypass -File Tools/run_tests.ps1 -Only arch
+  #         powershell -NoProfile -ExecutionPolicy Bypass -File Tools/run_tests.ps1 -Only config
+  #         powershell -NoProfile -ExecutionPolicy Bypass -File Tools/run_tests.ps1 -Only naming
+  # ---------------------------------------------------------------------------

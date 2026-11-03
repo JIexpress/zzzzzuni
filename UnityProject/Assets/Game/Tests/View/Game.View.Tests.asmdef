@@ -1,0 +1,26 @@
+{
+    "name": "Game.View.Tests",
+    "rootNamespace": "Game.View.Tests",
+    "references": [
+        "ZFrame.Core",
+        "ZFrame.Gameplay",
+        "ZFrame.View",
+        "Game.Domain",
+        "Game.View"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

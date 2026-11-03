@@ -1,0 +1,14 @@
+{
+  "name": "ZFrame.Editor",
+  "rootNamespace": "ZFrame.Editor",
+  "references": ["ZFrame.Core","ZFrame.Data","ZFrame.Gameplay","ZFrame.View"],
+  "includePlatforms": ["Editor"],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

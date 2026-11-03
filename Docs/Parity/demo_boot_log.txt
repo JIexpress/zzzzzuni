@@ -1,0 +1,6 @@
+DemoBootFlow (TASK-A-M4-02) — 编辑态启动链模拟
+unity: 2022.3.62f3c1
+steps: GameRoot.Bootstrap -> ZFrameData.Init -> services check -> input/UI -> Push(MainMenuView)
+main menu: stack=1, continue_button=hidden (no save)
+screenshot: Docs/Parity/demo_boot.png (OK)
+note: 编辑态模拟（Awake 手动逐步执行）；真实端到端链路由 ZFrame.PlayMode.Tests 冒烟覆盖

@@ -1,0 +1,10 @@
+URP parity metrics (TASK-B-R5-04)
+unity: 2022.3.62f3c1 | pipeline asset: URP_Medium (quality level: Medium)
+resolution: 1280x720 (RT ARGB32, msaa 1x)
+frames: fixed scene, no animation, shadows on (Soft), post processing off
+avg_frame_ms: 1.2310  (口径: Stopwatch 包 camera.Render() 单调用 CPU 墙钟, 20 帧均值, 暖启动 1 帧不计; 批处理编辑器路径, 非独立运行时 GPU 基准)
+frame_ms_min: 0.7302
+frame_ms_max: 2.8178
+draw_calls: N/A  (口径: UNAVAILABLE in batchmode — 人工步骤：编辑器打开同场景（契约参数见本文件头），Window > Analysis > Profiler > Render 行 'Draw Calls Count' 或 Game 视图 Stats 面板 DrawCalls 读取)
+screenshot: Docs/Parity/parity_urp.png (PNG, EncodeToPNG)
+urp_asset: HDR=True msaa=2 shadowDistance=40 cascades=2

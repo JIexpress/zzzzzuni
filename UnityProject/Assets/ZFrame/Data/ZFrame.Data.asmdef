@@ -1,0 +1,14 @@
+{
+  "name": "ZFrame.Data",
+  "rootNamespace": "ZFrame.Data",
+  "references": ["ZFrame.Core"],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

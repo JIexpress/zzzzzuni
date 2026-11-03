@@ -1,0 +1,47 @@
+#!/bin/sh
+# pre-push：阻止大文件入库（只检查当前快照，不翻历史）。
+# 背景：2026-11-03 曾把 456MB 的 Tools/android_support_installer.exe 提交进去，
+# 占 .git 的 89%，导致远程推送几乎不可行。这条钩子防复发。
+#
+# 阈值 10MB；第三方二进制白名单见下（FFX 的 dll 约 38MB，是必需的）。
+# 确实要提交大文件时：ZFRAME_ALLOW_BIG=1 git push
+
+LIMIT_MB=${ZFRAME_LIMIT_MB:-10}
+
+if [ "$ZFRAME_ALLOW_BIG" = "1" ]; then
+    echo "[pre-push] ZFRAME_ALLOW_BIG=1，跳过大文件检查"
+    exit 0
+fi
+
+z40=0000000000000000000000000000000000000000
+bad=""
+
+while read local_ref local_sha remote_ref remote_sha; do
+    [ "$local_sha" = "$z40" ] && continue
+
+    # 只查这次要推的那个快照（HEAD 树），查历史会误伤——旧提交里的大文件
+    # 已被后续 commit 移除，不该阻止今天的推送。
+    hit=$(git ls-tree -r -l "$local_sha" 2>/dev/null \
+        | awk -v lim=$((LIMIT_MB*1048576)) -F'\t' '{
+            split($1, f, " "); size = f[4]; path = $2;
+            if (size > lim) printf "  %.1f MB  %s\n", size/1048576, path;
+        }' \
+        | grep -v -E "Native/ThirdParty/|\.git/lfs/" )
+    [ -n "$hit" ] && bad="$bad$hit"
+done
+
+if [ -n "$bad" ]; then
+    echo ""
+    echo "[pre-push] 拒绝推送：发现超过 ${LIMIT_MB}MB 的文件"
+    echo "$bad" | sort -u
+    echo ""
+    echo "  大文件会让仓库体积失控（曾经 456MB 占 .git 的 89%）。"
+    echo "  处理方式："
+    echo "    1) 加进 .gitignore 并 git rm --cached <file>"
+    echo "    2) 确需入库：用 Git LFS（git lfs track）"
+    echo "    3) 确实要硬推：ZFRAME_ALLOW_BIG=1 git push"
+    echo ""
+    exit 1
+fi
+
+exit 0

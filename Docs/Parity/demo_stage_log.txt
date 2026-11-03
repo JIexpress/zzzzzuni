@@ -1,0 +1,13 @@
+SCN_Game model stage record (TASK-A-R9-10) @ 2026-10-31 19:56:40
+unity: 2022.3.62f3c1  scene: Assets/Scenes/SCN_Game.unity
+CHR_Kenney_CharacterMedium     scale=0.0097 finalSize=(1.46, 1.75, 0.84) minY=0.000 pos=(2.25, 0.00, 3.90) yaw=210
+CHR_Robot                      scale=0.0037 finalSize=(1.29, 1.70, 2.28) minY=0.000 pos=(4.23, 0.01, -1.54) yaw=290
+CHR_Human                      scale=0.0100 finalSize=(2.56, 1.80, 0.91) minY=0.000 pos=(-1.54, 0.00, -4.23) yaw=20
+CHR_DarkElf                    scale=0.0100 finalSize=(0.85, 1.90, 2.08) minY=0.000 pos=(-4.23, 0.02, 1.54) yaw=110
+ENV_Tree_01                    scale=0.4095 finalSize=(1.51, 4.20, 1.35) minY=0.000 pos=(-7.40, 0.00, -7.20) yaw=80
+ENV_Tree_02                    scale=0.5456 finalSize=(3.61, 4.80, 4.03) minY=0.000 pos=(7.80, 0.08, -8.40) yaw=250
+ENV_Rock                       scale=2.0112 finalSize=(1.46, 1.00, 1.37) minY=0.000 pos=(5.80, 0.45, -2.60) yaw=15
+ENV_Barrel                     scale=1.1600 finalSize=(1.02, 0.94, 1.00) minY=0.001 pos=(3.20, 0.00, 2.90) yaw=35
+ENV_Fence                      scale=0.3616 finalSize=(1.45, 1.10, 0.10) minY=0.000 pos=(3.40, 0.00, 8.70) yaw=0
+ENV_Road                       scale=1.7188 finalSize=(3.02, 0.95, 9.00) minY=-0.933 pos=(0.00, -0.66, -5.80) yaw=90
+placed=10/10  shots=6/6

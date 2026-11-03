@@ -1,0 +1,36 @@
+; =============================================================================
+; zfg_dxgi.def —— dxgi.dll 代理的导出清单（TASK-B-R9-03 阶段 A）
+;
+; 序号照抄系统 dxgi.dll 的实测导出表（dumpbin -exports C:\Windows\System32\dxgi.dll，
+; 20 个具名导出，序号 1..20 带空洞）。导入方按名或按序号取都能对上。
+;
+; 注意（B-R9-02 的教训）：EXPORTS 节内不许写行内注释，只允许本段之前的整行注释。
+; 末尾 4 个 ZFG_* 是本代理私有的辅助入口，不是 dxgi 的导出，故不占序号。
+; =============================================================================
+EXPORTS
+    ApplyCompatResolutionQuirking    @1
+    CompatString                     @2
+    CompatValue                      @3
+    DXGIDumpJournal                  @4
+    PIXBeginCapture                  @5
+    PIXEndCapture                    @6
+    PIXGetCaptureState               @7
+    SetAppCompatStringPointer        @8
+    UpdateHMDEmulationStatus         @9
+    CreateDXGIFactory                @10
+    CreateDXGIFactory1               @11
+    CreateDXGIFactory2               @12
+    DXGID3D10CreateDevice            @13
+    DXGID3D10CreateLayeredDevice     @14
+    DXGID3D10GetLayeredDeviceSize    @15
+    DXGID3D10RegisterLayers          @16
+    DXGIDeclareAdapterRemovalSupport @17
+    DXGIDisableVBlankVirtualization  @18
+    DXGIGetDebugInterface1           @19
+    DXGIReportAdapterConfiguration   @20
+    ZFG_FgSubmitInputs
+    ZFG_FgGetStats
+    ZFG_FgSetEnabled
+    ZFG_FgAnalyzeCaptures
+    ZFG_FgShutdown
+    ZFG_ProxyReady

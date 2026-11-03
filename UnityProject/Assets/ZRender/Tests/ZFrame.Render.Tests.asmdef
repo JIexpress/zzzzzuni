@@ -1,0 +1,25 @@
+{
+    "name": "ZFrame.Render.Tests",
+    "rootNamespace": "ZFrame.Render.Tests",
+    "references": [
+        "ZFrame.Core",
+        "ZFrame.Render",
+        "ZFrame.Render.Bindings",
+        "Unity.RenderPipelines.Universal.Runtime"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
