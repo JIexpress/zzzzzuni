@@ -56,8 +56,14 @@
 | 凭据位置 | `C://Users//1//.zframe-github-token`（**仓库外**，一行 token） |
 | 推送命令 | `git push -u origin main` |
 | 中断后怎么办 | **直接重跑上面那条命令**；git 会重传，不需要别的清理 |
-| **当前卡点** | ❌ 推送被拒：token 缺 `workflow` scope（`refusing to allow a PAT to create or update workflow .github/workflows/ci.yml`）。**classic token 的 scope 生成后不可改，必须重新生成**（勾 `repo` + `workflow` 两项），覆盖 `C://Users//1//.zframe-github-token` |
-| 网络实测 | 54MB / 36 秒（**1.86 MiB/s**）——网络不是瓶颈，别为速度做任何妥协 |
+| **状态** | ✅ **已推送成功**（2026-11-03 23:47，`f83ab85`） |
+| 凭据 | remote 已清成干净 URL；token 在 `~/.git-credentials`（`credential.helper=store`）与 `C://Users//1//.zframe-github-token` |
+| 网络实测 | 54MB / 36 秒（1.86 MiB/s）——带宽不是瓶颈，**干扰才是** |
+
+**推送踩过的两个坑（下次照做可省 20 分钟）**：
+1. **环境里 4 个代理变量指向 `127.0.0.1:60759`**（宿主透明代理），对 git 大流量返回 `CONNECT tunnel failed, 502`。
+   推送必须：`env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u all_proxy -u ALL_PROXY git push ...`
+2. 直连也偶发 `Connection was reset` / `Could not connect`（GFW 干扰）。**重试即可**——第 1 次失败、第 2 次就通了。
 
 ⚠️ **token 已经在对话里明文出现过，这个仓库跑通后建议去 GitHub 吊销重发一个**，
 重新写进 `C://Users//1//.zframe-github-token` 即可，代码不用改。

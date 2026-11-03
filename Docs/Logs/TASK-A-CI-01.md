@@ -74,6 +74,21 @@ git config core.hooksPath .githooks
 2. 这个失败发生在**数据传完之后**（服务端校验引用时才拒），所以"传得很顺"不代表会成功。
 3. 顺带验证了网络：**54MB / 36 秒 / 1.86 MiB/s**，GitHub 推送在这台机器上不是瓶颈。
 
+## 五¾、推送终于成功（2026-11-03 23:47，`f83ab85`）
+
+换 token 后仍连续失败两次，原因完全不同：
+
+| 现象 | 原因 | 处置 |
+|---|---|---|
+| `CONNECT tunnel failed, response 502` | 环境里 4 个代理变量指向宿主透明代理 `127.0.0.1:60759`，它不支持 git 的 CONNECT 大流量 | `env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u all_proxy -u ALL_PROXY git push` |
+| `Recv failure: Connection was reset` / `Could not connect to server` | 直连被干扰（国内访问 GitHub 常态） | **重试**。第 1 次失败，第 2 次就成功 |
+
+**脚本坑**：`if git push ... | tail -3` 判断的是 **`tail`** 的退出码（永远 0），会误报成功。
+必须 `out=$(...); rc=$?` 或 `${PIPESTATUS[0]}`。
+
+结果：`* [new branch] main -> main`，远程 `refs/heads/main = f83ab85`（与本地一致）。
+之后 remote 已清成干净 URL，凭据转到 `~/.git-credentials`。
+
 ## 六、待办（阻塞项）
 
 用户需完成两步，之后可推送：
