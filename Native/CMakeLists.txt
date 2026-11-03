@@ -290,8 +290,6 @@ add_executable(zrender_test
     tests/test_zrhi_handles.cpp
     tests/test_zrhi_d3d12_translate.cpp
     tests/test_zrhi_d3d12_slots.cpp
-    tests/test_zrhi_vulkan_translate.cpp
-    tests/test_zrhi_vulkan_spv.cpp # TASK-B-R8-01：--r5 SPIR-V 清单完整性（8 着色器/16 入口）
     tests/test_rg_compile.cpp
     tests/test_rg_barriers.cpp
     tests/test_rg_execute.cpp
@@ -311,16 +309,12 @@ add_executable(zrender_test
     tests/test_zfg_factory_slots.cpp # TASK-R10-03 A-2（DXGI vtable 槽位守卫；CINTERFACE 反算 SDK 布局）
     tests/test_zfg_resize.cpp # TASK-R10-03 A-4（交换链重建：尺寸更新/采集作废/输入重校验）
     tests/test_zfg_dxgi_exports.cpp # TASK-R10-03 A-1（dxgi 导出参数个数表 + .def 覆盖）
-    tests/test_zrhi_vulkan_result.cpp # TASK-R10-03 A-5/A-6（VkResult 分类 + 提交/呈现闸）
-    tests/test_zrhi_vulkan_recreate.cpp # TASK-B-R9-09（交换链真重建状态机：尺寸裁决/台账/粘性清除与回粘）
     # ---- TASK-R10-05（P2 原生批）------------------------------------------------
     tests/test_zfg_env.cpp # B-2（GetEnvironmentVariableA 安全读取：三态 + 动态量长）
     tests/test_zfg_present_reentry.cpp # B-1（Present 嵌套标志保存/恢复：三层序列）
     tests/test_zfg_input_policy.cpp # A-7（输入消费账目 + 退休引用的 fence 判定）
     tests/test_zfg_host_desc.cpp # A-3（代理建链保留宿主 desc：审计场景逐字段断言）
     tests/test_zfg_fg_shutdown.cpp # B-3/B-7（ZFG_FgShutdown 导出路由 + 空 out 拒绝）
-    tests/test_zrhi_vulkan_bindless.cpp # B-4（四上限守卫 + 容量收缩，纯逻辑矩阵）
-    tests/test_zrhi_barrier_truncate.cpp # B-5（>128 屏障批次截断计数，真 Vulkan 设备）
     tests/test_bench_json.cpp # TASK-B-R9-10（bench 回归 --json 单行生成器：转义/格式/单行契约）
     # zfgprobe 的 hook/wrap/dll 三个编译单元并入测试目标（TASK-R10-05 B-3/B-7 需要
     # 直接驱动 HookCreateSwapChainForHwnd / WrapShutdown / ZFG_FgShutdown）。
@@ -330,6 +324,21 @@ add_executable(zrender_test
     zfgprobe/zfg_probe_wrap.cpp
     zfgprobe/zfg_probe_dll.cpp
 ) # TASK-B-R4-02 + TASK-B-R4-03（PSO 校验+绘制命令序列）
+
+# ---- Vulkan 专属测试：仅在 SDK 可用时编译 --------------------------------------
+# TASK-A-CI-01：这些文件直接 include <vulkan/vulkan.h>（经 zrhi/vulkan/zrhi_vulkan_device.h），
+# 无 SDK 时无条件加入会让 zrender_test 目标编译失败（error C1083，云端 CI 实测）。
+# 与上面 ZR_VULKAN_SOURCES 的条件保持一致：D3D12 路径不受影响。
+if(ZR_HAS_VULKAN)
+    target_sources(zrender_test PRIVATE
+        tests/test_zrhi_vulkan_translate.cpp
+        tests/test_zrhi_vulkan_spv.cpp        # TASK-B-R8-01：--r5 SPIR-V 清单完整性（8 着色器/16 入口）
+        tests/test_zrhi_vulkan_result.cpp     # TASK-R10-03 A-5/A-6（VkResult 分类 + 提交/呈现闸）
+        tests/test_zrhi_vulkan_recreate.cpp   # TASK-B-R9-09（交换链真重建状态机：尺寸裁决/台账/粘性清除与回粘）
+        tests/test_zrhi_vulkan_bindless.cpp   # B-4（四上限守卫 + 容量收缩，纯逻辑矩阵）
+        tests/test_zrhi_barrier_truncate.cpp  # B-5（>128 屏障批次截断计数，真 Vulkan 设备）
+    )
+endif()
   # TASK-B-R5-01（簇光源分配单测：精确断言/不重叠/边界/覆盖）
   # TASK-B-R5-02（CSM 分割/texel snap 稳定/可见性共享单测）
   # TASK-B-R5-03（GI 探针三线性/辐照度/轮转 + SSR mip 链/模糊核/RG 声明 mock 单测）
