@@ -143,5 +143,5 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | A-AND-08 | A/AND | Release 签名证书（本地自签 keystore，替换 CN=Android Debug） | done(验收PASS 6/6；CN=ZFrame/v2/密钥隔离0命中/缺密码中止) | Docs/Logs/TASK-A-AND-08.md | 88275f0 |
 | A-CI-01 | A/CI | CI 接入（GitHub Actions L1 原生门禁 + pre-push 大文件钩子） | done(CI #4 绿 1m4s；云端 249 用例/764,341 断言；pre-push 钩子有牙) | Docs/Logs/TASK-A-CI-01.md | 50d4e21 |
 | A-GPU-01 | A/GPU | 性能 HUD（DrawCall/SetPass/三角面/显存/FPS，含 release 门控） | doing | Docs/Logs/TASK-A-GPU-01.md | — |
-| A-R9-12 | A/R9 | CommandSystem 命令模式+拾取撤销接线 | doing | Docs/Logs/TASK-A-R9-12.md | |
-| B-R9-16 | B/R9 | GPU 工具链(HUD/RenderDoc/RG导出) | doing | Docs/Logs/TASK-B-R9-16.md | |
+| A-R9-12 | A/R9 | CommandSystem 命令模式+拾取撤销接线 | done(验收PASS;变异2处复红) | Docs/Logs/TASK-A-R9-12.md | fd010cb |
+| B-R9-16 | B/R9 | GPU 工具链(HUD/RenderDoc/RG导出) | done(验收PASS;301用例) | Docs/Logs/TASK-B-R9-16.md | 724e123 |

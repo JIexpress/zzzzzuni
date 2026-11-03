@@ -4,6 +4,8 @@
 
 | 日期 | 任务 | 结果 | commit |
 |---|---|---|---|
+| 2026-11-04 | B-R9-16 GPU 工具链 | done：施工→验收 PASS（301 用例、hud/rg.export/renderdoc 三命令实测、变异复红）——§5.7 兑现 | 724e123 |
+| 2026-11-04 | A-R9-12 CommandSystem | done：施工→验收 PASS（852 用例、双栈/真实回滚、变异 2 处复红）——原始清单 17/17 满员 | fd010cb |
 | 2026-11-03 | **A-AND-08 Release 签名** | done：验收 **PASS 6/6**。debug 证书(CN=Android Debug，不可分发)→本地自签 keystore(CN=ZFrame，v2=true)。keystore/密码在仓库外；环境变量优先+properties 兜底，**缺失即中止且绝不静默退回 debug**（实测移走 properties → BuildPipeline 之前 exit=1，APK 哈希未变）。密钥隔离五路扫描 0 命中。产物 0.1.0.24/versionCode 2。另把两个 debug 签名遗留包归档到 legacy-debug-signed/ 防误分发 | 88275f0 |
 | 2026-11-03 | **A-AND-07 版本元数据** | done：验收 **PASS 6/6**。versionCode 改独立字段自增（不从 build 派生——build 被重置过，派生必违反单调，而 versionCode 倒退后是商店端不可逆）+ 读到 ≤1 中止构建的守卫；build 19→**23** 止住倒挂，下次产出 0.1.0.24（>旧包 0.1.0.22）。逻辑抽 `ReleaseVersion.cs`。EditMode 798→**811**、PlayMode 41。守卫有牙由验收独立复做（改回 1 → 干跑 exit 1 中止，单测 12/13 恰守卫那条红） | 2b7e927 |
 | 2026-11-03 | **A-AND-06 IL2CPP 正式包** | done：验收 **PASS with 受限**。出 `ZFrame.apk` 36.32MB / arm64-v8a only / versionName 0.1.0.19 / 无 DEVELOPMENT_BUILD，29 分 16 秒（URP 12288 变体 ≈10min + IL2CPP 1418 .o + Gradle）。真机未验（设备未连）。**验收查出两个发布阻塞**：versionCode 写死为 1（商店拒第二次上传）、签名是 CN=Android Debug（不可分发）；另发现版本倒挂 0.1.0.19 < 旧包 0.1.0.22。已立 A-AND-07(todo)/A-AND-08(blocked 待 keystore) | 9da8db9 |
