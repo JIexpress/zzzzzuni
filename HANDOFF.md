@@ -3,7 +3,7 @@
 > 唯一权威状态源。每任务闭环后由主控刷新。接管者先读本文件，再读 `Docs/交接档案.md`（路线图+环境坑+技术债），再读 TASKS.md。
 > 历史交接记录（R8/R9/R10 各轮）已归档于 git 历史（`git show G-113:HANDOFF.md`），WORKLOG.md 有全部 85+ 任务索引。
 
-**快照时间**: 2026-11-03 16:30（**正式包可分发：IL2CPP + 自签 release 证书**）｜**刷新者**: 主控（WorkBuddy）｜**仓库**: `C:\Users\1\Desktop\zcode\GameFramework`
+**快照时间**: 2026-11-03 22:40（**CI 本地就绪；仓库瘦身 556→101MB**）｜**刷新者**: 主控（WorkBuddy）｜**仓库**: `C:\Users\1\Desktop\zcode\GameFramework`
 
 ## 三十秒速览
 
@@ -44,6 +44,31 @@
 
 **一条小技术债**：`Tools/dev.ps1` 提交时 Git 报 "LF will be replaced by CRLF"（`.gitattributes` 没覆盖 `.ps1`），
 换行符可能在不同机器上漂移，需要时补规则。
+
+## 🔵 CI 接入（A-CI-01）：本地就绪，待建仓推送
+
+**分层**：L1 native（云端跑，不需 Unity 许可证/GPU）✅ 已配 ｜ L2 unity ⏸ 未启用（需许可证，建议自托管）
+｜ L3 playmode/bench/打包 ⏸ 不进云端（无 GPU 会假绿、bench 会误报）。
+
+**最大意外**：`Tools/android_support_installer.exe` **456MB** 被误提交，占 `.git` 的 **89%**，
+全仓 0 引用。已 `git rm --cached` + `.gitignore`，**tracked 556MB → 101.5MB**。
+
+**仓库结构变了（接手必读）**：
+| 分支 | 内容 | 是否推送 |
+|---|---|---|
+| `main`（`a5300dc`） | 当前完整快照，**实际 pack 54MB** | 推 |
+| `legacy`（`6ec9127`） | 完整旧历史（含那 456MB 的旧提交） | **不推，仅本地** |
+
+想看 2026-11-03 之前的提交历史，用 `git log legacy`；文档里引用的旧 commit hash 仍可用 `git show <hash>` 访问。
+
+**网络实测（决定方案的关键）**：`git ls-remote` 到 github.com **成功**，但 `api.github.com` **不可达**
+→ `gh` CLI 用不了、自托管 runner 注册大概率失败。所以 L1 走云端，L2/L3 留本地。
+`github.com` 网页响应约 12s。
+
+**本地门禁已生效**：`.githooks/pre-push`（10MB 阈值，只查当前快照，`Native/ThirdParty/` 白名单放行 FFX dll）。
+实测有牙（1MB 阈值下准确拦截并 exit 1）。⚠️ 新克隆要执行一次 `git config core.hooksPath .githooks`。
+
+**待办**：用户建空私有仓库 + 生成 PAT 存 `C://Users//1//.zframe-github-token`（仓库外），然后推送。
 
 ## ✅ 最近完成（2026-11-03）**A-AND-08 签名已换成 release 证书**
 
