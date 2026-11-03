@@ -142,3 +142,5 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | A-AND-07 | A/AND | 发布元数据：versionCode 自增 + 修版本倒挂（0.1.0.19 < 旧包 0.1.0.22） | done(验收PASS 6/6；守卫有牙;EditMode 811) | Docs/Logs/TASK-A-AND-07.md | 2b7e927 |
 | A-AND-08 | A/AND | Release 签名证书（本地自签 keystore，替换 CN=Android Debug） | done(验收PASS 6/6；CN=ZFrame/v2/密钥隔离0命中/缺密码中止) | Docs/Logs/TASK-A-AND-08.md | 88275f0 |
 | A-CI-01 | A/CI | CI 接入（GitHub Actions L1 原生门禁 + pre-push 大文件钩子） | done(已推 JIexpress/zzzzzuni；Actions 首跑待观察) | Docs/Logs/TASK-A-CI-01.md | 67c3e49 |
+| A-R9-12 | A/R9 | CommandSystem 命令模式+拾取撤销接线 | doing | Docs/Logs/TASK-A-R9-12.md | |
+| B-R9-16 | B/R9 | GPU 工具链(HUD/RenderDoc/RG导出) | doing | Docs/Logs/TASK-B-R9-16.md | |
