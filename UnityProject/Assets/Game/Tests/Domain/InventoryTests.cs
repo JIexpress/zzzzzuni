@@ -71,5 +71,53 @@ namespace Game.Domain.Tests
             Assert.Throws<ArgumentOutOfRangeException>(() => inventory.Add("gold", 0));
             Assert.Throws<ArgumentOutOfRangeException>(() => inventory.Add("gold", -1));
         }
+
+        // ---- TASK-A-R9-12: the rollback primitive behind pickup undo ----
+
+        [Test]
+        public void TryRemove_TakesPartialStackOut()
+        {
+            var inventory = new Inventory();
+            inventory.Add("gold", 5);
+
+            Assert.IsTrue(inventory.TryRemove("gold", 2));
+            Assert.AreEqual(3, inventory.Count("gold"));
+            Assert.AreEqual(1, inventory.DistinctCount);
+        }
+
+        [Test]
+        public void TryRemove_ToZero_RemovesTheKey_ExactlyLikePreAdd()
+        {
+            var inventory = new Inventory();
+            inventory.Add("gold", 3);
+            inventory.Add("wood", 1);
+
+            Assert.IsTrue(inventory.TryRemove("gold", 3));
+            Assert.AreEqual(0, inventory.Count("gold"));
+            Assert.AreEqual(1, inventory.DistinctCount, "only wood remains — undo can restore the exact pre-add shape");
+            Assert.IsFalse(inventory.Items.ContainsKey("gold"));
+        }
+
+        [Test]
+        public void TryRemove_MoreThanHeld_ReturnsFalse_WithoutMutating()
+        {
+            var inventory = new Inventory();
+            inventory.Add("gold", 3);
+
+            Assert.IsFalse(inventory.TryRemove("gold", 4));
+            Assert.IsFalse(inventory.TryRemove("potion", 1));
+            Assert.AreEqual(3, inventory.Count("gold"), "nothing was taken out");
+            Assert.AreEqual(3, inventory.TotalCount, "no phantom negative stack");
+        }
+
+        [Test]
+        public void TryRemove_RejectsInvalidArguments()
+        {
+            var inventory = new Inventory();
+
+            Assert.Throws<ArgumentException>(() => inventory.TryRemove(string.Empty, 1));
+            Assert.Throws<ArgumentOutOfRangeException>(() => inventory.TryRemove("gold", 0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => inventory.TryRemove("gold", -1));
+        }
     }
 }

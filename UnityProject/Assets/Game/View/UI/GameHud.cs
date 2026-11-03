@@ -6,6 +6,7 @@ using Game.View.Enemy;
 using UnityEngine;
 using UnityEngine.UI;
 using ZFrame.Core;
+using ZFrame.Gameplay;
 using ZFrame.View;
 
 namespace Game.View.UI
@@ -18,6 +19,16 @@ namespace Game.View.UI
     ///    mirrors the shared inventory total;
     ///  - enemy hint: subscribes every <see cref="EnemyView"/>'s Domain FSM
     ///    state-changed event and reports patrol/chase/death ("守卫已被击败").
+    ///
+    /// TASK-A-R9-12 adds the undo controls (same persistent HUD canvas):
+    ///  - an on-screen "撤销 (Ctrl+Z)" button (works on desktop and touch) and
+    ///    a PC-side Ctrl+Z poll in <see cref="Update"/> (Esc-polling precedent
+    ///    of PausePanelView; EditMode never drives Update, so tests exercise
+    ///    the same path through the button's onClick);
+    ///  - an undo hint caption fed by the CommandExecuted/Undone/Redone bus
+    ///    events ("撤销：拾取 gold×3") plus the empty-stack fallback text;
+    ///  - the pickup counter also tracks <see cref="ItemReturned"/> so an
+    ///    undone pickup does not leave a stale total.
     ///
     /// The host GameObject lives in the gameplay scene (NOT
     /// DontDestroyOnLoad), so the HUD dies with the scene; the flow owner
@@ -39,6 +50,8 @@ namespace Game.View.UI
     {
         private Text _pickupText;
         private Text _enemyText;
+        private Text _undoHint;
+        private Button _undoButton;
         private TouchControlsView _touchControls;
         private readonly List<EnemyView> _enemies = new List<EnemyView>();
         private readonly List<IDisposable> _tokens = new List<IDisposable>();
@@ -57,11 +70,20 @@ namespace Game.View.UI
             Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             _pickupText = CreateCaption(hud.transform, "PickupCounter", font, new Vector2(24f, -24f), TextAnchor.UpperLeft);
             _enemyText = CreateCaption(hud.transform, "EnemyHint", font, new Vector2(24f, -72f), TextAnchor.UpperLeft);
+            _undoHint = CreateCaption(hud.transform, "UndoHint", font, new Vector2(24f, -120f), TextAnchor.UpperLeft);
 
             _pickupText.text = "拾取计数：0";
             _enemyText.text = string.Empty;
+            _undoHint.text = string.Empty;
+
+            _undoButton = CreateUndoButton(hud.transform, font);
+            _undoButton.onClick.AddListener(OnUndoClicked);
 
             _tokens.Add(EventBus.Subscribe<ItemPickedUp>(OnItemPickedUp));
+            _tokens.Add(EventBus.Subscribe<ItemReturned>(OnItemReturned));
+            _tokens.Add(EventBus.Subscribe<CommandExecuted>(OnCommandExecuted));
+            _tokens.Add(EventBus.Subscribe<CommandUndone>(OnCommandUndone));
+            _tokens.Add(EventBus.Subscribe<CommandRedone>(OnCommandRedone));
 
             foreach (EnemyView enemy in FindObjectsOfType<EnemyView>())
             {
@@ -117,6 +139,16 @@ namespace Game.View.UI
             // leaves two orphan Texts behind (and their stale text stays visible).
             DestroyCaption(ref _pickupText);
             DestroyCaption(ref _enemyText);
+            DestroyCaption(ref _undoHint);
+
+            // TASK-A-R9-12: same contract for the undo button (its root lives
+            // on the persistent canvas, the label is a child of that root).
+            if (_undoButton != null)
+            {
+                _undoButton.onClick.RemoveListener(OnUndoClicked);
+                DestroyCanvasChild(_undoButton.gameObject);
+                _undoButton = null;
+            }
 
             // Same contract for the touch overlay (it also hangs on the persistent
             // HUD canvas); Shutdown releases the stick first so a finger held during
@@ -133,6 +165,80 @@ namespace Game.View.UI
             Shutdown();
         }
 
+        /// <summary>
+        /// TASK-A-R9-12: PC-side undo hotkey (Ctrl+Z), polled like the Esc
+        /// shortcut of PausePanelView. Same path as the on-screen button —
+        /// both land in <see cref="TryUndo"/>; EditMode tests cannot synthesize
+        /// keys (A-AND-04 precedent) and drive the button onClick instead.
+        /// </summary>
+        private void Update()
+        {
+            if (_shutdown)
+            {
+                return;
+            }
+
+            if (Input.GetKeyDown(KeyCode.Z)
+                && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)))
+            {
+                TryUndo();
+            }
+        }
+
+        /// <summary>
+        /// One undo step through the shared command manager (pickup undo,
+        /// TASK-A-R9-12). Success feedback comes from the CommandUndone bus
+        /// event; an empty stack or a missing manager shows the fallback text.
+        /// </summary>
+        private void TryUndo()
+        {
+            if (Services.TryGet(out ICommandManager commands) && commands.Undo())
+            {
+                return;
+            }
+
+            SetUndoHint("没有可撤销的操作");
+        }
+
+        private void OnUndoClicked()
+        {
+            TryUndo();
+        }
+
+        private void OnItemPickedUp(ItemPickedUp evt)
+        {
+            SetPickupTotal(evt.TotalCount);
+        }
+
+        /// <summary>Undone pickups re-sync the counter from the revert payload (TASK-A-R9-12).</summary>
+        private void OnItemReturned(ItemReturned evt)
+        {
+            SetPickupTotal(evt.TotalCount);
+        }
+
+        private void OnCommandExecuted(CommandExecuted evt)
+        {
+            SetUndoHint($"执行：{evt.Label}");
+        }
+
+        private void OnCommandUndone(CommandUndone evt)
+        {
+            SetUndoHint($"撤销：{evt.Label}");
+        }
+
+        private void OnCommandRedone(CommandRedone evt)
+        {
+            SetUndoHint($"重做：{evt.Label}");
+        }
+
+        private void SetUndoHint(string text)
+        {
+            if (_undoHint != null)
+            {
+                _undoHint.text = text;
+            }
+        }
+
         /// <summary>Destroys one caption this HUD created (detached from the persistent canvas first).</summary>
         private static void DestroyCaption(ref Text caption)
         {
@@ -143,16 +249,26 @@ namespace Game.View.UI
 
             GameObject captionObject = caption.gameObject;
             caption = null;
-            captionObject.transform.SetParent(null, false);
+            DestroyCanvasChild(captionObject);
+        }
+
+        /// <summary>
+        /// Detaches a GameObject this HUD created on the persistent UIRoot
+        /// canvas and destroys it (deferred in play mode, immediate in EditMode
+        /// so tests assert right away) — the TASK-H-01 leak discipline.
+        /// </summary>
+        private static void DestroyCanvasChild(GameObject canvasObject)
+        {
+            canvasObject.transform.SetParent(null, false);
 
             if (Application.isPlaying)
             {
-                UnityEngine.Object.Destroy(captionObject);
+                UnityEngine.Object.Destroy(canvasObject);
             }
             else
             {
                 // EditMode: Destroy is deferred until the next editor tick, tests assert immediately.
-                UnityEngine.Object.DestroyImmediate(captionObject);
+                UnityEngine.Object.DestroyImmediate(canvasObject);
             }
         }
 
@@ -178,11 +294,6 @@ namespace Game.View.UI
             {
                 _pickupText.text = $"拾取计数：{total}";
             }
-        }
-
-        private void OnItemPickedUp(ItemPickedUp evt)
-        {
-            SetPickupTotal(evt.TotalCount);
         }
 
         private void OnEnemyStateChanged(EnemyStateChanged evt)
@@ -213,6 +324,46 @@ namespace Game.View.UI
             text.color = Color.white;
             text.raycastTarget = false;
             return text;
+        }
+
+        /// <summary>
+        /// TASK-A-R9-12: the on-screen undo button (top-right of the HUD
+        /// canvas). Plain UGUI — semi-transparent image as the clickable
+        /// target plus a non-raycast label — so it works identically on
+        /// desktop and touch hardware, outside the settings panel framework
+        /// like every other HUD caption. Zero assets (solid colour), matching
+        /// the panel's zero-asset discipline.
+        /// </summary>
+        private static Button CreateUndoButton(Transform parent, Font font)
+        {
+            var go = new GameObject("UndoButton", typeof(RectTransform), typeof(Image), typeof(Button));
+            RectTransform rect = go.GetComponent<RectTransform>();
+            rect.SetParent(parent, false);
+            rect.anchorMin = new Vector2(1f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(1f, 1f);
+            rect.anchoredPosition = new Vector2(-24f, -24f);
+            rect.sizeDelta = new Vector2(190f, 48f);
+
+            go.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.55f);
+
+            var labelObject = new GameObject("Label", typeof(RectTransform));
+            RectTransform labelRect = labelObject.GetComponent<RectTransform>();
+            labelRect.SetParent(rect, false);
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.offsetMin = Vector2.zero;
+            labelRect.offsetMax = Vector2.zero;
+
+            Text label = labelObject.AddComponent<Text>();
+            label.font = font;
+            label.fontSize = 26;
+            label.alignment = TextAnchor.MiddleCenter;
+            label.color = Color.white;
+            label.text = "撤销 (Ctrl+Z)";
+            label.raycastTarget = false; // clicks must land on the button image
+
+            return go.GetComponent<Button>();
         }
     }
 }

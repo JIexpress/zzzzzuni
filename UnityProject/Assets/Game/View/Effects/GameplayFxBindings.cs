@@ -42,6 +42,13 @@ namespace Game.View.Effects
     ///   counters, so <see cref="EventsReceived"/> keeps its "spark-relevant
     ///   events" meaning and EventsReceived == SparksRequested + SparksMerged
     ///   stays an invariant.
+    /// * Sparks are NOT undoable (TASK-A-R9-12): the command system rewinds
+    ///   GAME state only. A pickup undone through the CommandManager fires
+    ///   <see cref="ItemReturned"/>, which this binding deliberately does not
+    ///   subscribe — the original spark stays spent, no particle travels back
+    ///   in time. (A redo re-applies the pickup and re-fires
+    ///   <see cref="ItemPickedUp"/>, so it sparks once more — semantically the
+    ///   pickup happened again, which is a NEW visual event, not a revert.)
     /// * Switch coordination: this class holds no on/off state of its own. It
     ///   keeps receiving events and forwarding requests while
     ///   <c>ParticleRuntime.Enabled == false</c>; the emitter returns 0 and no

@@ -120,6 +120,11 @@ namespace Game.Bootstrap
             // 1. Data layer: resource / config / save services.
             RunStep("ZFrameData.Init", () => ZFrameData.Init());
 
+            // 1b. TASK-A-R9-12: the shared command stack (pickup undo). One
+            // registration per boot; the guard keeps a re-run Awake after a
+            // GameRoot.Shutdown (Services.Clear) from double-registering.
+            RunStep("command manager", EnsureCommandManager);
+
             // 2. Services readiness check (fail fast on a broken boot).
             RunStep("services readiness check", () =>
             {
@@ -220,6 +225,23 @@ namespace Game.Bootstrap
                 ZLog.Error("Boot", $"boot step '{name}' failed: {error.Message}");
                 BootErrorOverlay.Show($"boot step '{name}' failed:\n{error}");
             }
+        }
+
+        /// <summary>
+        /// TASK-A-R9-12: registers the shared command stack under
+        /// <see cref="ICommandManager"/> so gameplay templates (pickup) and the
+        /// HUD undo controls resolve one well-known instance. Guarded: after a
+        /// GameRoot.Shutdown wiped the services map, a later re-boot must
+        /// register again exactly once (Services throws on duplicates).
+        /// </summary>
+        private static void EnsureCommandManager()
+        {
+            if (Services.TryGet(out ICommandManager _))
+            {
+                return;
+            }
+
+            Services.Register<ICommandManager>(new CommandManager());
         }
 
         private void OnDestroy()
@@ -504,6 +526,14 @@ namespace Game.Bootstrap
             }
 
             InteractionWorld.ResetShared(); // stale Domain entities must not leak into the next scene (M4-01 §5.4)
+
+            // TASK-A-R9-12: commands of the old scene's entities must not be
+            // undoable in the next one — drop the whole stack silently
+            // (applied state stays; the manager fires no per-command events).
+            if (Services.TryGet(out ICommandManager commands))
+            {
+                commands.Clear();
+            }
         }
 
         private void OnSceneLoaded(SceneLoadedEvent evt)

@@ -58,8 +58,10 @@ namespace Game.View.Tests
                 GameHud gameHud = host.AddComponent<GameHud>();
                 gameHud.Build(_root);
 
-                Assert.AreEqual(baseline + 2, hud.transform.childCount,
-                    $"visit #{visit}: Build must add exactly the two captions to the HUD canvas");
+                // TASK-A-R9-12: two captions + the undo hint caption + the undo
+                // button root (its label is a child of that root).
+                Assert.AreEqual(baseline + 4, hud.transform.childCount,
+                    $"visit #{visit}: Build must add exactly the three captions plus the undo button to the HUD canvas");
 
                 // EditMode never fires MonoBehaviour OnDestroy, so the test drives
                 // the same teardown explicitly — exactly what the engine reaches
@@ -71,11 +73,15 @@ namespace Game.View.Tests
                 Object.DestroyImmediate(host);
 
                 Assert.AreEqual(baseline, hud.transform.childCount,
-                    $"visit #{visit}: Shutdown must destroy its own captions (2 Texts per visit would leak otherwise)");
+                    $"visit #{visit}: Shutdown must destroy its own captions and the undo button (4 objects per visit would leak otherwise)");
                 Assert.IsTrue(hud.transform.Find("PickupCounter") == null,
                     $"visit #{visit}: the pickup caption must be gone from the persistent canvas");
                 Assert.IsTrue(hud.transform.Find("EnemyHint") == null,
                     $"visit #{visit}: the enemy hint must be gone from the persistent canvas");
+                Assert.IsTrue(hud.transform.Find("UndoHint") == null,
+                    $"visit #{visit}: the undo hint must be gone from the persistent canvas (TASK-A-R9-12)");
+                Assert.IsTrue(hud.transform.Find("UndoButton") == null,
+                    $"visit #{visit}: the undo button must be gone from the persistent canvas (TASK-A-R9-12)");
             }
         }
 

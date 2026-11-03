@@ -32,6 +32,44 @@ namespace Game.Domain.Interaction
             return total;
         }
 
+        /// <summary>
+        /// Removes <paramref name="amount"/> of <paramref name="itemId"/> —
+        /// the rollback primitive behind pickup undo (TASK-A-R9-12). Returns
+        /// false (nothing mutated) when the stack cannot cover the amount, so
+        /// a revert can never leave a negative or phantom stack. Dropping to
+        /// zero removes the key, which lets an undo restore the exact
+        /// pre-pickup shape of the inventory (including
+        /// <see cref="DistinctCount"/>).
+        /// </summary>
+        public bool TryRemove(string itemId, int amount)
+        {
+            if (string.IsNullOrEmpty(itemId))
+            {
+                throw new ArgumentException("Inventory: item id must not be empty.", nameof(itemId));
+            }
+
+            if (amount <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(amount), "Inventory: amount must be positive.");
+            }
+
+            if (!_items.TryGetValue(itemId, out int current) || current < amount)
+            {
+                return false;
+            }
+
+            if (current == amount)
+            {
+                _items.Remove(itemId);
+            }
+            else
+            {
+                _items[itemId] = current - amount;
+            }
+
+            return true;
+        }
+
         /// <summary>Count of one item (0 when never added).</summary>
         public int Count(string itemId)
         {
