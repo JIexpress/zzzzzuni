@@ -1,7 +1,7 @@
 # ZFrame / ZRender —— Unity 双轨游戏框架与自研渲染内核
 
 > Unity 2022.3 LTS 上的双轨项目：**Track A（ZFrame）玩法框架** + **Track B（ZRender）自研渲染内核**（C# SRP 壳 + 原生 C++ 核心）。
-> 全程由"主控/施工/验收"三角色治理，**101 个任务闭环**（+1 待办已立）、每任务日志落盘（`Docs/Logs/`）。
+> 全程由"主控/施工/验收"三角色治理，**102 个任务闭环**、每任务日志落盘（`Docs/Logs/`）。
 
 ## 1. 双轨架构（文字版）
 
@@ -15,7 +15,7 @@ GameFramework/
 │       │   ├─ Gameplay             #   FSM / InteractSystem / Command（纯 C#，禁引擎类型）
 │       │   ├─ View                 #   UIFramework(MVP+面板栈) / SettingsSystem / SceneLoader / AudioService
 │       │   ├─ Editor               #   架构校验器 / 编辑器工具（工作台/UI校验/命名检查）
-│       │   └─ Tests                #   EditMode 880 用例 + PlayMode 46 用例
+│       │   └─ Tests                #   EditMode 880 用例 + PlayMode 48 用例
 │       ├─ ZRender/                 # 双轨结合部：自研 SRP 壳 + P/Invoke 桥接
 │       ├─ Game/                    # 垂直切片（Bootstrap / Domain / View，SCN_Boot→SCN_Game）
 │       └─ Plugins/ZRender/         # zrender.dll（构建产物部署位，ADR-004）
@@ -51,7 +51,7 @@ cmake 配置 → Release 构建（零警告 /WX）→ doctest 单测 → 自动�
 ```bash
 powershell -NoProfile -ExecutionPolicy Bypass -File Tools/run_tests.ps1
 ```
-依次：原生构建+单测+ctest → Unity EditMode（880）→ Unity PlayMode（46）→ 架构校验器 → 配置校验器 → 资产命名检查 → bench 回归 → player 出包（默认 SKIP，`PLAYER_BUILD=1` 开启）。
+依次：原生构建+单测+ctest → Unity EditMode（880）→ Unity PlayMode（48）→ 架构校验器 → 配置校验器 → 资产命名检查 → bench 回归 → player 出包（默认 SKIP，`PLAYER_BUILD=1` 开启）。
 汇总报告写入仓库根 `TestReport.txt`（生成物，未入库）。Unity 批处理纪律已内置（单实例/锁清理/勿带 -quit/超时 taskkill/证据新鲜度校验）。
 
 **④ 编辑器里玩垂直切片（Track A）**
@@ -88,14 +88,14 @@ W=Native/build/bin/Release/zrhi_d3d12_window.exe
 |---|---|---|
 | 原生单测 | **311 用例 / 776,716 断言，全绿** | doctest（2026-11-04 八段基线实跑，Vulkan SDK 已恢复） |
 | Unity EditMode | **880 用例，全绿** | NUnit（2026-11-04 A-R9-13 验收实跑） |
-| Unity PlayMode | **46 用例，全绿** | 垂直切片冒烟 + 音频真放 + 千人演练场（2026-11-04 A-R9-13 验收实跑） |
+| Unity PlayMode | **48 用例，全绿** | 垂直切片冒烟 + 音频真放 + 千人演练场默认可见与像素证据（2026-11-04 A-R9-15 验收实跑） |
 | 架构校验 | 25 asmdef 扫描 / 0 违规（含 Game/Domain 纯度扫描） | ArchitectureValidator（八段 exit 0） |
 | DataKernel 基准 | 406M 行/s（BMI2 实证，零分配） | B-R1-01 |
 | GPU 时间戳 | 实测 11.3ms（窗口场景） | B-R2-03 |
 | 合批收益 | 绘制调用省 94.9%（对拍一致） | B-R4-02 |
 | FSR 3.1 真机 | ratio=1.346（edge 0.159 vs 0.118），780M/provider 3.1.5 | B-R6-01 |
 | 双后端一致性 | D3D12 vs Vulkan 逐像素 **maxDelta=0**；RG 屏障计数相等 | B-R7-01/02 |
-| 千人演练场 | 1000 实体单次 `DrawMeshInstanced` 提交（100 vs 1000 均 1 次）；只读游标 9.3 µs | A-R9-13（可见性默认关，受限） |
+| 千人演练场 | 1000 实体单次 `DrawMeshInstanced` 提交；默认可见 + 真实像素证据（开/关差异 3.97%）；只读游标 9.3 µs | A-R9-13 / A-R9-15 |
 
 **里程碑状态**（定义见方案 §9）：A 轨 M0–M5 **全部收官**；B 轨 R0–R7 **全部收官**（R7 含 Vulkan 第二后端与收口）。
 外部补验项（硬件受限，代码与单测已备好）：FSR 4.1 真机（需 RX7000/9000 独显——本机 780M 为核显，FFX 运行时无 4.x provider）、DLSS 5 真机（需 RTX 50 系）。
@@ -111,4 +111,4 @@ W=Native/build/bin/Release/zrhi_d3d12_window.exe
 | `Docs/Parity/parity_report.md` | URP vs ZRender 对等闸门报告 |
 | `Docs/Standards/file-conventions.md` | 文件与命名规范（UTF-8 无 BOM/LF 等） |
 | `TASKS.md` / `WORKLOG.md` / `DECISIONS.md` | 任务看板 / 任务索引 / 决策记录 |
-| `Docs/Logs/TASK-*.md` | 101 个已闭环任务日志（简报/施工/验收四节） |
+| `Docs/Logs/TASK-*.md` | 102 个已闭环任务日志（简报/施工/验收四节） |

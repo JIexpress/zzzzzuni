@@ -4,6 +4,8 @@
 
 | 日期 | 任务 | 结果 | commit |
 |---|---|---|---|
+| 2026-11-04 | **G-123 A-R9-15 闭环 + 数字校准** | done：群体默认可见 + 首次真实像素证据；README/HANDOFF/TASKS/WORKLOG 统一到 PlayMode 48 / 102 done | G-123（本次治理提交） |
+| 2026-11-04 | **A-R9-15 群体开箱可见 + 真实像素证据** | done：查实 A-R9-13「可能污染 A-R9-10 差分」从未量化、实测确会架空差分 → 只在 A-R9-10 用例 SetUp/TearDown 隔离群体，断言/门限一字未动；`AutoEnable` 默认 true + `sceneLoaded` 门控；落盘 `Docs/Parity/crowd_r9_15_off/on.png`，URP 相机 `RenderTexture+ReadPixels` 同轮 A/B，施工 2287/57600=3.97%、验收独立重算 2245/57600=3.90%（阈值 1%），验收用 ViewImage 亲眼复核两图。独立验收 **PASS with 受限**：EditMode 880/880/0、PlayMode **48/48/0**、native 311 持平、三校验器 exit 0；变异 48/48/0→48/47/1→48/48/0。**唯一核心受限**：真实 GPU DrawCall 在 batchmode 只有整场景总值 86、无 A/B，未编数字 | c378f49 |
 | 2026-11-04 | **G-121 A-R9-13 闭环 + 数字再校准** | done：A-R9-13 闭环并立 A-R9-15 承接受限项；README/HANDOFF/TASKS/WORKLOG 统一到 EditMode 880 / PlayMode 46 / 101 done | G-121（本次治理提交） |
 | 2026-11-04 | **A-R9-13 千人演练场（DataKernel 玩法侧）** | done：3 个 unmanaged 组件 + 单个 `ZKernelWorld` 管 1000 实体，`ITickQueue` Logic 游标迭代 / View 单次 `DrawMeshInstanced`（100 vs 1000 均 1 次提交、URP 兼容、零资产）；独立验收 **PASS with 受限**——EditMode 880/880/0、PlayMode 46/46/0、三校验器 exit 0、native 311 持平；验收亲自复做变异 46/46/0→46/45/1→46/46/0。**受限**：AutoEnable 默认 false 使「群体可见」未开箱达成（用例显式 EnsureCrowd，只证组件/提交层）、真实 GPU DrawCall 与像素未取证、IL2CPP/Android 未验、URP 1023 实例上限未探测 → 立 A-R9-15 | 5f49a42 |
 | 2026-11-04 | **G-119 三任务闭环 + 八段基线 + 数字校准** | done：3 个 doing 全部闭环（含 A-R9-14 返工 1 轮）；`run_tests.ps1` 八段 **ALL PASS**（7 passed / 1 skipped，9m57s；native 311/776,716、EditMode 873、PlayMode 44、三校验器 exit 0、bench 7/7）；README/HANDOFF/TASKS/WORKLOG 漂移数字统一到实测口径；立 A-R9-13 简报（待派发）并记录 URP 侧离线体检判据 | G-119（本次治理提交） |

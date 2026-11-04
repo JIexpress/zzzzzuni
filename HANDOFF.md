@@ -3,21 +3,31 @@
 > 唯一权威状态源。每任务闭环后由主控刷新。接管者先读本文件，再读 `Docs/交接档案.md`（路线图+环境坑+技术债），再读 TASKS.md。
 > 历史交接记录（R8/R9/R10 各轮）已归档于 git 历史（`git show G-113:HANDOFF.md`），WORKLOG.md 有全部 85+ 任务索引。
 
-**快照时间**: 2026-11-04（**A-R9-13 闭环；远端 main 已推送；工作区干净**）｜**刷新者**: 主控（WorkBuddy / Hy）｜**仓库**: `C:\Users\1\Desktop\zcode\GameFramework`
+**快照时间**: 2026-11-04（**A-R9-13 / A-R9-15 闭环；远端已推送；工作区干净**）｜**刷新者**: 主控（WorkBuddy / Hy）｜**仓库**: `C:\Users\1\Desktop\zcode\GameFramework`
 
 ## 三十秒速览
 
 | 项 | 值 |
 |---|---|
-| 任务看板 | **101 done / 0 doing / 1 todo（A-R9-15）/ 0 blocked**（TASKS.md） |
-| 测试家底 | 原生 **311 用例 / 776,716 断言** + EditMode **880** + PlayMode **46** = **1237 用例全绿**；三校验器 exit 0；bench 7/7 在容差内；player 默认 SKIP |
+| 任务看板 | **102 done / 1 doing（A-R9-16）/ 0 todo / 0 blocked**（TASKS.md） |
+| 测试家底 | 原生 **311 用例 / 776,716 断言** + EditMode **880** + PlayMode **48** = **1239 用例全绿**；三校验器 exit 0；bench 7/7 在容差内；player 默认 SKIP |
 | 一键全量 | `powershell -NoProfile -ExecutionPolicy Bypass -File Tools/run_tests.ps1`（八段；2026-11-04 实跑 9m57s ALL PASS，A-R9-13 验收另跑五段全绿） |
 | 一键出包 | `Tools/build_player.ps1`（Windows，版本单源 Tools/version.json 自增）；`Tools/build_android.ps1`（Android APK） |
-| 最新里程碑 | **A-R9-13 千人演练场闭环**：1000 实体走 DataKernel C ABI + 单次 `DrawMeshInstanced`；URP 14 兼容、英雄侧零改动。远端 `origin/main` 已推送 |
+| 最新里程碑 | **A-R9-15 收口**：千人演练场开箱可见 + 首次拿到真实像素证据（开/关差异 3.97%）；远端 `origin/main` 已同步 |
 
 ## 一句话现状
 
-方案承诺 + 两轮增强全部闭环：A 轨框架+垂直切片+**真机可玩**，B 轨渲染内核+双后端（D3D12/Vulkan 全特性 maxDelta=0）+超分全家桶+帧生成；A-AND / A-DEV / A-AUDIT / A-CI / A-R9-13 各轮均已闭环。**2026-11-04 接手时 3 个 doing、13 M + 33 ?? 的未完成现场已全部收口**，DataKernel 玩法侧缺口补齐，工作区干净、0 doing、远端已推。下一次派发见「下一步优先级」（A-R9-15 承接 A-R9-13 的可见性受限项）。
+方案承诺 + 两轮增强全部闭环：A 轨框架+垂直切片+**真机可玩**，B 轨渲染内核+双后端（D3D12/Vulkan 全特性 maxDelta=0）+超分全家桶+帧生成；A-AND / A-DEV / A-AUDIT / A-CI / A-R9-13 / A-R9-15 各轮均已闭环。**2026-11-04 接手时 3 个 doing、13 M + 33 ?? 的未完成现场已全部收口**，DataKernel 玩法侧缺口补齐，工作区干净、0 doing、远端已推。下一次派发见「下一步优先级」（下一棒：URP 变体收敛）。
+
+## ✅ 最近完成（2026-11-04 深夜，A-R9-15 群体开箱可见 + 真实像素证据）
+
+`c378f49`，独立验收 **PASS with 受限**。A-R9-13 留下的 V3 受限已补：
+
+- **前置调研推翻旧顾虑**：A-R9-13 只写「有可能污染 A-R9-10 相机差分」从未量化；A-R9-10 用 `LoadSceneAsync` 直连、不走旧 `SceneLoadedEvent` 门控，顾虑从未真发生。实测群体开时 `moved=0.1253 / darker=0.0490`（门限 0.010/0.005，高一个数量级）确实会把差分架空成假绿 → 协调方式是**只在 A-R9-10 用例 SetUp/TearDown 隔离群体**，断言 / 门限 / 容差一字未动；隔离后 `0.1332/0.1019` 与历史 `0.1316/0.1031` 同量级。
+- **默认可见**：`AutoEnable` 默认 true + `SceneManager.sceneLoaded` 按场景门控，进 SCN_Game 自动 `EnsureCrowd`；单次 `DrawMeshInstanced` 提交 1000 实例与 `Dispose()` 生命周期不变，英雄侧 / 场景布局零改动。
+- **真实像素证据（首次拿到）**：`Docs/Parity/crowd_r9_15_off.png` / `_on.png`（320×180）；URP 相机 `RenderTexture+ReadPixels` 同一次运行内 A/B，施工 `changedPixels=2287/57600=0.0397`、验收独立重算 `2245/57600=0.0390`，均 > 阈值 0.010，两图 md5 不同；验收用 ViewImage 亲眼确认 on 图多出成片白色方块阵列，并用 Python 标准库独立复核（补上施工被 `Add-Type` 拦截的二次复核）。
+- **实跑**：EditMode 880/880/0、PlayMode **48/48/0**（+2）、native 311/776,716 亲证、三校验器 exit 0；验收亲自复做变异 `48/48/0 → AutoEnable 改回 false 48/47/1 → 还原复绿 48/48/0`。
+- **唯一核心受限（签收）**：**真实 GPU DrawCall 未取得**——batchmode 下 `ProfilerRecorder` 只有整场景总值 86、无开/关 A/B、Frame Debugger 不可用；两方都如实登记、未编数字。
 
 ## ✅ 最近完成（2026-11-04 晚，远端推送 + A-R9-13 千人演练场闭环）
 
@@ -298,7 +308,7 @@ CMakeLists 宣称「找不到 VULKAN_SDK 就跳过 Vulkan 目标（CI/他机友�
 
 ## 接管者动作序列
 
-1. `git log --oneline -5` + `git status`（应干净，HEAD `5f49a42` 或更新；本轮治理提交后再看 git log）
+1. `git log --oneline -5` + `git status`（应干净，HEAD `c378f49` 或更新；本轮治理提交后再看 git log）
 2. 读 `Docs/交接档案.md`（三十秒速览/环境坑/治理规则——**注意其 §0/§2 数字是 10-29 版，看板数字以 TASKS.md 与本文件为准**）
 3. 领任务：从下方"下一步优先级"写简报（模板见任一 Docs/Logs/TASK-*.md）→ 派施工代理 → 派**不同**验收代理 → PASS 后 commit（`TASK-XXX: 摘要`）→ 刷新 TASKS/WORKLOG/HANDOFF → governance commit
 4. 历史教训与环境纪律全部在 交接档案 §3（每条都真实踩过）+ 本文件"环境纪律速查"
@@ -313,9 +323,9 @@ CMakeLists 宣称「找不到 VULKAN_SDK 就跳过 Vulkan 目标（CI/他机友�
 | 4 | ~~第二轮独立代码审计~~ | **已完成**（A-AUDIT-01/02/03，9 条修 7 接受 2，含 P0 DevServer 任意网页驱动 Editor） | ✅ done |
 | 5 | ~~CI 远程化~~ | **已完成**（A-CI-01，`50d4e21`）：CI #4 绿 1m4s，云端 249/764,341；L2/L3 仍留本地 | ✅ done |
 | 6 | ~~GPU 工具链（方案 §5.7）~~ | **已完成**（B-R9-16 `724e123` + A-GPU-01 `a2a2c9e`） | ✅ done |
-| 7 | ~~A-R9-13 千人演练场~~ | **已完成**（`5f49a42`）：1000 实体混合架构 + 单次批量绘制，验收 PASS with 受限；受限项转 A-R9-15 | ✅ done |
-| 8 | **A-R9-15 群体开箱可见 + 像素回归** | 打开 `AutoEnable` 并补真实像素证据；**会牵动 A-R9-10 相机差分用例**，须先协调再改 | todo（看板已建行） |
-| 9 | **URP 侧收口** | 下方「URP 侧离线体检」给出判据：变体剥离 / SRP Batcher 兼容性 / 三档降级 / Depth-Opaque 纹理开关 | 待立项 |
+| 7 | ~~A-R9-13 / A-R9-15 千人演练场~~ | **已完成**（`5f49a42` / `c378f49`）：1000 实体混合架构 + 单次批量绘制 + 默认可见 + 真实像素证据 | ✅ done |
+| 8 | **URP 变体收敛** | 12288 变体 ≈10 min 构建；判据见下方离线体检表（本轮主控推进中） | doing |
+| 9 | **真实 GPU DrawCall 人工取证** | batchmode 只有整场景总值 86、无 A/B；需编辑器 Play Mode + Frame Debugger 人工核对，补 A-R9-15 唯一核心受限 | 待人工 |
 | 10 | 真机 FSR4.1 + DLSS5 / Metal 后端 | 需 RX7000/9000 独显、RTX 50 系、Apple 硬件 | 等硬件 |
 
 ### URP 侧离线体检（2026-11-04，只读核对，未改任何资产）
@@ -342,7 +352,7 @@ CMakeLists 宣称「找不到 VULKAN_SDK 就跳过 Vulkan 目标（CI/他机友�
 
 - **BGM 来源 URL 缺口**（A-R9-14 受限项）：`AUD_bgm_cave.ogg` 只有简报口径 CC0、无 URL / 许可证原文；对外发布前须查采集记录回填 `Assets/Audio/SOURCES.md`，验收未代编 URL
 - **CI token 轮换（仍未完成）**：用户提供的 `gh仓库.txt` 令牌与现有凭据逐字节相同，不是新令牌；须在 GitHub 生成新 PAT（`repo` + `workflow` 两个 scope）并吊销旧的，再更新 `~/.git-credentials` 与 `C:\Users\1\.zframe-github-token`
-- **A-R9-13 可见性受限**：`AutoEnable` 默认 false，群体需编辑器菜单手动开启；「开箱可见 + 真实像素证据」由 A-R9-15 承接
+- **真实 GPU DrawCall 受限（A-R9-15）**：batchmode 下 `ProfilerRecorder` 只有整场景总值 86、无开/关 A/B、Frame Debugger 不可用；需编辑器 Play Mode 人工取证，两方均未编数字
 - **推送纪律**：本轮提交是否已在远端以 `git log origin/main` 为准；推送前清 8 个代理变量（宿主透明代理对 git 大流量 502），新克隆需 `git config core.hooksPath .githooks`
 - bench 基线已 quiet 重跑闭环；`run_tests.ps1` 的 BOM（HEAD 既有）可顺手清；`TestPanelView` 随 Player 包、接缝符号名未擦（交接档案 §5 技术债）
 - `shot` 目录配额 200 个文件 ≈ **1–1.6 GB** 偏宽（可改 50 个 + 总字节上限）；DevConsole 的 **ThreadPool 线程数无看护**
