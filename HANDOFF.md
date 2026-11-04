@@ -3,21 +3,36 @@
 > 唯一权威状态源。每任务闭环后由主控刷新。接管者先读本文件，再读 `Docs/交接档案.md`（路线图+环境坑+技术债），再读 TASKS.md。
 > 历史交接记录（R8/R9/R10 各轮）已归档于 git 历史（`git show G-113:HANDOFF.md`），WORKLOG.md 有全部 85+ 任务索引。
 
-**快照时间**: 2026-11-04 00:00（**CI 首次通过；仓库已上线**）｜**刷新者**: 主控（WorkBuddy）｜**仓库**: `C:\Users\1\Desktop\zcode\GameFramework`
+**快照时间**: 2026-11-04 20:40（**三任务闭环 + 八段基线 ALL PASS；工作区干净**）｜**刷新者**: 主控（WorkBuddy / Hy）｜**仓库**: `C:\Users\1\Desktop\zcode\GameFramework`
 
 ## 三十秒速览
 
 | 项 | 值 |
 |---|---|
-| 任务看板 | **96 done / 0 doing / 0 todo / 0 blocked**（TASKS.md） |
-| 测试家底 | 原生 **281 用例 / 771,162 断言** + EditMode **811** + PlayMode **41** = **1133 用例全绿**；三校验器 exit 0 |
-| 一键全量 | `powershell -NoProfile -ExecutionPolicy Bypass -File Tools/run_tests.ps1`（八段：native/editmode/playmode/arch/config/naming/bench/player；player 默认 SKIP） |
+| 任务看板 | **100 done / 0 doing / 1 todo（A-R9-13）/ 0 blocked**（TASKS.md） |
+| 测试家底 | 原生 **311 用例 / 776,716 断言** + EditMode **873** + PlayMode **44** = **1228 用例全绿**；三校验器 exit 0；bench 7/7 在容差内；player 默认 SKIP |
+| 一键全量 | `powershell -NoProfile -ExecutionPolicy Bypass -File Tools/run_tests.ps1`（八段：native/editmode/playmode/arch/config/naming/bench/player；2026-11-04 实跑 9m57s ALL PASS） |
 | 一键出包 | `Tools/build_player.ps1`（Windows，版本单源 Tools/version.json 自增）；`Tools/build_android.ps1`（Android APK） |
-| 最新里程碑 | **Android 真机可玩达成**：APK 双包（IL2CPP arm64 36MB + Mono 开发包装在华为 OXF-AN00），主菜单→点开始→SCN_Game 完整渲染（HUD/FSM/阴影/粒子）实证于真机 |
+| 最新里程碑 | **B-R9-17 DataKernel C ABI / A-GPU-01 性能 HUD / A-R9-14 音频实战三任务闭环**，八段基线全绿；A-R9-13 千人演练场简报已备待派发 |
 
 ## 一句话现状
 
-方案承诺 + 两轮增强全部闭环：A 轨框架+垂直切片+**真机可玩**；B 轨渲染内核+双后端（D3D12/Vulkan 全特性 maxDelta=0）+超分全家桶+帧生成。**A-AND-04/05 与 A-DEV-01/02 均已闭环**，工作区干净。**当前 0 doing** —— 下一次派发见「下一步优先级」。
+方案承诺 + 两轮增强全部闭环：A 轨框架+垂直切片+**真机可玩**，B 轨渲染内核+双后端（D3D12/Vulkan 全特性 maxDelta=0）+超分全家桶+帧生成；A-AND / A-DEV / A-AUDIT / A-CI 各轮均已闭环。**2026-11-04 接手时 3 个 doing、工作区 13 M + 33 ?? 的未完成现场已全部收口**，工作区干净、0 doing。下一次派发见「下一步优先级」（A-R9-13 简报已备）。
+
+## ✅ 最近完成（2026-11-04，三任务闭环 + 八段基线全绿）
+
+**接手时现场**：`main @ 70e14d2`，工作区 13 处改动 + 33 个未跟踪文件；HANDOFF 快照（00:00）写「0 doing」而 TASKS 实有 3 个 doing，上一轮代理约 07:25 中止未收尾。按「先冻结 → 按任务分簇 → 施工与验收不同代理」收口：
+
+| 任务 | 处置 | commit |
+|---|---|---|
+| **B-R9-17** DataKernel C ABI + C# 绑定 | 验收已 PASS（V1–V5、12 个 `ZK_*` 导出、定向变异复红）但代码全部未提交 → 主控按白名单精确分簇提交 30 文件。**`zrender.dll` 是本任务产物，未按 §3.7 丢弃** | `2a848da` |
+| **A-GPU-01** 性能 HUD | 代码已在 `a2a2c9e`，派**独立验收代理**补 V1–V6 → **PASS with 受限**（V1 批处理无法目测 F3、V3 变异因约束未做，均以静态证据 + 门禁用例替代）；HUD 自身 14/14 全绿；PlayMode 唯一失败被正确归因到并行任务污染 | `2d80a85` |
+| **A-R9-14** 音频实战接线 | 补齐六节施工报告 → 查出 PlayMode **44/43/1** 红 → 返工 1 轮（根因：auto-boot 单例跨三用例不销毁、`TearDown` 不复位 CrossfadeState/SfxLimiter；只改测试 `SetUp`，产品代码零改动）→ 独立验收 **PASS with 受限**，验收亲自复做变异 `44/44/0 → 44/43/1 → 44/44/0`；3 个 `D` 经 sha256 证实为搬迁，git 识别 `R100` | `c09f1ef` |
+
+**八段基线（2026-11-04 20:36 实跑，9m57s）**：`Tools/run_tests.ps1` **ALL PASS（7 passed / 1 skipped / 0 failed）**——native **311 / 776,716**、EditMode **873/873/0**、PlayMode **44/44/0**、arch/config/naming 三校验器 exit 0、bench 7/7 在容差内、player 默认 SKIP。Vulkan SDK 已自动恢复（`VULKAN_SDK=C:\VulkanSDK\1.4.363.0`），故本地 311 ≠ 云端 249 属 `if(ZR_HAS_VULKAN)` 预期分支。`zrender.dll` 的构建时间戳噪声按 §3.7 丢弃。
+**已知环境噪声（非回归）**：EditMode 段「xml 已写但 Unity 5 分钟未退」→ 按纪律 taskkill（exit=1 是僵尸被杀，证据取本次新写 results.xml）；`run_tests.ps1:354` 的 `cmake_probe_tmp` 创建报 Permission denied（probe 临时目录，native 段仍 PASS）；三份校验器报告的 safe-delete 告警（报告为本次新写、违规 0）。
+
+**管线判定（锁 Unity 2022.3.62f3c1 + URP 14.0.11 + 780M 核显 / Android OXF-AN00）**：`GraphicsSettings.m_CustomRenderPipeline` guid `8b1b4d79…` = `URP_Medium.asset`，manifest 只有 URP、无 HDRP；`ZRenderPipeline.cs` 仅 27 行、`Render()` 只 `context.Submit()` → **Unity 内真渲染是 URP，自研 SRP 是空壳**，ZRender 真渲染在原生窗口程序 + DXGI 代理/FG 通道。Unity 侧效果链落点必须是 URP Volume + `UniversalAdditionalCameraData`（A-R9-04 已实证），**不要**往自研 SRP 加 pass。
 
 ## ✅ 最近完成（2026-11-03，第二轮独立审计 + P0 安全修复）
 
@@ -274,7 +289,7 @@ CMakeLists 宣称「找不到 VULKAN_SDK 就跳过 Vulkan 目标（CI/他机友�
 
 ## 接管者动作序列
 
-1. `git log --oneline -5` + `git status`（应干净，HEAD 655b250 或更新）
+1. `git log --oneline -5` + `git status`（应干净，HEAD `c09f1ef` 或更新；本轮治理提交后再看 git log）
 2. 读 `Docs/交接档案.md`（三十秒速览/环境坑/治理规则——**注意其 §0/§2 数字是 10-29 版，看板数字以 TASKS.md 与本文件为准**）
 3. 领任务：从下方"下一步优先级"写简报（模板见任一 Docs/Logs/TASK-*.md）→ 派施工代理 → 派**不同**验收代理 → PASS 后 commit（`TASK-XXX: 摘要`）→ 刷新 TASKS/WORKLOG/HANDOFF → governance commit
 4. 历史教训与环境纪律全部在 交接档案 §3（每条都真实踩过）+ 本文件"环境纪律速查"
@@ -284,11 +299,24 @@ CMakeLists 宣称「找不到 VULKAN_SDK 就跳过 Vulkan 目标（CI/他机友�
 | # | 方向 | 内容 | 状态 |
 |---|---|---|---|
 | 1 | ~~触屏虚拟摇杆~~ | **已完成**（A-AND-04，`fcc59ad`）——真机可玩成立 | ✅ done |
-| 2 | ~~AI 直操作三层开口~~ | **已完成**（A `5f98291`/`7efc198`、B `b7c5432`/`1d5ac14`、C 早已有）——见上节 | ✅ done |
-| 3 | **IL2CPP 正式包重出** | 当前真机装的是 Mono 开发包（带调试红字）；ProjectSettings 处于 Mono/ARMv7+0.1.0.18——重出前跑 build_android.ps1 走 IL2CPP+ARM64 即恢复 | 一条命令 |
-| 4 | **第二轮独立代码审计** | R7/R8/R9 三轮大改后值得再来一次（先例：R10-02 抓出 17 条真缺陷） | 简报待写 |
-| 5 | **CI 远程化** | 需用户先建远程仓库（GitHub/Gitee）；八段套件已机器可读（TestReport.txt+exit code），接 Actions 即可 | 等用户 |
-| 6 | DataKernel 玩法侧规模化 / GPU 工具链（方案 §5.7）/ 真机 FSR4.1+DLSS（等硬件） | 排队 | todo |
+| 2 | ~~AI 直操作三层开口~~ | **已完成**（A `5f98291`/`7efc198`、B `b7c5432`/`1d5ac14`、C 早已有） | ✅ done |
+| 3 | ~~IL2CPP 正式包重出~~ | **已完成**（A-AND-06/07/08，`9da8db9`/`2b7e927`/`88275f0`）：release 签名 `CN=ZFrame`、versionCode 单调守卫、真机补测通过 | ✅ done |
+| 4 | ~~第二轮独立代码审计~~ | **已完成**（A-AUDIT-01/02/03，9 条修 7 接受 2，含 P0 DevServer 任意网页驱动 Editor） | ✅ done |
+| 5 | ~~CI 远程化~~ | **已完成**（A-CI-01，`50d4e21`）：CI #4 绿 1m4s，云端 249/764,341；L2/L3 仍留本地 | ✅ done |
+| 6 | ~~GPU 工具链（方案 §5.7）~~ | **已完成**（B-R9-16 `724e123` + A-GPU-01 `a2a2c9e`） | ✅ done |
+| 7 | **A-R9-13 千人演练场** | B-R9-17 ABI 已就绪；简报 `Docs/Logs/TASK-A-R9-13.md` 已落盘（1000 实体混合架构、批量绘制、`ITickQueue` 驱动、10 µs 基线对照、URP 兼容约束） | **简报已备，看板 todo 待派发** |
+| 8 | **URP 侧收口** | 下方「URP 侧离线体检」给出判据：变体剥离 / SRP Batcher 兼容性 / 三档降级 / Depth-Opaque 纹理开关 | 待立项 |
+| 9 | 真机 FSR4.1 + DLSS5 / Metal 后端 | 需 RX7000/9000 独显、RTX 50 系、Apple 硬件 | 等硬件 |
+
+### URP 侧离线体检（2026-11-04，只读核对，未改任何资产）
+
+| 事实（文件 + 字段） | 判据 / 下一步 |
+|---|---|
+| `URP_Medium.asset`：`m_UseSRPBatcher: 1`、`m_MSAA: 2`、`m_RenderScale: 1`、`m_SupportsHDR: 1`、`m_ShadowDistance: 40` | SRP Batcher 开关已开，但**运行期创建的材质**（粒子 / 后处理）是否满足 CBUFFER 合并未核验 → 用 Frame Debugger 看实际 SRP Batch 数，别只看开关 |
+| `m_RequireDepthTexture: 0`、`m_RequireOpaqueTexture: 0` | 景深 / SSR 类效果当前拿不到深度与不透明纹理输入 → 按效果逐档开启并给出带宽代价，不要全局打开 |
+| `GraphicsSettings`：4 个 `*Stripping` 全 0、`m_PreloadedShaders: []`、`m_ShaderVariantLogLevel: 0`、`m_AlwaysIncludedShaders` 8 项 | A-AND-06 构建中 **URP 着色器变体 12288 个 ≈10 分钟**是明确成本中心 → 打开变体日志 → `IPreprocessShaders` 剥离 / `shader_feature` 收敛 → 用「变体数 + 构建时长」做改前改后对照，不承诺帧率 |
+| `QualitySettings` 三档：Low `antiAliasing:0` / Medium `2` / High `0` | **URP 下 MSAA 由 URP asset 接管**，QualitySettings 的 `antiAliasing` 不生效——别照这个字段判三档；降级应落在 URP_Low/Medium/High asset + Volume 档位，需实测各档 DrawCall / 带宽 / 发热 |
+| 适用边界 | 以上仅适用于 Unity 2022.3.62f3c1 + URP 14.0.11 + 780M 核显 / Android arm64；换 Unity 大版本或管线需重新判定 |
 
 ## 环境纪律速查（每条真实踩过，详见交接档案 §3）
 
@@ -302,10 +330,13 @@ CMakeLists 宣称「找不到 VULKAN_SDK 就跳过 Vulkan 目标（CI/他机友�
 
 ## 待办备忘（小）
 
+- **BGM 来源 URL 缺口**（A-R9-14 受限项）：`AUD_bgm_cave.ogg` 只有简报口径 CC0、无 URL / 许可证原文；对外发布前须查采集记录回填 `Assets/Audio/SOURCES.md`，验收未代编 URL
+- **CI token 轮换**：A-CI-01 的 PAT 曾在对话明文出现，建议吊销重发并更新 `C:\Users\1\.zframe-github-token`
+- **main 领先 origin/main**：本轮多个提交未推；推送前清 8 个代理变量（宿主透明代理对 git 大流量 502），新克隆需 `git config core.hooksPath .githooks`
 - bench 基线已 quiet 重跑闭环；`run_tests.ps1` 的 BOM（HEAD 既有）可顺手清；`TestPanelView` 随 Player 包、接缝符号名未擦（交接档案 §5 技术债）
-- 真机当前装的是 **Mono 开发包**（带红字调试文本）——演示给别人看前先出 IL2CPP 正式包
-- `shot` 目录配额 200 个文件 ≈ **1–1.6 GB**（验收折算），偏宽；可改 50 个 + 加总字节上限（一行改动）
-- DevConsole 的 **ThreadPool 线程数无看护**：accept 线程/连接槽有断言，线程计数没有；真泄漏目前没人红
+- `shot` 目录配额 200 个文件 ≈ **1–1.6 GB** 偏宽（可改 50 个 + 总字节上限）；DevConsole 的 **ThreadPool 线程数无看护**
+- `run_tests.ps1:354` 的 `cmake_probe_tmp` Permission denied 与 EditMode 僵尸 taskkill 属已知环境噪声，非回归
+- 真机当前装的是 **IL2CPP release 包**（A-AND-06 真机补测通过、无调试红字）；旧「Mono 开发包」备忘已过期
 
 ## 最近任务日志（R9-10 轮）
 

@@ -4,6 +4,10 @@
 
 | 日期 | 任务 | 结果 | commit |
 |---|---|---|---|
+| 2026-11-04 | **G-119 三任务闭环 + 八段基线 + 数字校准** | done：3 个 doing 全部闭环（含 A-R9-14 返工 1 轮）；`run_tests.ps1` 八段 **ALL PASS**（7 passed / 1 skipped，9m57s；native 311/776,716、EditMode 873、PlayMode 44、三校验器 exit 0、bench 7/7）；README/HANDOFF/TASKS/WORKLOG 漂移数字统一到实测口径；立 A-R9-13 简报（待派发）并记录 URP 侧离线体检判据 | G-119（本次治理提交） |
+| 2026-11-04 | **A-R9-14 音频实战接线** | done：接手时施工报告空白 + PlayMode 44/43/1 红。补齐六节施工报告 → 派施工返工（根因：auto-boot 单例跨三用例不销毁、TearDown 不复位的共享 AudioService 状态，只改测试 SetUp，产品代码零改动）→ 独立验收 **PASS with 受限**；验收亲自复做变异 44/44/0 → 44/43/1 → 44/44/0；三校验器 exit 0；BGM URL 缺口如实登记不编造 | c09f1ef |
+| 2026-11-04 | **A-GPU-01 性能 HUD** | done：独立验收 **PASS with 受限**（V2/V3/V4/V5 PASS，V1 批处理无法目测 F3 如实受限，V3 变异因约束未做、以静态推理 + 门禁用例为绿替代）；HUD 自身 14/14、EditMode 873/873/0；PlayMode 唯一失败经定位属并行任务 A-R9-14 污染，未记为 HUD 缺陷 | a2a2c9e / 2d80a85 |
+| 2026-11-04 | **B-R9-17 DataKernel C ABI + C# 绑定** | done：接手时验收 PASS 但代码全部未提交 → 主控按白名单精确分簇提交 30 文件（含本任务产物 `zrender.dll`，未按 §3.7 丢弃）；12 个 `ZK_*` 导出、游标式批量迭代、原生 311/776,716、EditMode 873、定向变异复红 | 2a848da |
 | 2026-11-04 | B-R9-16 GPU 工具链 | done：施工→验收 PASS（301 用例、hud/rg.export/renderdoc 三命令实测、变异复红）——§5.7 兑现 | 724e123 |
 | 2026-11-04 | A-R9-12 CommandSystem | done：施工→验收 PASS（852 用例、双栈/真实回滚、变异 2 处复红）——原始清单 17/17 满员 | fd010cb |
 | 2026-11-03 | **A-AND-08 Release 签名** | done：验收 **PASS 6/6**。debug 证书(CN=Android Debug，不可分发)→本地自签 keystore(CN=ZFrame，v2=true)。keystore/密码在仓库外；环境变量优先+properties 兜底，**缺失即中止且绝不静默退回 debug**（实测移走 properties → BuildPipeline 之前 exit=1，APK 哈希未变）。密钥隔离五路扫描 0 命中。产物 0.1.0.24/versionCode 2。另把两个 debug 签名遗留包归档到 legacy-debug-signed/ 防误分发 | 88275f0 |
