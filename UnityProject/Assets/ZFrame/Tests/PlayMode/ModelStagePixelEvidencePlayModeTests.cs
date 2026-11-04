@@ -49,6 +49,14 @@ namespace ZFrame.PlayMode.Tests
         [SetUp]
         public void SetUp()
         {
+            // A-R9-15: 群体默认开箱可见，会画进本用例架在场景内的探针相机
+            // (farClip=20, 群体圆盘半径 9 在视锥内) 且每帧积分移动。本相机差分
+            // 假设「两帧之间只有 4 个 CHR 模型开关」，故显式把群体排除在采样
+            // 之外；既有断言一字未动、不删/不放宽/不跳过、不加重试、不改容差。
+            // 可证伪：若隔离失效，控制帧/证据帧立刻被群体运动污染。
+            KernelCrowdHost.AutoEnable = false;
+            KernelCrowdHost.EnsureInstance().DisposeCrowd();
+
             ParticleRuntime.SetShaderCandidates(null);
             ParticleRuntime.Shutdown(); // shipped defaults (Enabled=true, dust on)
             ParticleRuntime.SetEnabled(true);
@@ -63,6 +71,7 @@ namespace ZFrame.PlayMode.Tests
             _rig = null;
             ParticleRuntime.SetShaderCandidates(null);
             ParticleRuntime.Shutdown();
+            KernelCrowdHost.AutoEnable = true; // 复原 A-R9-15 开箱可见默认
         }
 
         [UnityTest]

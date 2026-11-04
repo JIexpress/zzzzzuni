@@ -90,7 +90,7 @@ rm -f UnityProject/Temp/UnityLockfile
 | 8 | 存读档 | 暂停 → 回主菜单 | 离开 SCN_Game 自动存槽位 0（背包+位置）；主菜单出现"继续" |
 | 9 | 音频 | 进 Play 听 | 主菜单起 BGM（cave 主题，AudioService 交叉淡化双轨）；进 SCN_Game 走 SceneLoadedEvent→PlayBgm 切游戏轨；拾取"叮"（金币声）、门开合"吱呀"、敌人攻击"劈砍"（3D 定位）、面板弹出"咔哒"（2D）；音频页签四总线滑杆即时生效（MIX_AudioMixer 已实接） |
 | 10 | 截图证据 | —— | `Docs/Parity/demo_stage_playerview.png`（游戏相机所见）、`demo_stage_overview.png`（全景俯瞰）、`demo_stage_face_*.png` ×4（朝向标定）、`demo_stage_log.txt`（每个模型的 scale/finalSize 记录）、`demo_boot.png`（启动链） |
-| 11 | 千人演练场（可选，A-R9-13） | 进 Play 后菜单 **ZFrame/千人演练场/开启（Play Mode）** | SCN_Game 里浮现 1000 个缓慢旋转的小方块群体（DataKernel 管群体 + `Graphics.DrawMeshInstanced` 单次批量提交，不为每实体建 GameObject）；菜单「关闭」释放原生 World 句柄。英雄侧玩法手感、场景布局、既有模块零改动 |
+| 11 | 千人演练场（开箱可见，A-R9-13 建 / A-R9-15 默认可见） | 按 §1.1 进 Play → 点「开始」进 SCN_Game **即自动可见** | SCN_Game 里浮现 1000 个缓慢旋转的小方块群体（DataKernel 管群体 + `Graphics.DrawMeshInstanced` 单次批量提交，不为每实体建 GameObject）；菜单 **ZFrame/千人演练场/关闭** 可临时关闭、再「开启」恢复。英雄侧玩法手感、场景布局、既有模块零改动；A-R9-10 相机差分用例在 SetUp 显式关闭群体以隔离采样 |
 
 **真实模型舞台布局**（`Assets/Game/View/ModelStageLayout.cs`，单一事实源）：
 
@@ -273,13 +273,17 @@ ogg 入库(AUD_ 前缀) → SOURCES.md 记来源
 > 敌人 FSM 完全不变；本体验项只新增 1000 个由原生 DataKernel（B-R9-17 的
 > `ZKernelWorld` 游标 C ABI）驱动的群体实体。
 
-### 怎么开
+### 怎么开（A-R9-15 起：开箱可见，无需手动开）
 
-1. 按 §1.1 进 Play → 点「开始」进 SCN_Game。
-2. 菜单 **ZFrame/千人演练场/开启（Play Mode）**（`KernelCrowdMenu`，Editor-only）。
-   再点 **ZFrame/千人演练场/关闭** 释放群体与原生 World 句柄。
-3. 开启后 `AutoEnable=true`，之后每次经 SceneLoader 进入 SCN_Game 会自动启用；
-   离开 SCN_Game（含回主菜单）由 `SceneLoadedEvent` 门控自动 `DisposeCrowd()`。
+1. 按 §1.1 进 Play → 点「开始」进 SCN_Game，**群体即自动出现**。
+   门控按「激活场景名 == SCN_Game」判定，同时订阅 Unity 原生
+   `SceneManager.sceneLoaded` 与自定义 `SceneLoadedEvent`，覆盖全部加载路径
+   （生产 boot chain 与直接 `SceneManager.LoadSceneAsync` 都生效）。
+2. 菜单 **ZFrame/千人演练场/关闭**（`KernelCrowdMenu`，Editor-only）可临时关闭并
+   释放原生 World 句柄；再点 **开启（Play Mode）** 恢复。
+3. `AutoEnable` 默认 `true`（A-R9-13 时为 false）；离开 SCN_Game（含回主菜单）
+   自动 `DisposeCrowd()`。A-R9-10 相机差分用例在 SetUp 临时置 `AutoEnable=false`
+   并在 TearDown 复原，把群体排除在自己的像素采样之外（既有断言一字未动）。
 
 ### 看什么
 
@@ -304,10 +308,14 @@ ogg 入库(AUD_ 前缀) → SOURCES.md 记来源
 - EditMode 真 dll roundtrip：`Game/Tests/View/KernelCrowdDriverTests.cs`
   （1000 实体求和 / 迁移读回 / 销毁句柄失效 / 坏 compId 拒绝 / 分段耗时）。
 - PlayMode：`ZFrame/Tests/PlayMode/KernelCrowdPlayModeTests.cs`
-  （1000 实例 1 次提交、100 vs 1000 实体 A/B、英雄 FSM 不回归、句柄不泄漏）。
-- **默认不自动启用**：`AutoEnable=false`，避免干扰 A-R9-10 的 SCN_Game 相机
-  像素差分用例；需人工点菜单开启（批处理 `-batchmode` 无渲染负载下真实
-  GPU DrawCall / 像素取不到可信值，已在 `TASK-A-R9-13.md` 施工报告如实标受限）。
+  （1000 实例 1 次提交、100 vs 1000 实体 A/B、英雄 FSM 不回归、句柄不泄漏）；
+  `KernelCrowdPixelEvidencePlayModeTests.cs`（A-R9-15：进 SCN_Game 默认可见真断言
+  + 真实像素证据两图 + 变化像素数 / 占比 / 阈值）。
+- **真实像素证据（A-R9-15）**：`Docs/Parity/crowd_r9_15_off.png` /
+  `crowd_r9_15_on.png`，URP 相机 `RenderTexture` + `ReadPixels` 读回的真实 RGB，
+  一次运行内开 / 关 A/B 差分；测量方式 / 阈值 / 数字见 `TASK-A-R9-15.md` 施工报告。
+- 批处理 `-batchmode` 下真实 GPU DrawCall 用 `ProfilerRecorder` 尽力采样，
+  取不到可信值就如实标受限（不把「1 次提交调用」当像素证据）。
 - IL2CPP / Android 上的 P/Invoke 与 `unmanaged` 泛型未验证（需另立真机包任务）。
 
 ## 4. 当前能力全清单（2026-10-31）
@@ -392,7 +400,7 @@ StageScreenshot（本任务新增）+ ConfigWorkbench + UI 校验器 +
     `BgmIdForScene` 加一行（§3.5 第 2 步）。
 14. **BGM 的 `AUD_bgm_cave.ogg` 来源 URL 缺失**：主控采集入库时未随附
     URL（简报口径 CC0）；SOURCES.md 已如实标注，补 URL 需查主控采集记录。
-15. **千人演练场非开箱即用（A-R9-13）**：`AutoEnable` 默认 false，需 Play Mode
-    里点菜单开启（否则会干扰既有 SCN_Game 像素证据用例）；批处理下真实
-    DrawCall 不可信，只有「渲染提交次数」是可证的静态证据；URP 实例化上限
-    在真机/IL2CPP 上未逐一探测。
+15. **千人演练场已在 A-R9-15 改为开箱可见**：`AutoEnable` 默认 true，进 SCN_Game
+    自动出现；A-R9-10 相机差分用例改为在 SetUp 显式关闭群体隔离采样（断言未动）。
+    真实 GPU DrawCall 在 `-batchmode` 仍取不到可信值（只有「1 次提交调用」是
+    静态证据，像素证据另见 §3.6 两图）；URP 实例化上限在真机/IL2CPP 上未逐一探测。
