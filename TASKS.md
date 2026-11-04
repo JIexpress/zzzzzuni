@@ -81,7 +81,7 @@
 | R10-06 | A/R10 | 修复审计P2 C#批(A-9相机还原) | done(验收PASS with受限 6/6；EditMode 719) | Docs/Logs/TASK-R10-06.md | fa671ba |
 | R10-07 | B/R10 | 补审计漏项(A-10 split屏障 + B-6 采集泄漏) | done(验收PASS with受限 10/10；native 253/711,537) | Docs/Logs/TASK-R10-07.md | 98d377b |
 
-**统计**：done 100 ／ doing 0 ／ todo 1（A-R9-13，简报已备待派发）／ blocked 0 ／ held 0（审计 9 条：修 7 + 明确接受 2）（按看板行数计；2026-11-04 主控三任务闭环后校正）
+**统计**：done 100 ／ doing 1（A-R9-13）／ todo 0 ／ blocked 0 ／ held 0（审计 9 条：修 7 + 明确接受 2）（按看板行数计；2026-11-04 A-R9-13 派发后校正）
 
 > **2026-10-28 G-64 文档对齐（接管）**：修三处失真 ①R8 六行原被追加在「里程碑对照」标题**下方**导致表格断裂、`B-R8-03` 仍挂 `doing`（实际已 PASS，commit `be2adcf`）——已并入主表并改正状态
 > ②`HANDOFF.md` 表头仍写「R8 推进 3/4、B-R8-02 待派」（实际 47 任务全闭环）③`README.md` 与 HANDOFF 注意事项里的任务数/用例数/`TestReport.txt` 是否入库均过期。
@@ -147,4 +147,4 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | B-R9-16 | B/R9 | GPU 工具链(HUD/RenderDoc/RG导出) | done(验收PASS;301用例) | Docs/Logs/TASK-B-R9-16.md | 724e123 |
 | B-R9-17 | B/R9 | DataKernel C ABI+C# 绑定(玩法通道) | done(验收 PASS V1–V5；12 个 ZK_* 导出/游标迭代/变异复红；原生 311、EditMode 873) | Docs/Logs/TASK-B-R9-17.md | 2a848da |
 | A-R9-14 | A/R9 | 音频打磨包(SFX 入库+事件接线) | done(返工 1 轮后独立验收 PASS with 受限；PlayMode 44/44/0；验收亲自复做变异；BGM URL 缺口如实登记) | Docs/Logs/TASK-A-R9-14.md | c09f1ef |
-| A-R9-13 | A/R9 | 千人演练场：DataKernel 玩法侧规模化(混合架构) | todo(简报已备，待派发；前置 B-R9-17 已闭环) | Docs/Logs/TASK-A-R9-13.md | — |
+| A-R9-13 | A/R9 | 千人演练场：DataKernel 玩法侧规模化(混合架构) | doing(2026-11-04 派发；施工 builder-r9-13 / 验收 verifier-r9-13，须不同代理) | Docs/Logs/TASK-A-R9-13.md | — |
