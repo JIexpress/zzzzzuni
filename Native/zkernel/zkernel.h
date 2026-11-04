@@ -252,6 +252,32 @@ public:
     /// 迁移成本统计快照（migrations/rowsMoved/bytesMoved，语义见 ZkWorldStats）
     ZkWorldStats Stats() const;
 
+    // ---- TASK-B-R9-17：ABI 支撑查询（只读；C ABI 层的校验/游标失效判定用）----
+    /// 实体是否存活（槽位存在、代际匹配、未销毁）。
+    bool IsAlive(ZkEntity e) const;
+    /// 组件是否已注册。
+    bool IsComponentRegistered(uint32_t compId) const;
+    /// 实体当前掩码是否包含该组件（句柄无效 / 组件未注册返回 false）。
+    bool HasComponent(ZkEntity e, uint32_t compId) const;
+    /// 组件注册字节数（未注册返回 0）。
+    uint32_t ComponentSize(uint32_t compId) const;
+    /// 布局版本号：Spawn/Destroy/Add/Remove（含批量）/Compact 每成功变更一次
+    /// +1（只读查询不变更）。跨调用游标据此判定"Begin 后布局是否被动过"。
+    uint64_t LayoutVersion() const;
+
+    /// 游标式批量迭代单步（TASK-B-R9-17：EachBatches 的跨调用形态，供 C ABI
+    /// 层驱动；扫描序与 EachBatches 逐 chunk 一致：archetype 向量序 → chunk 序）。
+    /// 输入 *ioArch/*ioChunk/*ioRowsLeft 为游标位置（*ioRowsLeft == 0 表示当前
+    /// archetype 已耗尽，从 *ioArch 起扫描下一个匹配且非空的 archetype）；命中时
+    /// 填 outCols（with 升序位序各列在本 chunk 的起始指针，容量 maxCols >= 位列
+    /// 数）与 *outRows（本 chunk 行数），并推进游标位置（当前 archetype 耗尽时
+    /// *ioArch 指向下一个待扫描 archetype）；无可交付行返回 false（出参内容
+    /// *io* 保持不变，调用方按耗尽处理）。
+    /// 只读操作：不触发布局、不进 iterating 计数；调用方约定扫描期间无布局变更
+    /// （C ABI 层以布局版本号快照防护）。
+    bool ScanChunk(const Mask128& with, uint32_t maxCols, uint32_t* ioArch, uint32_t* ioChunk,
+        uint32_t* ioRowsLeft, void** outCols, uint32_t* outRows) const;
+
 private:
     /// 批回调类型（C 函数指针 + 用户上下文；无捕获 lambda 转换零分配）
     using ZkBatchFn = void (*)(void* user, void** comps, uint32_t rowCount);

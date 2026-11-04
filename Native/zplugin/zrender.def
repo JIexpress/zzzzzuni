@@ -6,6 +6,7 @@
 ; TASK-B-R4-01 新增：.zmesh 加载 C ABI（句柄式）三导出。
 ; TASK-B-R6-02 新增：超分设置 C ABI 三导出（SetPreferred/GetActive/QueryCaps）。
 ; TASK-B-R9-02 新增：FG 输入（depth/MV）交接校验两导出。
+; TASK-B-R9-17 新增：DataKernel World C ABI 十二导出（句柄表 + Copy 语义 + 游标迭代）。
 LIBRARY zrender
 EXPORTS
     ZR_ApiVersion
@@ -19,3 +20,15 @@ EXPORTS
     ZR_Upscaler_QueryCaps
     ZR_FrameGen_InputBytesPerPixel
     ZR_FrameGen_ValidateInputs
+    ZK_WorldCreate
+    ZK_WorldDestroy
+    ZK_RegisterComponent
+    ZK_Spawn
+    ZK_Destroy
+    ZK_SetComponent
+    ZK_GetComponent
+    ZK_AddComponent
+    ZK_RemoveComponent
+    ZK_EachBatchBegin
+    ZK_EachBatchNext
+    ZK_WorldStats

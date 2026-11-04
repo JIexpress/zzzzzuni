@@ -182,7 +182,10 @@ if(ZR_HAS_VULKAN)
     add_custom_target(vulkan_shaders DEPENDS ${ZR_SPV_OUTPUTS})
 endif()
 
-add_library(zkernel      STATIC zkernel/zkernel.cpp)
+add_library(zkernel      STATIC
+    zkernel/zkernel.cpp
+    zkernel/zkernel_abi.cpp # TASK-B-R9-17：World 句柄式 C ABI（进 zrender.dll 导出表）
+)
 add_library(zrhi         STATIC
     zrhi/zrhi.cpp
     zrhi/zrhi_handles.cpp
@@ -292,6 +295,7 @@ add_executable(zrender_test
     tests/test_zkernel_datakernel.cpp
     tests/test_zkernel_migrate.cpp # TASK-B-R8-03：架构型迁移 + chunk 收缩单测（五类场景）
     tests/test_zkernel_parallel.cpp # TASK-B-R9-12：EachParallel 并行查询（等价/负载/禁改防护/压测；std::thread 为 C++17 标准库，MSVC 无需额外链接）
+    tests/test_zkernel_abi.cpp # TASK-B-R9-17：C ABI 全往返/游标跨 chunk/坏句柄坏 size
     tests/test_zrhi_types.cpp
     tests/test_zrhi_handles.cpp
     tests/test_zrhi_d3d12_translate.cpp

@@ -97,6 +97,11 @@ struct ZkWorld::Impl {
     // 默认 seq_cst 开销可忽略。
     std::atomic<uint32_t> iterating{0};
     ZkWorldStats stats{}; // 迁移成本统计（TASK-B-R8-03）
+    // 布局版本号（TASK-B-R9-17）：Spawn/Destroy/Add/Remove/Compact 每成功变更 +1。
+    // C ABI 游标（zkernel_abi.h）在 Begin 时快照本值，Next 时比对——跨调用迭代
+    // 期间无法用 iterating 计数锁住布局（游标在调用方手里），改用版本号作废：
+    // 布局动过 = 游标看到的行映射已失效 = 拒绝继续推进。
+    uint64_t layoutVersion = 0;
 
     uint32_t compSize[ZK_MAX_COMPONENTS] = {};
     uint32_t compAlign[ZK_MAX_COMPONENTS] = {};
@@ -284,6 +289,7 @@ ZkEntity ZkWorld::Spawn(Mask128 mask)
     w.rowOf[slot] = row;
     a.rowEntity[row] = slot;
     w.alive += 1;
+    w.layoutVersion += 1; // TASK-B-R9-17：布局变更（ABI 游标失效判定）
     return ZkEntity{slot, w.generation[slot]};
 }
 
@@ -312,6 +318,7 @@ bool ZkWorld::Destroy(ZkEntity e)
     w.generation[idx] += 1; // 旧句柄自此失配
     w.freeSlots.push_back(idx);
     w.alive -= 1;
+    w.layoutVersion += 1; // TASK-B-R9-17：布局变更（ABI 游标失效判定）
     return true;
 }
 
@@ -403,6 +410,7 @@ bool ZkWorld::MigrateComponent(
     w.stats.migrations += 1;
     w.stats.rowsMoved += 1u + (swapBytes != 0ull ? 1u : 0u);
     w.stats.bytesMoved += bytes + swapBytes;
+    w.layoutVersion += 1; // TASK-B-R9-17：布局变更（Add/Remove/批量共用迁移核心）
     return true;
 }
 
@@ -711,6 +719,9 @@ uint32_t ZkWorld::Compact()
         // 行->实体映射同步收缩（只缩 size 不缩 capacity：后续 Spawn 复用免重分配）
         a.rowEntity.resize(static_cast<size_t>(a.chunks.size()) * a.capacity);
     }
+    if (freed != 0u) {
+        w.layoutVersion += 1; // TASK-B-R9-17：chunk 存储被释放（ABI 游标失效判定）
+    }
     return freed;
 }
 
@@ -724,3 +735,99 @@ uint32_t ZkWorld::ChunkCount() const
 }
 
 ZkWorldStats ZkWorld::Stats() const { return m_impl->stats; }
+
+// =============================================================================
+// ABI 支撑查询（TASK-B-R9-17）：只读校验助手 + 布局版本号
+// =============================================================================
+bool ZkWorld::IsAlive(ZkEntity e) const
+{
+    const Impl& w = *m_impl;
+    if (e.index >= w.generation.size()) {
+        return false;
+    }
+    return w.generation[e.index] == e.generation && w.archOf[e.index] >= 0;
+}
+
+bool ZkWorld::IsComponentRegistered(uint32_t compId) const
+{
+    if (compId >= ZK_MAX_COMPONENTS) {
+        return false;
+    }
+    return m_impl->compRegistered[compId];
+}
+
+bool ZkWorld::HasComponent(ZkEntity e, uint32_t compId) const
+{
+    const Impl& w = *m_impl;
+    if (!IsAlive(e) || compId >= ZK_MAX_COMPONENTS || !w.compRegistered[compId]) {
+        return false;
+    }
+    return w.archetypes[static_cast<size_t>(w.archOf[e.index])].mask.Has(compId);
+}
+
+uint32_t ZkWorld::ComponentSize(uint32_t compId) const
+{
+    if (compId >= ZK_MAX_COMPONENTS || !m_impl->compRegistered[compId]) {
+        return 0;
+    }
+    return m_impl->compSize[compId];
+}
+
+uint64_t ZkWorld::LayoutVersion() const { return m_impl->layoutVersion; }
+
+bool ZkWorld::ScanChunk(const Mask128& with, uint32_t maxCols, uint32_t* ioArch, uint32_t* ioChunk,
+    uint32_t* ioRowsLeft, void** outCols, uint32_t* outRows) const
+{
+    const Impl& w = *m_impl;
+    uint32_t withBits[ZK_MAX_COMPONENTS];
+    const uint32_t withCount = ZkListBits(with, withBits); // 升序枚举 = 列序
+    if (withCount > maxCols) {
+        return false; // 出参容量不足（ABI 层已先行校验，此处防御兜底）
+    }
+
+    // ---- 定位（archetype, chunk）------------------------------------------
+    uint32_t arch = *ioArch;
+    uint32_t rowsLeft = *ioRowsLeft;
+    uint32_t chunkIdx = *ioChunk;
+    if (rowsLeft == 0u) {
+        const uint32_t archCount = static_cast<uint32_t>(w.archetypes.size());
+        bool found = false;
+        while (arch < archCount) {
+            const Impl::Archetype& a = w.archetypes[arch];
+            if (a.count != 0u && a.mask.Contains(with)) { // 空 archetype 跳过
+                rowsLeft = a.count;
+                chunkIdx = 0;
+                found = true;
+                break;
+            }
+            ++arch;
+        }
+        if (!found) {
+            return false; // 穷尽
+        }
+    }
+
+    // ---- 交付本 chunk（与 EachBatches 相同的 n = min(剩余, 容量) 语义）------
+    const Impl::Archetype& a = w.archetypes[arch];
+    const uint32_t n = (rowsLeft < a.capacity) ? rowsLeft : a.capacity;
+    char* base = static_cast<char*>(a.chunks[chunkIdx].data); // data 本体非 const（只读使用）
+    for (uint32_t j = 0; j < withCount; ++j) {
+        const uint32_t slot = ZkBitsBelow(a.mask, withBits[j]); // POPCNT 定位
+        outCols[j] = base + a.columnOffset[slot];
+    }
+    *outRows = n;
+
+    // ---- 推进游标位置（耗尽时 ioArch 指向下一个待扫描 archetype）-----------
+    rowsLeft -= n;
+    chunkIdx += 1;
+    if (rowsLeft == 0u) {
+        *ioArch = arch + 1u;
+        *ioChunk = 0u;
+        *ioRowsLeft = 0u;
+    } else {
+        *ioArch = arch;
+        *ioChunk = chunkIdx;
+        *ioRowsLeft = rowsLeft;
+    }
+    return true;
+}
