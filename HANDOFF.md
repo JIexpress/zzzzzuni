@@ -3,21 +3,30 @@
 > 唯一权威状态源。每任务闭环后由主控刷新。接管者先读本文件，再读 `Docs/交接档案.md`（路线图+环境坑+技术债），再读 TASKS.md。
 > 历史交接记录（R8/R9/R10 各轮）已归档于 git 历史（`git show G-113:HANDOFF.md`），WORKLOG.md 有全部 85+ 任务索引。
 
-**快照时间**: 2026-11-04 20:40（**三任务闭环 + 八段基线 ALL PASS；工作区干净**）｜**刷新者**: 主控（WorkBuddy / Hy）｜**仓库**: `C:\Users\1\Desktop\zcode\GameFramework`
+**快照时间**: 2026-11-04（**A-R9-13 闭环；远端 main 已推送；工作区干净**）｜**刷新者**: 主控（WorkBuddy / Hy）｜**仓库**: `C:\Users\1\Desktop\zcode\GameFramework`
 
 ## 三十秒速览
 
 | 项 | 值 |
 |---|---|
-| 任务看板 | **100 done / 0 doing / 1 todo（A-R9-13）/ 0 blocked**（TASKS.md） |
-| 测试家底 | 原生 **311 用例 / 776,716 断言** + EditMode **873** + PlayMode **44** = **1228 用例全绿**；三校验器 exit 0；bench 7/7 在容差内；player 默认 SKIP |
-| 一键全量 | `powershell -NoProfile -ExecutionPolicy Bypass -File Tools/run_tests.ps1`（八段：native/editmode/playmode/arch/config/naming/bench/player；2026-11-04 实跑 9m57s ALL PASS） |
+| 任务看板 | **101 done / 0 doing / 1 todo（A-R9-15）/ 0 blocked**（TASKS.md） |
+| 测试家底 | 原生 **311 用例 / 776,716 断言** + EditMode **880** + PlayMode **46** = **1237 用例全绿**；三校验器 exit 0；bench 7/7 在容差内；player 默认 SKIP |
+| 一键全量 | `powershell -NoProfile -ExecutionPolicy Bypass -File Tools/run_tests.ps1`（八段；2026-11-04 实跑 9m57s ALL PASS，A-R9-13 验收另跑五段全绿） |
 | 一键出包 | `Tools/build_player.ps1`（Windows，版本单源 Tools/version.json 自增）；`Tools/build_android.ps1`（Android APK） |
-| 最新里程碑 | **B-R9-17 DataKernel C ABI / A-GPU-01 性能 HUD / A-R9-14 音频实战三任务闭环**，八段基线全绿；A-R9-13 千人演练场简报已备待派发 |
+| 最新里程碑 | **A-R9-13 千人演练场闭环**：1000 实体走 DataKernel C ABI + 单次 `DrawMeshInstanced`；URP 14 兼容、英雄侧零改动。远端 `origin/main` 已推送 |
 
 ## 一句话现状
 
-方案承诺 + 两轮增强全部闭环：A 轨框架+垂直切片+**真机可玩**，B 轨渲染内核+双后端（D3D12/Vulkan 全特性 maxDelta=0）+超分全家桶+帧生成；A-AND / A-DEV / A-AUDIT / A-CI 各轮均已闭环。**2026-11-04 接手时 3 个 doing、工作区 13 M + 33 ?? 的未完成现场已全部收口**，工作区干净、0 doing。下一次派发见「下一步优先级」（A-R9-13 简报已备）。
+方案承诺 + 两轮增强全部闭环：A 轨框架+垂直切片+**真机可玩**，B 轨渲染内核+双后端（D3D12/Vulkan 全特性 maxDelta=0）+超分全家桶+帧生成；A-AND / A-DEV / A-AUDIT / A-CI / A-R9-13 各轮均已闭环。**2026-11-04 接手时 3 个 doing、13 M + 33 ?? 的未完成现场已全部收口**，DataKernel 玩法侧缺口补齐，工作区干净、0 doing、远端已推。下一次派发见「下一步优先级」（A-R9-15 承接 A-R9-13 的可见性受限项）。
+
+## ✅ 最近完成（2026-11-04 晚，远端推送 + A-R9-13 千人演练场闭环）
+
+- **远端推送**：`origin/main` 从 `3803e98` 推到 `33fb0ed`（清 8 个代理变量后一次成功）；本轮后续提交的推送状态一律以 `git log origin/main` 为准。
+  ⚠️ 用户提供的 `gh仓库.txt` 里的令牌与仓内现有凭据**逐字节相同**，并非新令牌；一次 `ls-remote` 验证遇 `Failed to connect to github.com:443` 网络干扰（**非认证失败**，推送本身已成功），保守脚本回滚后内容未变。**「token 轮换」待办仍成立**：需在 GitHub 生成一枚真正的新 PAT（`repo` + **`workflow`** 两个 scope，历史上缺 `workflow` 被拒过）并吊销旧令牌。
+- **A-R9-13 千人演练场**（`5f49a42`，独立验收 **PASS with 受限**）：3 个 `unmanaged` 组件 + 单个 `ZKernelWorld` 管 1000 实体；`ITickQueue` Logic 档 `EachBatches` 游标读→积分→`SetComponent` 回写，View 档 `Graphics.DrawMeshInstanced` 单次提交（URP/Lit 运行期材质、零资产）；场景门控 `Dispose()`。英雄侧 FSM / 场景布局 / 既有模块零改动。
+  - 独立实跑：EditMode **880/880/0**、PlayMode **46/46/0**、arch/config/naming exit 0、native 311/776,716 持平；验收亲自复做变异 `46/46/0 → 46/45/1 → 46/46/0`（把批量绘制改回逐实体提交，红用例 `Crowd_1000Entities_SingleSubmit_And_HeroFsmNotRegressed`）。
+  - 分段耗时（QUIET 护栏、同一次运行内）：只读游标 **9.3 µs**（B-R9-17 基线 10.0 µs）、内核迭代 782 µs（1000 次 `SetComponent` P/Invoke 增量，非游标退化）、渲染提交 71.4 µs/帧；100 vs 1000 实体 A/B 提交次数均 **1**。
+  - **受限（已立 A-R9-15）**：`AutoEnable` 默认 false → 「进 SCN_Game 即群体可见」未开箱达成，PlayMode 用例是显式 `EnsureCrowd()`，只证组件/提交层；`-batchmode` 无渲染负载，真实 GPU DrawCall / 像素可见性未取证；IL2CPP/Android 的 P/Invoke 未验；URP 14 单次实例化上限（文档 1023）未逐一探测。`Game.View.asmdef` 用 `GUID:` 形式引用 `ZFrame.Render.Bindings`，架构校验器接受（exit 0），但属「忽略前缀」而非显式验证。
 
 ## ✅ 最近完成（2026-11-04，三任务闭环 + 八段基线全绿）
 
@@ -289,7 +298,7 @@ CMakeLists 宣称「找不到 VULKAN_SDK 就跳过 Vulkan 目标（CI/他机友�
 
 ## 接管者动作序列
 
-1. `git log --oneline -5` + `git status`（应干净，HEAD `c09f1ef` 或更新；本轮治理提交后再看 git log）
+1. `git log --oneline -5` + `git status`（应干净，HEAD `5f49a42` 或更新；本轮治理提交后再看 git log）
 2. 读 `Docs/交接档案.md`（三十秒速览/环境坑/治理规则——**注意其 §0/§2 数字是 10-29 版，看板数字以 TASKS.md 与本文件为准**）
 3. 领任务：从下方"下一步优先级"写简报（模板见任一 Docs/Logs/TASK-*.md）→ 派施工代理 → 派**不同**验收代理 → PASS 后 commit（`TASK-XXX: 摘要`）→ 刷新 TASKS/WORKLOG/HANDOFF → governance commit
 4. 历史教训与环境纪律全部在 交接档案 §3（每条都真实踩过）+ 本文件"环境纪律速查"
@@ -304,9 +313,10 @@ CMakeLists 宣称「找不到 VULKAN_SDK 就跳过 Vulkan 目标（CI/他机友�
 | 4 | ~~第二轮独立代码审计~~ | **已完成**（A-AUDIT-01/02/03，9 条修 7 接受 2，含 P0 DevServer 任意网页驱动 Editor） | ✅ done |
 | 5 | ~~CI 远程化~~ | **已完成**（A-CI-01，`50d4e21`）：CI #4 绿 1m4s，云端 249/764,341；L2/L3 仍留本地 | ✅ done |
 | 6 | ~~GPU 工具链（方案 §5.7）~~ | **已完成**（B-R9-16 `724e123` + A-GPU-01 `a2a2c9e`） | ✅ done |
-| 7 | **A-R9-13 千人演练场** | B-R9-17 ABI 已就绪；简报 `Docs/Logs/TASK-A-R9-13.md` 已落盘（1000 实体混合架构、批量绘制、`ITickQueue` 驱动、10 µs 基线对照、URP 兼容约束） | **简报已备，看板 todo 待派发** |
-| 8 | **URP 侧收口** | 下方「URP 侧离线体检」给出判据：变体剥离 / SRP Batcher 兼容性 / 三档降级 / Depth-Opaque 纹理开关 | 待立项 |
-| 9 | 真机 FSR4.1 + DLSS5 / Metal 后端 | 需 RX7000/9000 独显、RTX 50 系、Apple 硬件 | 等硬件 |
+| 7 | ~~A-R9-13 千人演练场~~ | **已完成**（`5f49a42`）：1000 实体混合架构 + 单次批量绘制，验收 PASS with 受限；受限项转 A-R9-15 | ✅ done |
+| 8 | **A-R9-15 群体开箱可见 + 像素回归** | 打开 `AutoEnable` 并补真实像素证据；**会牵动 A-R9-10 相机差分用例**，须先协调再改 | todo（看板已建行） |
+| 9 | **URP 侧收口** | 下方「URP 侧离线体检」给出判据：变体剥离 / SRP Batcher 兼容性 / 三档降级 / Depth-Opaque 纹理开关 | 待立项 |
+| 10 | 真机 FSR4.1 + DLSS5 / Metal 后端 | 需 RX7000/9000 独显、RTX 50 系、Apple 硬件 | 等硬件 |
 
 ### URP 侧离线体检（2026-11-04，只读核对，未改任何资产）
 
@@ -331,8 +341,9 @@ CMakeLists 宣称「找不到 VULKAN_SDK 就跳过 Vulkan 目标（CI/他机友�
 ## 待办备忘（小）
 
 - **BGM 来源 URL 缺口**（A-R9-14 受限项）：`AUD_bgm_cave.ogg` 只有简报口径 CC0、无 URL / 许可证原文；对外发布前须查采集记录回填 `Assets/Audio/SOURCES.md`，验收未代编 URL
-- **CI token 轮换**：A-CI-01 的 PAT 曾在对话明文出现，建议吊销重发并更新 `C:\Users\1\.zframe-github-token`
-- **main 领先 origin/main**：本轮多个提交未推；推送前清 8 个代理变量（宿主透明代理对 git 大流量 502），新克隆需 `git config core.hooksPath .githooks`
+- **CI token 轮换（仍未完成）**：用户提供的 `gh仓库.txt` 令牌与现有凭据逐字节相同，不是新令牌；须在 GitHub 生成新 PAT（`repo` + `workflow` 两个 scope）并吊销旧的，再更新 `~/.git-credentials` 与 `C:\Users\1\.zframe-github-token`
+- **A-R9-13 可见性受限**：`AutoEnable` 默认 false，群体需编辑器菜单手动开启；「开箱可见 + 真实像素证据」由 A-R9-15 承接
+- **推送纪律**：本轮提交是否已在远端以 `git log origin/main` 为准；推送前清 8 个代理变量（宿主透明代理对 git 大流量 502），新克隆需 `git config core.hooksPath .githooks`
 - bench 基线已 quiet 重跑闭环；`run_tests.ps1` 的 BOM（HEAD 既有）可顺手清；`TestPanelView` 随 Player 包、接缝符号名未擦（交接档案 §5 技术债）
 - `shot` 目录配额 200 个文件 ≈ **1–1.6 GB** 偏宽（可改 50 个 + 总字节上限）；DevConsole 的 **ThreadPool 线程数无看护**
 - `run_tests.ps1:354` 的 `cmake_probe_tmp` Permission denied 与 EditMode 僵尸 taskkill 属已知环境噪声，非回归

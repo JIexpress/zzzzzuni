@@ -4,6 +4,8 @@
 
 | 日期 | 任务 | 结果 | commit |
 |---|---|---|---|
+| 2026-11-04 | **G-121 A-R9-13 闭环 + 数字再校准** | done：A-R9-13 闭环并立 A-R9-15 承接受限项；README/HANDOFF/TASKS/WORKLOG 统一到 EditMode 880 / PlayMode 46 / 101 done | G-121（本次治理提交） |
+| 2026-11-04 | **A-R9-13 千人演练场（DataKernel 玩法侧）** | done：3 个 unmanaged 组件 + 单个 `ZKernelWorld` 管 1000 实体，`ITickQueue` Logic 游标迭代 / View 单次 `DrawMeshInstanced`（100 vs 1000 均 1 次提交、URP 兼容、零资产）；独立验收 **PASS with 受限**——EditMode 880/880/0、PlayMode 46/46/0、三校验器 exit 0、native 311 持平；验收亲自复做变异 46/46/0→46/45/1→46/46/0。**受限**：AutoEnable 默认 false 使「群体可见」未开箱达成（用例显式 EnsureCrowd，只证组件/提交层）、真实 GPU DrawCall 与像素未取证、IL2CPP/Android 未验、URP 1023 实例上限未探测 → 立 A-R9-15 | 5f49a42 |
 | 2026-11-04 | **G-119 三任务闭环 + 八段基线 + 数字校准** | done：3 个 doing 全部闭环（含 A-R9-14 返工 1 轮）；`run_tests.ps1` 八段 **ALL PASS**（7 passed / 1 skipped，9m57s；native 311/776,716、EditMode 873、PlayMode 44、三校验器 exit 0、bench 7/7）；README/HANDOFF/TASKS/WORKLOG 漂移数字统一到实测口径；立 A-R9-13 简报（待派发）并记录 URP 侧离线体检判据 | G-119（本次治理提交） |
 | 2026-11-04 | **A-R9-14 音频实战接线** | done：接手时施工报告空白 + PlayMode 44/43/1 红。补齐六节施工报告 → 派施工返工（根因：auto-boot 单例跨三用例不销毁、TearDown 不复位的共享 AudioService 状态，只改测试 SetUp，产品代码零改动）→ 独立验收 **PASS with 受限**；验收亲自复做变异 44/44/0 → 44/43/1 → 44/44/0；三校验器 exit 0；BGM URL 缺口如实登记不编造 | c09f1ef |
 | 2026-11-04 | **A-GPU-01 性能 HUD** | done：独立验收 **PASS with 受限**（V2/V3/V4/V5 PASS，V1 批处理无法目测 F3 如实受限，V3 变异因约束未做、以静态推理 + 门禁用例为绿替代）；HUD 自身 14/14、EditMode 873/873/0；PlayMode 唯一失败经定位属并行任务 A-R9-14 污染，未记为 HUD 缺陷 | a2a2c9e / 2d80a85 |
