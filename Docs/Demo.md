@@ -1,11 +1,12 @@
-# Demo —— ZFrame 垂直切片 + 真实模型舞台（R9-10 换代，TASK-A-R9-10）
+# Demo —— ZFrame 垂直切片 + 真实模型舞台（R9-10 换代，TASK-A-R9-10；R9-14 补音频段）
 
 > 本文档描述"能跑能玩"的垂直切片：Boot 场景全启动链 → 主菜单 →
 > SCN_Game（移动/交互/敌人/拾取/暂停/设置/存读档 + **4 人物围圈 + 6 环境
-> props 的真实模型舞台**）→ 回主菜单。
+> props 的真实模型舞台** + **事件驱动 BGM/SFX**）→ 回主菜单。
 > 上一版（M4-02，2026-10-25）记录在 git 历史；本版以 2026-10-31 实测为准
 > （证据：`Docs/Parity/demo_stage_*.png`、`Docs/Parity/demo_stage_log.txt`、
-> `Docs/Logs/TASK-A-R9-10.md`）。
+> `Docs/Logs/TASK-A-R9-10.md`；音频部分以 2026-11-04 实测为准，
+> 见 `Docs/Logs/TASK-A-R9-14.md` 与 §3.5）。
 
 ## 1. 怎么跑
 
@@ -87,7 +88,8 @@ rm -f UnityProject/Temp/UnityLockfile
 | 6 | 暂停 | **Esc** | 暂停面板；玩家与敌人停止移动；再按恢复 |
 | 7 | 设置 | 主菜单/暂停面板点"设置" | 五页签：画面（超分五选项 + 画质档/DRS/帧率目标 + 插帧开关）、操作（重绑定）、音频、辅助、其他；"应用并关闭"持久化 |
 | 8 | 存读档 | 暂停 → 回主菜单 | 离开 SCN_Game 自动存槽位 0（背包+位置）；主菜单出现"继续" |
-| 9 | 截图证据 | —— | `Docs/Parity/demo_stage_playerview.png`（游戏相机所见）、`demo_stage_overview.png`（全景俯瞰）、`demo_stage_face_*.png` ×4（朝向标定）、`demo_stage_log.txt`（每个模型的 scale/finalSize 记录）、`demo_boot.png`（启动链） |
+| 9 | 音频 | 进 Play 听 | 主菜单起 BGM（cave 主题，AudioService 交叉淡化双轨）；进 SCN_Game 走 SceneLoadedEvent→PlayBgm 切游戏轨；拾取"叮"（金币声）、门开合"吱呀"、敌人攻击"劈砍"（3D 定位）、面板弹出"咔哒"（2D）；音频页签四总线滑杆即时生效（MIX_AudioMixer 已实接） |
+| 10 | 截图证据 | —— | `Docs/Parity/demo_stage_playerview.png`（游戏相机所见）、`demo_stage_overview.png`（全景俯瞰）、`demo_stage_face_*.png` ×4（朝向标定）、`demo_stage_log.txt`（每个模型的 scale/finalSize 记录）、`demo_boot.png`（启动链） |
 
 **真实模型舞台布局**（`Assets/Game/View/ModelStageLayout.cs`，单一事实源）：
 
@@ -215,6 +217,55 @@ FBX 入库(命名+来源) → ModelAssetSetup(导入设置+MAT_)
   → (可选) ZMeshBaker → .zmesh 进 ZRender
 ```
 
+## 3.5 如何添加一个新音效（音频段，TASK-A-R9-14 实路）
+
+> 以下每一步都是本任务（A-R9-14）真实执行过的路径。现状：BGM 一首
+> （`AUD_bgm_cave.ogg`）、SFX 四枚（pickup/door/hit/ui_click，全部 CC0）。
+> 键→文件映射只有一个规则（`AudioService.AssetPrefix`）：
+> 资源键 `sfx_pickup` → 资产文件 `Assets/Audio/Resources/AUD_sfx_pickup.ogg`
+> ——键保持 `bgm_/sfx_` 前缀（API 稳定），文件按命名规范带 `AUD_`。
+
+### 第 0 步：放文件
+
+把 ogg/wav（Unity 原生支持，单文件 ≤2MB）拷进
+`UnityProject/Assets/Audio/Resources/`，命名 `AUD_sfx_<名>.ogg`
+（命名校验器查 `AUD_` 前缀；`.meta` 由 Unity 首次导入自动生成，
+必须与音频一起提交）。
+
+### 第 1 步：记来源
+
+`Assets/Audio/SOURCES.md` 表里加一行：文件、来源 URL、许可证
+（CC-BY 对外发布需署名）。原始 zip 包留在 `_asset_staging/`（gitignore，不入库）。
+
+### 第 2 步：事件接线
+
+`Assets/Game/View/Effects/GameAudioBindings.cs`——所有声音只从这里出
+（Domain 层零音频引用是架构校验器红线）：
+
+- 世界事件：照 `OnItemPickedUp` 的写法加一个 `EventBus.Subscribe<T>(OnX)`
+  + `RequestSfx("<名>", ToWorld(evt.Position), "x:...")`（EventScope 统一回收）；
+- UI 声：`RequestSfx("<名>", null, ...)`（2D）；
+- BGM：新曲目是 `AUD_bgm_<名>.ogg` 入库后，把 `BgmIdForScene` 的场景映射表
+  加一行（菜单/游戏各一轨；单轨现状=两场景同指 "cave"，交叉淡化照常工作）。
+
+同帧去重不用接线方操心：`AudioService` 的 SfxLimiter（同 id 同帧 + 每帧预算 4）已兜底。
+
+### 第 3 步：验证（可证伪，不是"听感觉"）
+
+- EditMode 映射：`Game/Tests/View/GameAudioBindingsTests.cs`（真 EventBus +
+  录音 mock：事件→sfx id/2D-3D/位置的断言）；
+- PlayMode 真放：`ZFrame/Tests/PlayMode/GameAudioBindingsPlayModeTests.cs`
+  （事件→**AudioSource.isPlaying** 的真断言：pickup→SFX 池真在放、
+  SceneLoadedEvent→BGM 轨 isPlaying 且音量随游戏循环 Tick 爬升）。
+  命令照 §1.3 跑（`-runTests -testPlatform PlayMode`，勿带 -quit）。
+
+```
+ogg 入库(AUD_ 前缀) → SOURCES.md 记来源
+  → GameAudioBindings 接事件(EventScope, Domain 零引用)
+  → SFX 自动走 SFX 总线 / BGM 走 BGM 总线(设置页四总线已实接)
+  → EditMode 映射 + PlayMode isPlaying 双证据
+```
+
 ## 4. 当前能力全清单（2026-10-31）
 
 **玩法切片（SCN_Game）**：第三人称固定镜头移动（WASD/手柄，输入可重绑定）；
@@ -233,6 +284,14 @@ FBX 入库(命名+来源) → ModelAssetSetup(导入设置+MAT_)
 攻击/拾取/门开合/敌人死亡/对话完结；同帧同点合并为 1；池化有界 ≤200）
 + 相机锚定环境浮尘；`ParticleRuntime.Enabled` 单开关（关=零粒子零开销）。
 Domain 层零粒子引用（架构校验器实证）。
+
+**音频（R9-14）**：AudioService 首次实战出声——BGM 随场景切换
+（SceneLoadedEvent→映射表→交叉淡化双轨，boot 场景兜底起播）+ 三世界事件
+SFX（拾取/门/攻击，3D 定位）+ 面板音（2D ui_click）；资产 5 枚 ogg 全 CC0
+（`Assets/Audio/Resources/AUD_*.ogg`，来源见同目录 SOURCES.md）；
+MIX_AudioMixer 移入 Resources 后设置页四总线滑杆真实生效；
+GameAudioBindings 单点接线（EventScope，Domain 零音频引用）；
+EditMode mock 映射 10 例 + PlayMode isPlaying 真断言 3 例。
 
 **后处理/画质（R9-04/08 + M2）**：PostFxCameraRuntime 运行期把
 `renderPostProcessing=true` 补到所有相机；双 Volume 叠放按画质档
@@ -284,3 +343,8 @@ StageScreenshot（本任务新增）+ ConfigWorkbench + UI 校验器 +
     射线路径。
 12. **中文字形风险**：HUD/世界空间文本用 `LegacyRuntime.ttf`，个别中文
     字符可能缺字形。
+13. **BGM 单轨**：曲库只有一首 cave 主题，菜单/游戏映射同轨（交叉淡化
+    照常工作，语义上仍"切轨"）；新 BGM = 一枚 `AUD_bgm_*.ogg` +
+    `BgmIdForScene` 加一行（§3.5 第 2 步）。
+14. **BGM 的 `AUD_bgm_cave.ogg` 来源 URL 缺失**：主控采集入库时未随附
+    URL（简报口径 CC0）；SOURCES.md 已如实标注，补 URL 需查主控采集记录。
