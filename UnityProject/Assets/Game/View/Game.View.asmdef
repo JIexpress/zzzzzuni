@@ -1,7 +1,7 @@
 {
   "name": "Game.View",
   "rootNamespace": "Game.View",
-  "references": ["ZFrame.Core","ZFrame.Data","ZFrame.Gameplay","ZFrame.View","Game.Domain"],
+  "references": ["ZFrame.Core","ZFrame.Data","ZFrame.Gameplay","ZFrame.View","Game.Domain","GUID:589648d0fabfed44a9480254c552ce49"],
   "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": false,

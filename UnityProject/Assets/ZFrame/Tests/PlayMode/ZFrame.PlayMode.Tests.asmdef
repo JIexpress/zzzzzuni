@@ -13,7 +13,8 @@
         "Unity.RenderPipelines.Core.Runtime",
         "Game.Domain",
         "Game.View",
-        "Game.Bootstrap"
+        "Game.Bootstrap",
+        "ZFrame.Render.Bindings"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

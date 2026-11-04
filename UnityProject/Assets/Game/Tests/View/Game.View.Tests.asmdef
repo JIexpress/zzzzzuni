@@ -6,7 +6,8 @@
         "ZFrame.Gameplay",
         "ZFrame.View",
         "Game.Domain",
-        "Game.View"
+        "Game.View",
+        "ZFrame.Render.Bindings"
     ],
     "includePlatforms": [
         "Editor"
