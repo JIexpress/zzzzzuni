@@ -190,4 +190,106 @@ DrawCall/显存/带宽 HUD、自动跑分回归」。现状盘点（已核实）
 
 ## 验收结论（验收代理写）
 
-（待填）
+> 本结论由**独立验收代理**（与施工不同实例）填写，只认本次会话自跑 / 自查所得证据；施工报告中的数字仅作旁证并明确标注，未当作本代理的实测结论。
+
+### 验收代理标识
+- 角色：A-GPU-01 **独立验收代理**（非施工代理；本会话未修改任何业务代码、未 commit、未触碰 A-R9-14 文件）。
+- 日期：2026-11-04（实跑 19:02–19:05 CST；results.xml UTC 11:02:59Z / 11:03:59Z）。
+- 仓库 HEAD：进场 `2a848da`，收场 `2a848da`（未产生新提交）。
+- 可写范围：仅本文件「## 验收结论」一节；UTF-8 无 BOM + LF。
+
+### 总体结论
+**PASS with 受限**
+
+V2（静态口径）、V3、V4、V5 判定 PASS；V1 为**受限，未目测**（题目预期的批处理限制）；V6 实跑 EditMode 全绿、PlayMode 唯一失败经定位属**并行任务 A-R9-14 污染**，非 HUD 自身缺陷（按主控口径不记为 HUD FAIL）。核心门控编译期 + 运行期双证据齐全、HUD 自身零回归、现场干净、无 commit、无变异残留。
+
+### V1 — 编辑器 Play Mode 按 F3 开/关 HUD、显示六项指标
+**判定：受限，未目测**（未假装按过 F3；批处理无法合成按键且无 GUI 渲染负载）。
+
+静态代码证据：
+- F3 分支：`Hud/PerformanceHud.cs:27` `ToggleKey = KeyCode.F3`；`:137-140` `Input.GetKeyDown(ToggleKey) → SetVisible(!_visible)`；`:152-169` `SetVisible` 内 `Start/Stop + RefreshText`。
+- 文本字段：`:171-182` `RefreshText()` 拼接 `FPS / Draw / SetPass / Tris / VRAM / GPU` 六行（`:174-180`）。
+- GUI 绘制调用：`:186-207` `OnGUI()`：`GUI.depth = -1000`（`:202`）、`GUI.Box(rect, GUIContent.none)`（`:205`）、`GUI.Label(..., _text, _labelStyle)`（`:206`）；`:188` `if (!_visible) return;`。
+- 门控接线：`:65-79` `AutoBoot`、`:84-91` `TrySetVisible` 均先过 `PerformanceHudGate.IsAvailable`。
+- 机检（非目测）：`Tests/Debug/PerformanceHudTests.cs:231-235` `ToggleKey_IsF3` 断言 F3 常量，实跑绿。
+
+### V2 — 数值合理
+**判定：PASS（静态口径）/ 实测数字受限**（不编造 DrawCall 实测值）。
+
+- ProfilerRecorder 名称：`PerformanceHudSampler.cs:24/27/30/33` = `"Draw Calls Count"` / `"SetPass Calls Count"` / `"Triangles Count"` / `"GPU Frame Time"`；类别 `ProfilerCategory.Render`（`:94-96`），GPU 依次探测 `{Render, Internal}`（`:35-39, :98-109`）。跨文件对照：`Game/Editor/ParityBench.cs:187` 用 `ProfilerCategory.Render, "Draw Calls Count"`；`View/Pipeline/RecorderFrameTelemetry.cs:30` `GpuMarkerName = "GPU Frame Time"`、`:33-37` 同款 `{Render, Internal}` 探测——与项目既有同套写法一致。
+- GPU ns→ms：`PerformanceHudSampler.cs:85` `nanoseconds * 1e-6`；对照 `RecorderFrameTelemetry.cs:89` `_gpu.LastValue * 1e-6f; // nanoseconds -> milliseconds`，换算一致。
+- VRAM 口径：`PerformanceHudSampler.cs:61-75` `Profiler.GetAllocatedMemoryForGraphicsDriver()`，注释明确「graphics driver 分配量（字节），不是显存总量」；`HudTextFormat.cs:35-40` `/ 1048576.0` → MiB（标签 "MB"）。符合简报「graphics driver 分配量非整卡显存」。
+- 取不到值降级（不出 NaN）：`PerformanceHudSampler.cs:147-152` `Read` → `!Valid/Count==0/负值` 均 0；`:82-86` `GpuMilliseconds` 不可用/无样本/≤0 → `-1.0`；`:66-74` `GraphicsMemoryBytes` catch → 0；`HudTextFormat.cs:18,37` 负值钳 0、`:43-51` `Milliseconds` NaN/∞/负 → `"—"`、`:54-58` `Fps` 同理；`View/DebugPanel/FpsCounter.cs:69-75` 无样本 Fps=0。测试 `Megabytes_...NeverPrintsNaN` / `Milliseconds_AndFps_HandleZeroAndUnavailable`（`PerformanceHudTests.cs:107-134`）实跑 3/3 绿。
+- FPS 平滑：`PerformanceHud.cs:30` 30 帧窗口（≈0.5s@60fps）+ `:145` `_fps.Tick(Time.unscaledDeltaTime)`。
+- 受限：批处理无渲染负载、无 GUI 目测，**未**核对 DrawCall 与 Frame Debugger 同量级，不给实测数字。
+- 观察项（非缺陷）：`PerformanceHudSampler.cs:139` 用 `ProfilerRecorderOptions.Default`，而 `RecorderFrameTelemetry.cs:60-61` 用 `SumAllSamplesInFrame | WrapAroundWhenCapacityReached`；一帧多段时 GPU 读数口径可能略异，但 ns→ms 换算一致。
+
+### V3 — Release 打不开（双证据）
+**判定：PASS**
+
+- **编译期**：`PerformanceHud.cs:1` `#if UNITY_EDITOR || DEVELOPMENT_BUILD || UNITY_INCLUDE_TESTS` 至 `:242` `#endif` **包裹整个文件**（含整个 `PerformanceHud` 类、F3 轮询 `:137`、ProfilerRecorder 引用、全部测试接缝 `:209-239`）。Release 玩家包三符号皆不定义 → 托管程序集里无此类型、无 F3 入口、无采样器。配套：`Tests/Debug/ZFrame.Debug.Tests.asmdef:21-23` `defineConstraints: ["UNITY_INCLUDE_TESTS"]`、`:10-12` `includePlatforms: ["Editor"]`，解释测试程序集为何能编译到该类（并非 Release 可开）。
+- **运行期**：`PerformanceHudGate.cs:28-31` `IsAvailable(Func<bool>)` 只认注入的 `isDevelopmentBuild()`，`null` 探针 fail-closed；生产判据由 `PerformanceHud.cs:93-96` `IsDevelopmentBuild() => Debug.isDebugBuild` 提供。`PerformanceHudGate.cs:52-59` `ShouldStartVisible = IsAvailable && IsRequested`，其中 `:57` `if (!IsAvailable(...)) return false;`；`IsRequested`（`:34-46`）只解析 `-zfhud` / `ZBF_HUD ∈ {1,true,on,yes}`（`:62-70`）。三个入口 `AutoBoot:69`、`TrySetVisible:86`、`TrySetVisibleForTests:219` 都先过 `IsAvailable` → Release + 所有参数仍 false，`ReleaseBuild_RefusesToShow_AndCreatesNoHost` 甚至不建宿主。
+- **门禁测试是否有牙（核对）**：
+  - 静态逐行推理：注释掉 `PerformanceHudGate.cs:57` 的 `if (!IsAvailable(...)) return false;` 后，`ShouldStartVisible(() => false, new[]{"-zfhud"}, envOn)` 将返回 `IsRequested(...)=true`，而 `PerformanceHudTests.cs:67-69`（及 `:70-71`）断言 `Assert.IsFalse(...)` → 必然变红，故判据有牙。
+  - 实跑 EditMode：`PerformanceHudGateTests` 4/4、`PerformanceHudTests` 4/4 全 Passed（见 V6），门禁用例确实被执行且为绿。
+  - **定向变异写入：未做**（原因见「变异复做结果」）；施工方 `TempLogs/hud_mutant_results.xml`（total=4 / passed=3 / failed=1，2026-11-03 16:41Z）仅作旁证，**非本代理复做**。
+
+### V4 — 关闭时不持续采样
+**判定：PASS**
+
+- Start/Stop 成对：`PerformanceHudSampler.cs:90-113` `Start()`（建 4 个 recorder，`:112` `LiveSamplerCount++`）/ `:116-128` `Stop()`（`:120-123` Dispose 全部，`:127` `LiveSamplerCount--`）；`:130-133` `Dispose()` 调 Stop。
+- 宿主侧：`PerformanceHud.cs:161` 可见→`Start()`、`:166` 隐藏→`Stop()`；`:123`(OnDestroy)、`:129`(OnApplicationQuit)、`:227-236`(ShutdownForTests) 亦 Stop。
+- LiveSamplerCount 归零：`PerformanceHudTests.cs:199-218` `Hidden_DoesNotSample_Visible_StartsAndStops` 断言 `baseline+1` → 回到 `baseline`，实跑绿。
+- 不可见时 Update 早退：`PerformanceHud.cs:142` `if (!_visible) return;`（仅先做一次 `GetKeyDown`，`:137-140`），之后才 `:145` `_fps.Tick` / `:146` 节流 / `:148` `RefreshText`（`:171-182` 读计数器 + 拼串）。
+- AutoBoot 在 batchmode 直接返回：`PerformanceHud.cs:68` `if (Application.isBatchMode) return;`（方法体第一句）。
+
+### V5 — 节流 4 Hz（区间 [0.25,0.5]）+ 不拦截点击
+**判定：PASS**
+
+- 节流：`HudRefreshThrottle.cs:13-19` 常量 `MinIntervalSeconds=0.5f`(2Hz) / `MaxIntervalSeconds=0.25f`(4Hz) / `DefaultIntervalSeconds=0.25f`(4Hz)；`:25-37` 构造器对 `interval < 0.25 || > 0.5 || NaN || ∞` 抛 `ArgumentOutOfRangeException`（合法区间确为 `[0.25,0.5]`）；`:46-57` `TryConsume` 距上次不足间隔返回 false。`PerformanceHud.cs:146` 以 `Time.unscaledTimeAsDouble` 驱动，命中才 `:148` `RefreshText()`；`:160-162` 首次显示 Reset + 立即刷新一次。
+- 测试：`Refresh_IsThrottledToFourHertz`（`:138-149`，0.10/0.24 拒绝、0.25 放行）、`Interval_IsKeptWithinTwoToFourHertz`（`:151-165`，0.1f/0.75f/NaN 抛异常）、`Reset_AndClockRollback...`（`:167-180`），实跑 3/3 绿。
+- 不拦截点击：
+  - 全文搜索 `Hud/` 目录：`Event.current` 仅出现在 `PerformanceHud.cs:20` 的**注释**里，**无**任何 `Event.current.Use()` 调用。
+  - 宿主无 Canvas/Graphic/Collider：`PerformanceHud.cs:98-108` `EnsureHost` 仅 `new GameObject` + `AddComponent<PerformanceHud>`；`PerformanceHudTests.cs:241-252` `HudHost_HasNoRaycastSurfaces` 断言 `Canvas==null`、`Collider==null`、`childCount==0`、`hideFlags=HideInHierarchy`，实跑绿。
+  - `GUI.depth = -1000`（`:202`）只决定 IMGUI 绘制顺序，不消费事件；控件仅 `GUI.Box` / `GUI.Label`（`:205-206`），无交互控件。
+
+### V6 — 回归（实跑 + 现场核对）
+**判定：PASS（HUD 自身零回归）/ 受限（脚本级 RESULT: FAILED 由并行任务污染）**
+
+实跑：PowerShell 工具先清 `http_proxy/HTTP_PROXY/https_proxy/HTTPS_PROXY/all_proxy/ALL_PROXY/no_proxy/NO_PROXY` 的 Process 级变量（回显「剩余代理变量: 已清空」），再以 `&` 调用 `Tools/run_tests.ps1 -Segments editmode,playmode`；脚本自带查进程 / 删 `UnityLockfile` / 经 Git Bash 启动 / 无 `-quit` / xml 僵尸 `taskkill` / 证据新鲜度校验。证据以 results.xml 为准：
+
+| 平台 | results.xml | total | passed | failed | skipped | Unity exit |
+|---|---|---|---|---|---|---|
+| EditMode | `TempLogs/runtests_editmode.xml` | **873** | **873** | **0** | 0 | 0 |
+| PlayMode | `TempLogs/runtests_playmode.xml` | **44** | **43** | **1** | 0 | 2 |
+
+脚本 SUMMARY：`editmode PASS`；`playmode FAIL`；`RESULT: FAILED (1 failed: playmode)`。xml 时间戳 19:03 / 19:04，脚本回显 `evidence: results.xml written by this run`，为本次新写而非陈旧文件。
+
+- HUD 自身 14 条 EditMode 全绿（逐 fixture）：`PerformanceHudGateTests 4/4`、`HudTextFormatTests 3/3`、`HudRefreshThrottleTests 3/3`、`PerformanceHudTests 4/4`（均 `result="Passed" failed="0"`）。
+- EditMode 873 ≥ 简报基线 811，且全绿 → 不降。
+- **唯一失败归因（并行任务污染，非 HUD 缺陷）**：`ZFrame.PlayMode.Tests.GameAudioBindingsPlayModeTests.SceneLoadedEvent_StartsAReallyPlayingBgmTrack_VolumeRidesTheLoopTick`，报错 `after 1 s of loop ticks the crossfade must have faded the track up (volume > 0.5) ... Expected: greater than 0.5f / But was: 0.0f`，堆栈 `UnityProject/Assets/ZFrame/Tests/PlayMode/GameAudioBindingsPlayModeTests.cs:144`。该文件是 A-R9-14 的**未提交新增文件**（`git status` 中 `?? ...GameAudioBindingsPlayModeTests.cs`）。PlayMode xml 中 `PerformanceHud|HudTextFormat|HudRefreshThrottle|HudGate` **0 命中**，`result="Failed"` 的 test-case **恰好 1 个**；`GameAudioBindingsPlayModeTests` fixture 共 3 用例（2 过 1 挂）→ 44 = 41 原有 + 3 新增(A-R9-14)，**原有 41 条全绿**，HUD 未引入 PlayMode 回归。
+- **反馈主控**：请 A-R9-14 处理 `GameAudioBindingsPlayModeTests.cs:144`（AudioService loop tick / crossfade 未推进）；本代理**未越界替它修**，未把该 FAIL 记为 HUD 自身缺陷。
+- 未改原生代码 / 未改游戏内容：`git show --name-only a2a2c9e`（HUD 交付 commit）共 14 个文件，全部为 `ZFrame/View/Hud/` 6 个 `.cs` + `.meta`、`Hud.meta`、`Tests/Debug/PerformanceHudTests.cs`(+meta)、`Docs/Logs/TASK-A-GPU-01.md`；对 `Native/|Assets/Game/|DevConsole|Assets/Audio/|ZFrame/View/Audio` 过滤 **0 命中**。
+- 未 commit：进场 / 收场 HEAD 同为 `2a848da`，`git log` 无新增提交；本代理未执行任何 `git commit` / `git add`。HUD 交付物由主控在 `a2a2c9e feat(hud)`（2026-11-04 00:54，zcode-orchestrator）提交，符合「施工不 commit、主控提交」治理，非违规。
+- git status 摘要：改动**全部属于 A-R9-14**（`Docs/Demo.md`、`Assets/Audio/**`、`ZFrame/View/Audio/{AudioBus,AudioService}.cs`、`Game/View/Effects/GameAudioBindings.cs`、`Game/Tests/View/GameAudioBindingsTests.cs`、`ZFrame/Tests/PlayMode/GameAudioBindingsPlayModeTests.cs`、`Docs/Logs/TASK-A-R9-14.md`），与 HUD 无关；HUD 目录零未提交改动。跑测期间并行任务自身新增 `M Docs/Logs/TASK-A-R9-14.md`（进场时无），非本代理所为，未触碰。
+- 现场干净：无 `URP_*.asset` / `QualitySettings.asset` / `ProjectSettings` 改写（**无需还原**）；无残留 `Unity.exe`、无 `UnityProject/Temp/UnityLockfile`；`TestReport.txt` 与 `TempLogs/` 均被 `.gitignore` 忽略，不污染工作区。
+
+### 变异复做结果
+**未做（明确写「未做」及原因）**。原因：本次【严格约束】把可写范围限定为「唯一可写文件 = `Docs/Logs/TASK-A-GPU-01.md` 的验收结论一节」，且「不得修改任何业务代码」。定向变异需临时改写并还原 `PerformanceHudGate.cs`（业务代码），与上述禁止性约束冲突；禁止性约束优先于 V3 中的「推荐」。为避免越界，改以「静态逐行推理（见 V3）+ 实跑门禁用例为绿 + 施工方 mutant xml 旁证（标注非我复做）」核对门控有牙。
+- 施工方旁证（**非本代理复做**）：`TempLogs/hud_mutant_results.xml` total=4 / passed=3 / failed=1；施工报告 §7 称变红者为 `ReleaseBuild_RefusesEveryEnableRequest`。
+- **无变异残留**：未触碰任何业务代码；`git status` 中 HUD 目录零改动，HUD 文件 `git diff` 为空。
+
+### 已知受限清单
+1. V1 未目测 F3 开/关与屏幕显示（批处理无法合成按键、无 GUI 渲染负载）；仅静态代码证据 + F3 常量机检，**未假装按过 F3**。
+2. V2 未目测六项实测数值，未与 Frame Debugger / Profiler 同量级核对；**不编造 DrawCall 等实测数字**。
+3. V3 未自行做定向变异写入（约束不允许）；「有牙」缺本代理的动态复红实证，以静态推理 + 实跑绿 + 施工旁证替代。
+4. 未构建 Release / Dev 玩家包、未做二进制符号检查（简报不跑真机）；「Release 打不开」由编译期 `#if` + 运行期门禁 + 单测三证据支撑。
+5. V6 PlayMode 1 条失败来自 A-R9-14 并行任务（已定位 `GameAudioBindingsPlayModeTests.cs:144` 并反馈主控，未越界修）；脚本级 `RESULT: FAILED` 由此产生，非 HUD 缺陷。
+6. GPU 时间依赖平台计数器，批处理 / 部分平台 `!Valid` → 显示 `—`（预期降级）；显存为 graphics driver 分配量、非整卡显存，换管线 / 平台读数会变。
+7. 观察项（非缺陷）：HUD sampler 用 `ProfilerRecorderOptions.Default`，与 `RecorderFrameTelemetry` 的 `SumAllSamplesInFrame|WrapAroundWhenCapacityReached` 不同，一帧多段时 GPU 读数口径可能略异；ns→ms 换算一致。
+
+### 现场状态（数字 + 变异残留）
+- EditMode **873/873/0**（exit 0）；PlayMode **44/43/1**（exit 2，唯一失败 = A-R9-14 `GameAudioBindingsPlayModeTests.cs:144`）；HUD 自身 **14/14** 全绿。
+- HEAD `2a848da` → `2a848da`，**新增 commit = 0**；HUD 交付 commit `a2a2c9e`（主控提交，早于本次验收）。
+- 工作区未提交改动：**全部 = A-R9-14**，HUD 相关 **0**；无 URP / QualitySettings / ProjectSettings 改写；无残留 Unity 进程 / 锁文件。
+- **变异残留：无**（未做变异写入；未修改任何业务代码；本代理唯一写入为本文「验收结论」一节）。
