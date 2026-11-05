@@ -6,6 +6,7 @@
 #include "zkernel/zkernel.h"
 #include "zrender/zrender.h"
 #include "zrender/zmesh.h"
+#include "zrhi/d3d12/zrhi_d3d12_unity_bridge.h" // TASK-B-UNITY-01（无 D3D12 头依赖）
 #include "zrhi/zrhi.h"
 #include "zupscaler/zupscaler.h"
 
@@ -356,6 +357,36 @@ int ZR_FrameGen_ValidateInputs(const ZrFgInputDesc* desc, ZrFgInputReport* out)
     out->depthBytesPerPixel = ZR_FrameGen_InputBytesPerPixel(desc->depthFormat);
     out->mvBytesPerPixel = ZR_FrameGen_InputBytesPerPixel(desc->mvFormat);
     return ZR_FG_INPUT_OK;
+}
+
+// ---- TASK-B-UNITY-01：Unity 接入最小渲染入口 --------------------------------
+// 薄转发：实现全部在 zrhi 的 D3D12 桥（zrhi/d3d12/zrhi_d3d12_unity_bridge.*）。
+// 这样本 TU 保持"纯 C ABI + 无 D3D12 头依赖"，后端差异不会渗进导出层。
+// 错误码在两侧逐一对应（见 zrhi_d3d12_unity_bridge.h 的 kErr*）。
+
+int ZR_Unity_AttachDevice(void* d3d12Device)
+{
+    return zr::unity_bridge::AttachDevice(d3d12Device);
+}
+
+int ZR_Unity_BeginFrame(void* backBufferTexture, uint32_t width, uint32_t height)
+{
+    return zr::unity_bridge::BeginFrame(backBufferTexture, width, height);
+}
+
+int ZR_Unity_EndFrame(void)
+{
+    return zr::unity_bridge::EndFrame();
+}
+
+int ZR_Unity_DetachDevice(void)
+{
+    return zr::unity_bridge::DetachDevice();
+}
+
+int ZR_Unity_DebugGetAttachedDevice(void** outDevice)
+{
+    return zr::unity_bridge::QueryAttachedDevice(outDevice);
 }
 
 } // extern "C"

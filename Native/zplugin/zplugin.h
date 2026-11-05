@@ -165,6 +165,63 @@ uint32_t ZR_FrameGen_InputBytesPerPixel(uint32_t format);
 /// 校验一次 depth/MV 交接。返回 ZR_FG_INPUT_OK 或 ZR_FG_INPUT_ERR_*。
 int ZR_FrameGen_ValidateInputs(const ZrFgInputDesc* desc, ZrFgInputReport* out);
 
+// ---- TASK-B-UNITY-01：Unity 接入最小渲染入口（外部设备 + 外部纹理清屏）----
+//
+// 为什么需要：ZRender 内核自身可用（--draw 60 帧），但它接不进 Unity——
+// 设备由 ZrD3D12CreateDevice 自建、.def 里没有任何渲染入口。本组函数把
+// "包住宿主设备 + 对宿主纹理清屏"这最小一步开放给托管侧。
+//
+// 参数一律用 void*（托管侧传 IntPtr）：本层不暴露 D3D12 类型，保持纯 C ABI。
+//   d3d12Device       = ID3D12Device*（Unity: SystemInfo.graphicsDevice 的原生设备）
+//   backBufferTexture = ID3D12Resource*（2D、单采样、RTV 可用格式）
+//
+// 语义与限制（先求通，不求全）：
+//   - AttachDevice 只**包装**宿主设备：不创建设备、不启用/关闭调试层、不接管
+//     宿主的设备生命周期（内部仅 AddRef；Detach 时释放该引用）。
+//   - BeginFrame 为纹理建 RTV；EndFrame 记录 ClearRenderTargetView 并提交，
+//     WaitIdle 排空后返回。清屏色固定为 ZR_UNITY_CLEAR_*（与 --draw 演示背景同值）。
+//   - 纹理须处于 COMMON 状态（D3D12 首次以 RTV 使用时的隐式提升）。桥**不做**
+//     状态跟踪：传入处于其它显式状态（COPY_DEST/PRESENT 等）的纹理时行为未定义。
+//   - 单线程（Unity 渲染线程）；重复 AttachDevice 幂等。
+//
+// 错误码（负值；0 = 成功）：
+#define ZR_UNITY_OK 0
+#define ZR_UNITY_ERR_NULL (-1)      // 空指针参数
+#define ZR_UNITY_ERR_NO_DEVICE (-2) // 尚未 AttachDevice
+#define ZR_UNITY_ERR_DEVICE (-3)    // 设备包装 / 桥私有 D3D12 链路创建失败
+#define ZR_UNITY_ERR_TEXTURE (-4)   // 纹理非法（非 2D / 多重采样 / 尺寸不足）
+#define ZR_UNITY_ERR_STATE (-5)     // 帧状态错误（重复 BeginFrame / 无 Begin 的 End）
+
+/// EndFrame 的清屏色（8bit UNORM 期望值；浮点定值 13/255、26/255、38/255、
+/// alpha=1）。托管侧可用它做回读断言。
+#define ZR_UNITY_CLEAR_R 13u
+#define ZR_UNITY_CLEAR_G 26u
+#define ZR_UNITY_CLEAR_B 38u
+#define ZR_UNITY_CLEAR_A 255u
+
+/// 包装外部 D3D12 设备。返回 ZR_UNITY_OK 或 ZR_UNITY_ERR_*。
+int ZR_Unity_AttachDevice(void* d3d12Device);
+
+/// 为一张外部纹理开帧（建 RTV）。返回 ZR_UNITY_OK 或 ZR_UNITY_ERR_*。
+int ZR_Unity_BeginFrame(void* backBufferTexture, uint32_t width, uint32_t height);
+
+/// 结束本帧：对 BeginFrame 的纹理清屏并等待 GPU 完成。返回 ZR_UNITY_OK 或错误码。
+int ZR_Unity_EndFrame(void);
+
+/// 解除设备包装并释放桥资源（宿主设备本身不受影响）。返回 ZR_UNITY_OK。
+int ZR_Unity_DetachDevice(void);
+
+/// 诊断/自证专用：取当前被包装的 ID3D12Device*（写入 *outDevice）。
+/// 用于验证"包装的确实是宿主传入的那一个设备"，**不得**用于生产渲染路径。
+int ZR_Unity_DebugGetAttachedDevice(void** outDevice);
+
+// 托管侧 P/Invoke 可直接复用的函数指针类型（亦供 GetProcAddress 自证程序使用）
+typedef int (*ZrUnityAttachDeviceFn)(void* d3d12Device);
+typedef int (*ZrUnityBeginFrameFn)(void* backBufferTexture, uint32_t width, uint32_t height);
+typedef int (*ZrUnityEndFrameFn)(void);
+typedef int (*ZrUnityDetachDeviceFn)(void);
+typedef int (*ZrUnityDebugGetAttachedDeviceFn)(void** outDevice);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

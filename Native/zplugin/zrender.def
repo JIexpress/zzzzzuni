@@ -7,6 +7,7 @@
 ; TASK-B-R6-02 新增：超分设置 C ABI 三导出（SetPreferred/GetActive/QueryCaps）。
 ; TASK-B-R9-02 新增：FG 输入（depth/MV）交接校验两导出。
 ; TASK-B-R9-17 新增：DataKernel World C ABI 十二导出（句柄表 + Copy 语义 + 游标迭代）。
+; TASK-B-UNITY-01 新增：Unity 接入最小渲染入口五导出（外部设备包装 + 外部纹理清屏）。
 LIBRARY zrender
 EXPORTS
     ZR_ApiVersion
@@ -20,6 +21,11 @@ EXPORTS
     ZR_Upscaler_QueryCaps
     ZR_FrameGen_InputBytesPerPixel
     ZR_FrameGen_ValidateInputs
+    ZR_Unity_AttachDevice
+    ZR_Unity_BeginFrame
+    ZR_Unity_EndFrame
+    ZR_Unity_DetachDevice
+    ZR_Unity_DebugGetAttachedDevice
     ZK_WorldCreate
     ZK_WorldDestroy
     ZK_RegisterComponent

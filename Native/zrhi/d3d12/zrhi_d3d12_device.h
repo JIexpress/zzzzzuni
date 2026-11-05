@@ -220,6 +220,23 @@ public:
     /// 创建设备（失败返回 nullptr）：DEBUG layer 可用则开启并挂 InfoQueue
     static ZrD3D12Device* Create();
 
+    /// TASK-B-UNITY-01：包装**外部创建**的 D3D12 设备（失败返回 nullptr）。
+    ///
+    /// 与 Create 的差异（其余初始化路径完全共用 InitializeRuntime）：
+    ///   - 不调用 D3D12CreateDevice，不启用 DEBUG layer（二者都必须在设备创建
+    ///     **之前**完成，事后无法补救）；
+    ///   - 保留对 external 的强引用（ComPtr AddRef），不接管其生命周期：
+    ///     调用方仍须在销毁本对象后自行 Release 宿主设备；
+    ///   - DXGI 工厂从设备反查（IDXGIDevice::GetAdapter → 适配器父工厂），
+    ///     而非新建工厂 + 枚举适配器，避免选到与外部设备不一致的适配器。
+    ///
+    /// 已知限制（不能靠包装达成，详见 .cpp 同名实现注释）：
+    ///   - 调试层状态由宿主决定：宿主未开启时本设备无 InfoQueue（GetDebugErrorCount 恒 0）；
+    ///   - 驱动/适配器选择、feature level 选择、DRED 等创建期参数完全由宿主决定；
+    ///   - 若外部设备并非来自 DXGI 适配器（极少见），m_factory 为空 →
+    ///     CreateSwapchain 直接返回无效句柄（其余功能不受影响）。
+    static ZrD3D12Device* CreateFrom(ID3D12Device* external);
+
     ~ZrD3D12Device() override;
 
     // ---- IZrDevice：创建 -------------------------------------------------------
@@ -269,7 +286,12 @@ public:
     /// 视图的 CPU 描述符句柄（TASK-B-R4-03：验证程序深度清屏等原生路径使用；
     /// 无效句柄返回 {0}）
     D3D12_CPU_DESCRIPTOR_HANDLE D3D12ViewCpuOf(ZrImageView view) const;
+    /// 调试层可用性。Create 路径 = 本库成功开启（并挂上 InfoQueue）；
+    /// CreateFrom 路径 = 宿主设备暴露出 ID3D12InfoQueue（即宿主已开启调试层）。
     bool IsDebugLayerEnabled() const { return m_debugLayerEnabled; }
+    /// TASK-B-UNITY-01：设备是否由本对象创建（Create=true / CreateFrom=false）。
+    /// 诊断用：销毁时只有自建设备会被真正释放（外部设备仅解引用）。
+    bool OwnsDevice() const { return m_ownsDevice; }
 
     // ---- TASK-B-R4-03：运行时着色器编译（D3D12 后端扩展，非 IZrDevice 接口）-----
     // HLSL 源码 → DXBC：内部 D3DCompile（FXC，SM5.0）。DXC/SM6 升级路径：改用
@@ -289,6 +311,14 @@ private:
     friend class ZrD3D12Swapchain;
 
     ZrD3D12Device() = default;
+
+    // ---- TASK-B-UNITY-01：设备就绪后的公共初始化（Create / CreateFrom 共用）------
+    // 前提：m_device 已就位。负责 InfoQueue 挂接、DIRECT 队列、fence 与等待事件、
+    // 帧槽环、上传链路、设备级描述符堆、队列包装。
+    //   configureDebugSettings：true = 本库开启了调试层（Create 路径），可设置
+    //   break 策略；false = 外部设备（CreateFrom），只读调试消息、不改宿主策略。
+    // 返回 false 表示初始化失败（对象须丢弃）。
+    bool InitializeRuntime(bool configureDebugSettings);
 
     // ---- 句柄载荷解析（stale 句柄返回 nullptr）------------------------------------
     ZrD3D12ImageObj* ResolveImage(ZrImage handle) const;
@@ -323,6 +353,7 @@ private:
     ZrImage FinalizeImageCreation(ZrD3D12ImageObj* obj, const ZrImageDesc& desc);
 
     bool m_debugLayerEnabled = false;
+    bool m_ownsDevice = true; // TASK-B-UNITY-01：false = m_device 由外部传入（仅引用）
 
     Microsoft::WRL::ComPtr<IDXGIFactory4> m_factory;
     Microsoft::WRL::ComPtr<ID3D12Device> m_device;
@@ -381,4 +412,7 @@ private:
 
 /// 创建/销毁 D3D12 后端设备（验证程序入口；失败返回 nullptr）
 ZrD3D12Device* ZrD3D12CreateDevice();
+/// TASK-B-UNITY-01：包装外部设备（ZrD3D12Device::CreateFrom 的自由函数入口；
+/// 销毁同样走 ZrD3D12DestroyDevice）
+ZrD3D12Device* ZrD3D12CreateDeviceFrom(ID3D12Device* external);
 void ZrD3D12DestroyDevice(ZrD3D12Device* device);

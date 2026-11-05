@@ -193,6 +193,7 @@ add_library(zrhi         STATIC
     zrhi/d3d12/zrhi_d3d12_commandlist.cpp
     zrhi/d3d12/zrhi_d3d12_slots.cpp
     zrhi/d3d12/zrhi_d3d12_translate.cpp
+    zrhi/d3d12/zrhi_d3d12_unity_bridge.cpp # TASK-B-UNITY-01：外部设备包装 + 外部纹理清屏
     ${ZR_VULKAN_SOURCES}
 )
 target_link_libraries(zrhi PRIVATE d3d12 dxgi d3dcompiler) # Windows SDK 系统库
@@ -476,6 +477,16 @@ set_target_properties(zrhi_d3d12_window PROPERTIES
     EXCLUDE_FROM_DEFAULT_BUILD YES
     EXCLUDE_FROM_DEFAULT_BUILD_RELEASE NO
 )
+
+# ---- TASK-B-UNITY-01：Unity 桥自证程序（外部设备 + 外部纹理清屏 + 回读）------
+# 独立 exe，不进 ctest（与 zrhi_d3d12_window 同类）：它在**运行期**从 zrender.dll
+# 的导出表取 ZR_Unity_* 符号（LoadLibrary + GetProcAddress），因此不链接任何
+# 静态库——链接成功不能证明导出表里有符号，取不到即失败。构建顺序上先确保 dll。
+add_executable(zrhi_unity_bridge tests/zrhi_unity_bridge.cpp)
+target_include_directories(zrhi_unity_bridge PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(zrhi_unity_bridge PRIVATE d3d12 dxgi)
+add_dependencies(zrhi_unity_bridge zrender)
+set_target_properties(zrhi_unity_bridge PROPERTIES FOLDER "ZRender/Tests")
 
 # ---- TASK-B-R9-01 阶段 0：DXGI 交换链探测 hook（spike，默认不构建）-----------
 # 目的：实证 Unity 2022.3/D3D12 走哪条 DXGI 交换链创建路径（只记录不替换）。

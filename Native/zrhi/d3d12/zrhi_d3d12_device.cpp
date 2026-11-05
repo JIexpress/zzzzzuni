@@ -50,6 +50,11 @@ D3D12_RESOURCE_DESC BuildImageResourceDesc(const ZrImageDesc& desc)
 // =============================================================================
 ZrD3D12Device* ZrD3D12CreateDevice() { return ZrD3D12Device::Create(); }
 
+ZrD3D12Device* ZrD3D12CreateDeviceFrom(ID3D12Device* external)
+{
+    return ZrD3D12Device::CreateFrom(external);
+}
+
 void ZrD3D12DestroyDevice(ZrD3D12Device* device) { delete device; }
 
 ZrD3D12Device* ZrD3D12Device::Create()
@@ -104,68 +109,114 @@ ZrD3D12Device* ZrD3D12Device::Create()
         return nullptr;
     }
 
+    // InfoQueue / 队列 / fence / 帧槽环 / 描述符堆 / 队列包装：与 CreateFrom 共用
+    if (!d->InitializeRuntime(debugLayer)) {
+        return nullptr;
+    }
+    return d.release();
+}
+
+// TASK-B-UNITY-01：包装外部设备（Unity 的 ID3D12Device）。
+// 只做"设备已存在"之后的接线；创建期的所有选择（适配器、feature level、
+// 调试层、DRED）都不在本库控制范围内 —— 见头文件 CreateFrom 注释。
+ZrD3D12Device* ZrD3D12Device::CreateFrom(ID3D12Device* external)
+{
+    if (external == nullptr) {
+        return nullptr;
+    }
+    std::unique_ptr<ZrD3D12Device> d(new ZrD3D12Device());
+    d->m_device = external; // ComPtr::operator=(T*) 会 AddRef：宿主引用不受影响
+    d->m_ownsDevice = false;
+
+    // ---- DXGI 工厂：从设备反查（不新建工厂、不枚举适配器）--------------------------
+    // 外部设备可能来自任意适配器；用 IDXGIDevice::GetAdapter 取其真实适配器，再取
+    // 该适配器的父工厂，保证"交换链用的工厂"与"设备所属适配器"一致。
+    Microsoft::WRL::ComPtr<IDXGIDevice> dxgiDevice;
+    Microsoft::WRL::ComPtr<IDXGIAdapter> adapter;
+    Microsoft::WRL::ComPtr<IDXGIFactory4> factory;
+    if (SUCCEEDED(d->m_device.As(&dxgiDevice)) && SUCCEEDED(dxgiDevice->GetAdapter(&adapter))
+        && SUCCEEDED(adapter->GetParent(IID_PPV_ARGS(&factory)))) {
+        d->m_factory = factory;
+    }
+    // 反查失败不致命：交换链路径会因 m_factory 为空而返回无效句柄，其余功能可用
+
+    if (!d->InitializeRuntime(/*configureDebugSettings=*/false)) {
+        return nullptr;
+    }
+    return d.release();
+}
+
+// Create / CreateFrom 共用的设备就绪初始化。与改造前 Create() 的尾段逐行等价
+// （顺序、失败返回 nullptr 的语义均未变）。
+bool ZrD3D12Device::InitializeRuntime(bool configureDebugSettings)
+{
     // ---- InfoQueue：Error 级以上捕获（调试层可用时）----------------------------------
-    if (debugLayer) {
-        if (SUCCEEDED(d->m_device.As(&d->m_infoQueue))) {
-            d->m_infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, FALSE);
-            d->m_infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, FALSE);
+    // QI 成功 ⇔ 本进程的 D3D12 调试层已开启（Create 路径由本库开启、CreateFrom 路径
+    // 由宿主开启）。仅 Create 路径改写 break 策略 —— 进程级调试策略属于宿主。
+    if (SUCCEEDED(m_device.As(&m_infoQueue))) {
+        m_debugLayerEnabled = true;
+        if (configureDebugSettings) {
+            m_infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, FALSE);
+            m_infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, FALSE);
         }
+    } else {
+        m_infoQueue.Reset();
     }
 
     // ---- DIRECT 命令队列（三域共用；异步队列后续任务）----------------------------------
     D3D12_COMMAND_QUEUE_DESC queueDesc {};
     queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-    if (FAILED(d->m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&d->m_queue)))) {
-        return nullptr;
+    if (FAILED(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_queue)))) {
+        return false;
     }
 
     // ---- WaitIdle fence + 共享等待事件 --------------------------------------------------
-    if (FAILED(d->m_device->CreateFence(
-            0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&d->m_waitFence)))) {
-        return nullptr;
+    if (FAILED(m_device->CreateFence(
+            0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_waitFence)))) {
+        return false;
     }
-    d->m_fenceEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    if (d->m_fenceEvent == nullptr) {
-        return nullptr;
+    m_fenceEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (m_fenceEvent == nullptr) {
+        return false;
     }
 
     // ---- 帧槽环（分配器 + 提交完成 fence）-----------------------------------------------
-    for (ZrD3D12FrameSlot& slot : d->m_frameSlots) {
-        if (FAILED(d->m_device->CreateCommandAllocator(
+    for (ZrD3D12FrameSlot& slot : m_frameSlots) {
+        if (FAILED(m_device->CreateCommandAllocator(
                 D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&slot.allocator)))) {
-            return nullptr;
+            return false;
         }
-        if (FAILED(d->m_device->CreateFence(
+        if (FAILED(m_device->CreateFence(
                 0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&slot.fence)))) {
-            return nullptr;
+            return false;
         }
     }
 
     // ---- CreateBuffer(initData) 一次性上传链路（UPLOAD→DEFAULT→fence）-------------
-    if (FAILED(d->m_device->CreateCommandAllocator(
-            D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&d->m_uploadAllocator)))
-        || FAILED(d->m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
-               d->m_uploadAllocator.Get(), nullptr, IID_PPV_ARGS(&d->m_uploadList)))
-        || FAILED(d->m_device->CreateFence(
-               0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&d->m_uploadFence)))) {
-        return nullptr;
+    if (FAILED(m_device->CreateCommandAllocator(
+            D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_uploadAllocator)))
+        || FAILED(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
+               m_uploadAllocator.Get(), nullptr, IID_PPV_ARGS(&m_uploadList)))
+        || FAILED(m_device->CreateFence(
+               0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_uploadFence)))) {
+        return false;
     }
-    d->m_uploadList->Close(); // 创建即记录态：空记录关闭复位（用前 Reset）
+    m_uploadList->Close(); // 创建即记录态：空记录关闭复位（用前 Reset）
 
     // ---- 设备级描述符堆（RTV/DSV/Sampler 非 shader 可见；bindless shader 可见）------
     D3D12_DESCRIPTOR_HEAP_DESC heapDesc {};
     heapDesc.NumDescriptors = kDescriptorCapacity;
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-    if (FAILED(d->m_device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&d->m_rtvHeap)))) {
-        return nullptr;
+    if (FAILED(m_device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_rtvHeap)))) {
+        return false;
     }
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-    if (FAILED(d->m_device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&d->m_dsvHeap)))) {
-        return nullptr;
+    if (FAILED(m_device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_dsvHeap)))) {
+        return false;
     }
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
-    if (FAILED(d->m_device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&d->m_samplerHeap)))) {
-        return nullptr;
+    if (FAILED(m_device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_samplerHeap)))) {
+        return false;
     }
     // 全局 bindless 堆（CBV_SRV_UAV，shader 可见）：容量预分配 + 断言上限——
     // shader 可见堆不可按需增长重建（每帧绑定的堆基址须稳定），按需增长策略
@@ -173,21 +224,21 @@ ZrD3D12Device* ZrD3D12Device::Create()
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     heapDesc.NumDescriptors = kBindlessCapacity;
     heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-    if (FAILED(d->m_device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&d->m_bindlessHeap)))) {
-        return nullptr;
+    if (FAILED(m_device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_bindlessHeap)))) {
+        return false;
     }
-    d->m_rtvStride = d->m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-    d->m_dsvStride = d->m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
-    d->m_samplerStride = d->m_device->GetDescriptorHandleIncrementSize(
+    m_rtvStride = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    m_dsvStride = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+    m_samplerStride = m_device->GetDescriptorHandleIncrementSize(
         D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
-    d->m_bindlessStride = d->m_device->GetDescriptorHandleIncrementSize(
+    m_bindlessStride = m_device->GetDescriptorHandleIncrementSize(
         D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
     // ---- 队列包装（Graphics/Compute/Transfer；基座共用 DIRECT 队列）---------------------
     for (uint32_t i = 0; i < 3u; ++i) {
-        d->m_queues[i].reset(new ZrD3D12Queue(d.get(), static_cast<ZrQueueType>(i)));
+        m_queues[i].reset(new ZrD3D12Queue(this, static_cast<ZrQueueType>(i)));
     }
-    return d.release();
+    return true;
 }
 
 ZrD3D12Device::~ZrD3D12Device()
@@ -941,6 +992,12 @@ ZrSwapchain ZrD3D12Device::CreateSwapchain(const ZrSwapchainDesc& desc)
     assert(desc.width > 0u && desc.height > 0u && desc.imageCount >= 2u);
     if (desc.windowHandle == nullptr || desc.width == 0u || desc.height == 0u
         || desc.imageCount < 2u) {
+        return ZrSwapchain{};
+    }
+    // TASK-B-UNITY-01：CreateFrom 路径的工厂由外部设备反查得来，反查失败时为空
+    // （宿主设备不来自 DXGI 适配器的极端情况）——此时交换链不可用，其余功能不受影响
+    if (m_factory == nullptr) {
+        assert(false && "CreateSwapchain: 无 DXGI 工厂（外部设备反查失败）");
         return ZrSwapchain{};
     }
 
