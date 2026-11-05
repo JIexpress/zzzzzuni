@@ -149,4 +149,5 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | A-R9-14 | A/R9 | 音频打磨包(SFX 入库+事件接线) | done(返工 1 轮后独立验收 PASS with 受限；PlayMode 44/44/0；验收亲自复做变异；BGM URL 缺口如实登记) | Docs/Logs/TASK-A-R9-14.md | c09f1ef |
 | A-R9-13 | A/R9 | 千人演练场：DataKernel 玩法侧规模化(混合架构) | done(验收 PASS with 受限；EditMode 880/PlayMode 46；验收亲自复做变异 46/46/0→46/45/1→46/46/0；V3 群体可见默认关受限) | Docs/Logs/TASK-A-R9-13.md | 5f49a42 |
 | A-R9-15 | A/R9 | 千人演练场开箱可见 + 像素回归证据 | done(验收 PASS with 受限；PlayMode 48；真实像素差 3.97%；验收亲眼复核两图并复做变异；GPU DrawCall 仍受限) | Docs/Logs/TASK-A-R9-15.md | c378f49 |
+| B-UNITY-01 | B/UNITY | ZRender 接入 Unity 第一步：原生接受外部 D3D12 设备 + 最小渲染 ABI | doing | Docs/Logs/TASK-B-UNITY-01.md | — |
 | A-R9-16 | A/R9 | URP 变体收敛（12288 变体成本中心） | done(验收 PASS with 受限；按降级出口交付；EditMode 916；14 是规则命中数非变体减少；真实构建收益未验证) | Docs/Logs/TASK-A-R9-16.md | acef951 |
