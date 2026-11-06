@@ -194,9 +194,14 @@ add_library(zrhi         STATIC
     zrhi/d3d12/zrhi_d3d12_slots.cpp
     zrhi/d3d12/zrhi_d3d12_translate.cpp
     zrhi/d3d12/zrhi_d3d12_unity_bridge.cpp # TASK-B-UNITY-01：外部设备包装 + 外部纹理清屏
+    zrhi/d3d12/zrhi_d3d12_unity_target.cpp # TASK-B-UNITY-02：共享纹理 + cube 渲染 + 句柄导出
     ${ZR_VULKAN_SOURCES}
 )
 target_link_libraries(zrhi PRIVATE d3d12 dxgi d3dcompiler) # Windows SDK 系统库
+# TASK-B-UNITY-02：共享目标模块复用 --draw 的渲染路径（zmesh 顶点布局 + draw list 合批
+# + RenderGraph 组织 Clear/Draw/Readback），因此 zrhi 需要 zrender_core 的实现符号。
+# 方向是 zrhi → zrender_core（后者只用 IZrDevice 接口，不反向依赖 zrhi），不成环。
+target_link_libraries(zrhi PRIVATE zrender_core)
 if(ZR_HAS_VULKAN)
     # PUBLIC：静态库 zrhi 并入 SHARED zrender.dll 与窗口程序时，消费方链接步骤
     # 也需要 SDK include（vulkan.h）与导入库目录（vulkan-1.lib）
@@ -317,6 +322,7 @@ add_executable(zrender_test
     tests/test_fg_ffx.cpp # TASK-B-R8-02：FG 纯函数矩阵 + mock ffx 表注入状态机单测
     tests/test_zrhi_device_stats.cpp # TASK-H-05 F1（ZrDeviceStats 布局护栏 + 失败计数读链）
     tests/test_framegen_inputs.cpp # TASK-B-R9-02（FG 输入 depth/MV 交接校验 C ABI）
+    tests/test_zrhi_unity_target.cpp # TASK-B-UNITY-02（共享目标参数/尺寸守卫 + 内嵌 shader 与仓库副本逐字节一致）
     tests/test_zfg_factory_slots.cpp # TASK-R10-03 A-2（DXGI vtable 槽位守卫；CINTERFACE 反算 SDK 布局）
     tests/test_zfg_resize.cpp # TASK-R10-03 A-4（交换链重建：尺寸更新/采集作废/输入重校验）
     tests/test_zfg_dxgi_exports.cpp # TASK-R10-03 A-1（dxgi 导出参数个数表 + .def 覆盖）

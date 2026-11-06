@@ -222,6 +222,72 @@ typedef int (*ZrUnityEndFrameFn)(void);
 typedef int (*ZrUnityDetachDeviceFn)(void);
 typedef int (*ZrUnityDebugGetAttachedDeviceFn)(void** outDevice);
 
+// ---- TASK-B-UNITY-02：共享渲染目标（ZRender 渲染自己的纹理，Unity 采样贴屏）----
+//
+// 为什么与上面那组并存而不是取代它：B-UNITY-01 的形态要求宿主把 **backbuffer**
+// 交出来，验收已判定它有两个硬阻断——①flip-model 的帧边界是 PRESENT，
+// PRESENT→RENDER_TARGET 没有隐式提升，屏障得由我们插而序列在 Unity 手里；
+// ②本桥自建 DIRECT 队列，WaitIdle 只排空自己的队列，不覆盖 Unity 队列上未完成的
+// 渲染。本组把这两条一起绕开：纹理归 ZRender 所有，写完 fence 等完成再交给 Unity。
+//
+//   attachTexture = ID3D12Resource*（Unity: Texture.GetNativeTexturePtr()）——托管侧
+//                   拿不到 ID3D12Device*，故由资源反查设备（兼容 B-UNITY-01 的
+//                   AttachDevice，两条接入路径各自独立、互不影响）
+//   CreateSharedTarget(w,h)  建 BGRA8 共享纹理（D3D12_HEAP_FLAG_SHARED）+ 渲染链
+//   GetSharedTargetHandle()  取 NT 句柄（Unity: Texture2D.CreateExternalTexture）
+//   RenderFrame()            渲染一帧；返回前把纹理转到 PIXEL_SHADER_RESOURCE 并
+//                            WaitIdle（Unity 采样的正确性前提）
+//   ReleaseSharedTarget()    释放纹理与渲染链（保留设备包装，便于尺寸变化后重建）
+//
+// 共享纹理只应创建一次：每帧 CreateTarget 会泄漏（尺寸变化时才 Release 后重建）。
+//
+// 错误码沿用上面的 ZR_UNITY_*，另加：
+#define ZR_UNITY_ERR_ARGS (-6) // 尺寸非法（0 或超过 16384）
+
+/// 统计快照（全定宽 POD）。centerRGBA 不是屏幕抓取，而是渲染完的**纹理回读**：
+/// 它证明"这张交给 Unity 的纹理里到底有什么"，是"Blit 已调用"之外的真证据。
+typedef struct ZrUnityTargetStats {
+    uint32_t structSize;        // 由实现填 sizeof(ZrUnityTargetStats)（版本化）
+    uint32_t renderFrameCount;  // RenderFrame 成功次数
+    uint32_t width;
+    uint32_t height;
+    uint32_t readbackCount;     // 中心像素回读次数
+    uint32_t lastError;         // 最近一次失败的 ZR_UNITY_ERR_*（0 = 无）
+    uint32_t centerRGBA[4];     // 最近一次回读的中心像素（R,G,B,A 8bit）
+    uint64_t sharedHandle;      // NT 句柄（0 = 未创建）—— 放末尾以免结构体内出现 padding
+} ZrUnityTargetStats;
+
+/// 由宿主纹理反查设备并包装（幂等）。返回 ZR_UNITY_OK 或 ZR_UNITY_ERR_*。
+int ZR_Unity_AttachDeviceFromTexture(void* d3d12Texture);
+
+/// 创建共享颜色目标（BGRA8，单 mip/层/采样）；同尺寸重复调用幂等返回 OK。
+int ZR_Unity_CreateSharedTarget(uint32_t width, uint32_t height);
+
+/// 取 NT 共享句柄（跨进程/跨 API 用）；未创建时写 0 并返回 ZR_UNITY_ERR_STATE。
+int ZR_Unity_GetSharedTargetHandle(uint64_t* outHandle);
+
+/// 取目标纹理的 ID3D12Resource*（同进程内给宿主包装外部纹理用）。
+/// Unity 2022.3/D3D12 的 Texture2D.CreateExternalTexture 需要它，而不是 NT 句柄
+/// ——传 NT 句柄实测首帧崩在 UnityPlayer（0xc0000005）。
+int ZR_Unity_GetSharedTargetResource(void** outResource);
+
+/// 渲染一帧到共享纹理（结束时为可采样状态且 GPU 已完成）。
+int ZR_Unity_RenderFrame(void);
+
+/// 释放目标（不动宿主设备与已导出的句柄语义：句柄随目标释放而关闭）。
+void ZR_Unity_ReleaseSharedTarget(void);
+
+/// 取统计快照；out 为空返回 ZR_UNITY_ERR_NULL。
+int ZR_Unity_GetTargetStats(ZrUnityTargetStats* out);
+
+typedef int (*ZrUnityAttachDeviceFromTextureFn)(void* d3d12Texture);
+typedef int (*ZrUnityCreateSharedTargetFn)(uint32_t width, uint32_t height);
+typedef int (*ZrUnityGetSharedTargetHandleFn)(uint64_t* outHandle);
+typedef int (*ZrUnityGetSharedTargetResourceFn)(void** outResource);
+typedef int (*ZrUnityRenderFrameFn)(void);
+typedef void (*ZrUnityReleaseSharedTargetFn)(void);
+typedef int (*ZrUnityGetTargetStatsFn)(ZrUnityTargetStats* out);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

@@ -8,6 +8,7 @@
 ; TASK-B-R9-02 新增：FG 输入（depth/MV）交接校验两导出。
 ; TASK-B-R9-17 新增：DataKernel World C ABI 十二导出（句柄表 + Copy 语义 + 游标迭代）。
 ; TASK-B-UNITY-01 新增：Unity 接入最小渲染入口五导出（外部设备包装 + 外部纹理清屏）。
+; TASK-B-UNITY-02 新增：共享渲染目标六导出（自建共享纹理 + 渲染 + 句柄导出 + 统计）。
 LIBRARY zrender
 EXPORTS
     ZR_ApiVersion
@@ -26,6 +27,13 @@ EXPORTS
     ZR_Unity_EndFrame
     ZR_Unity_DetachDevice
     ZR_Unity_DebugGetAttachedDevice
+    ZR_Unity_AttachDeviceFromTexture
+    ZR_Unity_CreateSharedTarget
+    ZR_Unity_GetSharedTargetHandle
+    ZR_Unity_GetSharedTargetResource
+    ZR_Unity_RenderFrame
+    ZR_Unity_ReleaseSharedTarget
+    ZR_Unity_GetTargetStats
     ZK_WorldCreate
     ZK_WorldDestroy
     ZK_RegisterComponent

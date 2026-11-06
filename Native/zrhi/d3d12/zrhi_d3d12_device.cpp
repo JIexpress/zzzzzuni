@@ -351,6 +351,46 @@ ZrImage ZrD3D12Device::CreateImage(const ZrImageDesc& desc)
     return FinalizeImageCreation(obj, desc);
 }
 
+ZrImage ZrD3D12Device::CreateSharedImage(const ZrImageDesc& desc, void** outSharedHandle)
+{
+    if (outSharedHandle != nullptr) {
+        *outSharedHandle = nullptr;
+    }
+    if (desc.width == 0u || desc.height == 0u || desc.mipLevels != 1u || desc.arrayLayers != 1u
+        || desc.samples != ZrSampleCount::One) {
+        // 共享交接只支持单 mip / 单层 / 单采样：Unity 的 CreateExternalTexture 亦然
+        return ZrImage{};
+    }
+
+    ZrD3D12ImageObj* obj = new ZrD3D12ImageObj();
+    obj->desc = desc;
+
+    D3D12_HEAP_PROPERTIES heap {};
+    heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+    const D3D12_RESOURCE_DESC resourceDesc = BuildImageResourceDesc(desc);
+    // SHARED 必须在**创建时**给出：事后 CreateSharedHandle 会返回 E_INVALIDARG
+    // （堆不是共享堆），这正是"普通 CreateImage 无法跨 API 交接"的根因。
+    if (FAILED(m_device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_SHARED,
+            &resourceDesc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+            IID_PPV_ARGS(&obj->resource)))) {
+        delete obj;
+        return ZrImage{};
+    }
+
+    // NT 句柄（D3D12 只接受 GENERIC_ALL）：由调用方 CloseHandle；与资源生命周期
+    // 独立，资源 Release 后句柄仍有效（但那之后再 Open 就是悬空引用）。
+    HANDLE shared = nullptr;
+    if (outSharedHandle != nullptr) {
+        if (FAILED(m_device->CreateSharedHandle(obj->resource.Get(), nullptr, GENERIC_ALL,
+                nullptr, &shared))) {
+            delete obj;
+            return ZrImage{};
+        }
+        *outSharedHandle = shared;
+    }
+    return FinalizeImageCreation(obj, desc);
+}
+
 // =============================================================================
 // TASK-B-R3-02：别名堆 + placed resource + 统计
 //
@@ -1394,6 +1434,12 @@ ZrD3D12PsoObj* ZrD3D12Device::ResolvePipelineState(ZrPipelineState handle) const
 ID3D12Resource* ZrD3D12Device::D3D12ResourceOf(ZrImage image) const
 {
     ZrD3D12ImageObj* obj = ResolveImage(image);
+    return obj != nullptr ? obj->resource.Get() : nullptr;
+}
+
+ID3D12Resource* ZrD3D12Device::D3D12ResourceOf(ZrBuffer buffer) const
+{
+    ZrD3D12BufferObj* obj = ResolveBuffer(buffer);
     return obj != nullptr ? obj->resource.Get() : nullptr;
 }
 

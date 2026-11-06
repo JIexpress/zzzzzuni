@@ -7,6 +7,7 @@
 #include "zrender/zrender.h"
 #include "zrender/zmesh.h"
 #include "zrhi/d3d12/zrhi_d3d12_unity_bridge.h" // TASK-B-UNITY-01（无 D3D12 头依赖）
+#include "zrhi/d3d12/zrhi_d3d12_unity_target.h" // TASK-B-UNITY-02（同上）
 #include "zrhi/zrhi.h"
 #include "zupscaler/zupscaler.h"
 
@@ -387,6 +388,65 @@ int ZR_Unity_DetachDevice(void)
 int ZR_Unity_DebugGetAttachedDevice(void** outDevice)
 {
     return zr::unity_bridge::QueryAttachedDevice(outDevice);
+}
+
+// ---- TASK-B-UNITY-02：共享渲染目标（ZRender 画自己的纹理，Unity 采样贴屏）----
+// 同样是薄转发；实现与状态全在 zr::unity_target（zrhi/d3d12/..._unity_target.*）。
+// 与上面那组的分工：B-UNITY-01 是"宿主给我一张纹理，我清屏"；本组是"我自己建
+// 纹理，渲染完交给宿主采样"——后者不需要碰宿主 backbuffer 状态，也不需要跨队列
+// fence（验收已判定前者有硬阻断）。
+
+int ZR_Unity_AttachDeviceFromTexture(void* d3d12Texture)
+{
+    return zr::unity_target::AttachDeviceFromTexture(d3d12Texture);
+}
+
+int ZR_Unity_CreateSharedTarget(uint32_t width, uint32_t height)
+{
+    return zr::unity_target::CreateTarget(width, height);
+}
+
+int ZR_Unity_GetSharedTargetHandle(uint64_t* outHandle)
+{
+    return zr::unity_target::GetTargetHandle(outHandle);
+}
+
+int ZR_Unity_GetSharedTargetResource(void** outResource)
+{
+    return zr::unity_target::GetTargetResource(outResource);
+}
+
+int ZR_Unity_RenderFrame(void)
+{
+    return zr::unity_target::RenderFrame();
+}
+
+void ZR_Unity_ReleaseSharedTarget(void)
+{
+    zr::unity_target::ReleaseTarget();
+}
+
+int ZR_Unity_GetTargetStats(ZrUnityTargetStats* out)
+{
+    if (out == nullptr) {
+        return ZR_UNITY_ERR_NULL;
+    }
+    zr::unity_target::TargetStats stats;
+    const int result = zr::unity_target::GetStats(&stats);
+    if (result != ZR_UNITY_OK) {
+        return result;
+    }
+    out->structSize = static_cast<uint32_t>(sizeof(ZrUnityTargetStats));
+    out->renderFrameCount = stats.frameCount;
+    out->width = stats.width;
+    out->height = stats.height;
+    out->readbackCount = stats.readbackCount;
+    out->sharedHandle = stats.sharedHandle;
+    for (uint32_t i = 0; i < 4u; ++i) {
+        out->centerRGBA[i] = stats.centerRGBA[i];
+    }
+    out->lastError = stats.lastError;
+    return ZR_UNITY_OK;
 }
 
 } // extern "C"

@@ -51,6 +51,32 @@ namespace ZFrame.Render.Bindings
         [DllImport("zrender")]
         internal static extern int ZR_FrameGen_ValidateInputs(ref ZrFgInputDescNative desc, out ZrFgInputReportNative report);
 
+        // ---- TASK-B-UNITY-02：共享渲染目标（ZRender 画自己的纹理，Unity 采样贴屏）----
+        // 错误码 0=OK；-1=NULL、-2=未接入设备、-3=设备/资源创建失败、-5=状态错误、-6=尺寸非法。
+        // 与 B-UNITY-01 那组的分工：那组要宿主交出 backbuffer（有状态/跨队列硬阻断），
+        // 这组由 ZRender 自己建纹理、自己等完成，Unity 只负责采样。
+
+        [DllImport("zrender")]
+        internal static extern int ZR_Unity_AttachDeviceFromTexture(IntPtr d3d12Texture);
+
+        [DllImport("zrender")]
+        internal static extern int ZR_Unity_CreateSharedTarget(uint width, uint height);
+
+        [DllImport("zrender")]
+        internal static extern int ZR_Unity_GetSharedTargetHandle(out ulong outHandle);
+
+        [DllImport("zrender")]
+        internal static extern int ZR_Unity_GetSharedTargetResource(out IntPtr outResource);
+
+        [DllImport("zrender")]
+        internal static extern int ZR_Unity_RenderFrame();
+
+        [DllImport("zrender")]
+        internal static extern void ZR_Unity_ReleaseSharedTarget();
+
+        [DllImport("zrender")]
+        internal static extern int ZR_Unity_GetTargetStats(out ZrUnityTargetStatsNative stats);
+
         /// <summary>原生 ZmeshStats（40B，全定宽；布局须与 zmesh.h 的 ZmeshStats 一致）。</summary>
         [StructLayout(LayoutKind.Sequential)]
         internal struct ZmeshStatsNative
@@ -64,6 +90,25 @@ namespace ZFrame.Render.Bindings
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
             public float[] BoundsMax;
         }
+    }
+
+    /// <summary>
+    /// 原生 ZrUnityTargetStats（48B @x64；布局须与 zplugin.h 一致）。
+    /// sharedHandle 放在末尾以避免结构体内 padding；CenterRGBA 是**纹理回读**结果，
+    /// 不是屏幕抓取——它证明交出去的那张纹理里到底有什么颜色。
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct ZrUnityTargetStatsNative
+    {
+        public uint StructSize;
+        public uint RenderFrameCount;
+        public uint Width;
+        public uint Height;
+        public uint ReadbackCount;
+        public uint LastError;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+        public uint[] CenterRGBA;
+        public ulong SharedHandle;
     }
 
     /// <summary>
@@ -162,7 +207,9 @@ namespace ZFrame.Render.Bindings
         public uint MvBytesPerPixel;
     }
 
-    /// <summary>纹理格式白名单（与 zplugin.h 的 ZrFgTexFormat 同值）。</summary>
+    /// <summary>
+    /// 纹理格式白名单（与 zplugin.h 的 ZrFgTexFormat 同值）。
+    /// </summary>
     public enum ZrFgTexFormatNative : uint
     {
         /// <summary>未知/不受支持。</summary>
@@ -176,5 +223,77 @@ namespace ZFrame.Render.Bindings
 
         /// <summary>运动矢量，RG 半精度浮点（URP _MotionVectorTexture 实测形态）。</summary>
         R16G16SFloat = 3
+    }
+
+    /// <summary>
+    /// 共享渲染目标的托管门面（TASK-B-UNITY-02）：ZRender 渲染到自己的共享纹理，
+    /// 托管侧只做「开句柄 → CreateExternalTexture → 采样贴屏」。
+    /// 与 B-UNITY-01 的 <c>ZR_Unity_BeginFrame/EndFrame</c> 不同，这条路径不需要
+    /// backbuffer 的状态控制，也不需要跨队列 fence——原生内部自己转态、自己等完成。
+    /// </summary>
+    public static class ZrUnityTargetNative
+    {
+        /// <summary>0 = 成功。</summary>
+        public const int Ok = 0;
+
+        /// <summary>空指针参数。</summary>
+        public const int ErrNull = -1;
+
+        /// <summary>尚未接入宿主设备。</summary>
+        public const int ErrNoDevice = -2;
+
+        /// <summary>设备包装 / D3D12 资源创建失败。</summary>
+        public const int ErrDevice = -3;
+
+        /// <summary>状态错误（未建目标就渲染 / 未释放就换尺寸）。</summary>
+        public const int ErrState = -5;
+
+        /// <summary>尺寸非法（0 或超过 16384）。</summary>
+        public const int ErrArgs = -6;
+
+        /// <summary>由宿主纹理反查设备并包装（幂等）。返回 0 或错误码。</summary>
+        public static int AttachDeviceFromTexture(IntPtr d3d12Texture)
+        {
+            return ZrNative.ZR_Unity_AttachDeviceFromTexture(d3d12Texture);
+        }
+
+        /// <summary>创建共享颜色目标（BGRA8）；同尺寸重复调用幂等返回 0。</summary>
+        public static int CreateSharedTarget(uint width, uint height)
+        {
+            return ZrNative.ZR_Unity_CreateSharedTarget(width, height);
+        }
+
+        /// <summary>取 NT 共享句柄（跨进程/跨 API 用）；失败写 0。</summary>
+        public static int GetSharedTargetHandle(out ulong handle)
+        {
+            return ZrNative.ZR_Unity_GetSharedTargetHandle(out handle);
+        }
+
+        /// <summary>
+        /// 取目标纹理的 ID3D12Resource*：Unity 2022.3/D3D12 的 CreateExternalTexture
+        /// 需要的是资源指针（传 NT 句柄实测首帧崩在 UnityPlayer，0xc0000005）。
+        /// </summary>
+        public static int GetSharedTargetResource(out IntPtr resource)
+        {
+            return ZrNative.ZR_Unity_GetSharedTargetResource(out resource);
+        }
+
+        /// <summary>渲染一帧；返回时纹理已是可采样状态且 GPU 完成。</summary>
+        public static int RenderFrame()
+        {
+            return ZrNative.ZR_Unity_RenderFrame();
+        }
+
+        /// <summary>释放目标与渲染链（设备包装保留，便于尺寸变化后重建）。</summary>
+        public static void ReleaseSharedTarget()
+        {
+            ZrNative.ZR_Unity_ReleaseSharedTarget();
+        }
+
+        /// <summary>取统计（真调用计数 + 中心像素回读）。</summary>
+        public static int GetTargetStats(out ZrUnityTargetStatsNative stats)
+        {
+            return ZrNative.ZR_Unity_GetTargetStats(out stats);
+        }
     }
 }

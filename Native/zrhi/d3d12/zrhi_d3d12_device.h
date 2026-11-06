@@ -242,6 +242,15 @@ public:
     // ---- IZrDevice：创建 -------------------------------------------------------
     ZrBuffer CreateBuffer(const ZrBufferDesc& desc, const void* initData = nullptr) override;
     ZrImage CreateImage(const ZrImageDesc& desc) override;
+
+    /// TASK-B-UNITY-02：创建**可跨进程/跨 API 共享**的图像（→ 原生窗口到 Unity 的
+    /// 纹理交接）。与 CreateImage 的唯一差异是堆标志与句柄：
+    ///   - D3D12_HEAP_FLAG_SHARED（否则 CreateSharedHandle 直接失败）
+    ///   - 创建即 ID3D12Device::CreateSharedHandle(GENERIC_ALL) 导出 NT 句柄，
+    ///     写入 *outSharedHandle（调用方负责 CloseHandle；失败写 0）
+    /// 其余（格式能力探测、RTV 描述符、句柄表入册、初始布局）与 CreateImage 共用。
+    /// 失败返回无效句柄且 *outSharedHandle = 0。
+    ZrImage CreateSharedImage(const ZrImageDesc& desc, void** outSharedHandle);
     ZrImageView CreateImageView(const ZrImageViewDesc& desc) override;
     ZrSampler CreateSampler(const ZrSamplerDesc& desc) override;
     ZrShader CreateShader(const ZrShaderDesc& desc) override; // TASK-B-R4-03 落地
@@ -282,6 +291,9 @@ public:
     ID3D12Device* D3D12Device() const { return m_device.Get(); }
     ID3D12CommandQueue* D3D12Queue() const { return m_queue.Get(); }
     ID3D12Resource* D3D12ResourceOf(ZrImage image) const;
+    /// TASK-B-UNITY-02：缓冲的原生资源（中心像素回读等原生拷贝路径使用；无效句柄返回
+    /// nullptr）。与图像重载并列，避免调用方为了拿 CopyTextureRegion 的落点去重建资源。
+    ID3D12Resource* D3D12ResourceOf(ZrBuffer buffer) const;
     ID3D12GraphicsCommandList* D3D12CommandListOf(ZrCommandList cmd) const;
     /// 视图的 CPU 描述符句柄（TASK-B-R4-03：验证程序深度清屏等原生路径使用；
     /// 无效句柄返回 {0}）
