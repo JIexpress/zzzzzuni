@@ -81,7 +81,7 @@
 | R10-06 | A/R10 | 修复审计P2 C#批(A-9相机还原) | done(验收PASS with受限 6/6；EditMode 719) | Docs/Logs/TASK-R10-06.md | fa671ba |
 | R10-07 | B/R10 | 补审计漏项(A-10 split屏障 + B-6 采集泄漏) | done(验收PASS with受限 10/10；native 253/711,537) | Docs/Logs/TASK-R10-07.md | 98d377b |
 
-**统计**：done 103 ／ doing 0 ／ todo 0 ／ blocked 0 ／ held 0（审计 9 条：修 7 + 明确接受 2）（按看板行数计；2026-11-05 A-R9-16 闭环后校正）
+**统计**：done 104 ／ doing 1（B-UNITY-02）／ todo 0 ／ blocked 0 ／ held 0（B-UNITY-01 已验收闭环）
 
 > **2026-10-28 G-64 文档对齐（接管）**：修三处失真 ①R8 六行原被追加在「里程碑对照」标题**下方**导致表格断裂、`B-R8-03` 仍挂 `doing`（实际已 PASS，commit `be2adcf`）——已并入主表并改正状态
 > ②`HANDOFF.md` 表头仍写「R8 推进 3/4、B-R8-02 待派」（实际 47 任务全闭环）③`README.md` 与 HANDOFF 注意事项里的任务数/用例数/`TestReport.txt` 是否入库均过期。
@@ -149,5 +149,6 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | A-R9-14 | A/R9 | 音频打磨包(SFX 入库+事件接线) | done(返工 1 轮后独立验收 PASS with 受限；PlayMode 44/44/0；验收亲自复做变异；BGM URL 缺口如实登记) | Docs/Logs/TASK-A-R9-14.md | c09f1ef |
 | A-R9-13 | A/R9 | 千人演练场：DataKernel 玩法侧规模化(混合架构) | done(验收 PASS with 受限；EditMode 880/PlayMode 46；验收亲自复做变异 46/46/0→46/45/1→46/46/0；V3 群体可见默认关受限) | Docs/Logs/TASK-A-R9-13.md | 5f49a42 |
 | A-R9-15 | A/R9 | 千人演练场开箱可见 + 像素回归证据 | done(验收 PASS with 受限；PlayMode 48；真实像素差 3.97%；验收亲眼复核两图并复做变异；GPU DrawCall 仍受限) | Docs/Logs/TASK-A-R9-15.md | c378f49 |
-| B-UNITY-01 | B/UNITY | ZRender 接入 Unity 第一步：原生接受外部 D3D12 设备 + 最小渲染 ABI | doing | Docs/Logs/TASK-B-UNITY-01.md | — |
+| B-UNITY-01 | B/UNITY | ZRender 接入 Unity 第一步：原生接受外部 D3D12 设备 + 最小渲染 ABI | done(验收PASS；导出23→28；清屏回读整帧(13,26,38)；311用例) | Docs/Logs/TASK-B-UNITY-01.md | f1067bd |
+| B-UNITY-02 | B/UNITY | ZRender 接入 Unity 第二步：共享纹理 + 管线接线（方案B，避开backbuffer状态/跨队列） | doing | Docs/Logs/TASK-B-UNITY-02.md | — |
 | A-R9-16 | A/R9 | URP 变体收敛（12288 变体成本中心） | done(验收 PASS with 受限；按降级出口交付；EditMode 916；14 是规则命中数非变体减少；真实构建收益未验证) | Docs/Logs/TASK-A-R9-16.md | acef951 |
