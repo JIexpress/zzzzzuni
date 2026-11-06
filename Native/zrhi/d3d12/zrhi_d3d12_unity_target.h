@@ -31,8 +31,9 @@ constexpr int kOk = 0;           // 成功
 constexpr int kErrNull = -1;     // 空指针参数
 constexpr int kErrNoDevice = -2; // 尚未接入宿主设备
 constexpr int kErrDevice = -3;   // 设备包装 / D3D12 资源创建失败
-constexpr int kErrState = -5;    // 状态错误（未建目标就渲染 / 重复建目标）
-constexpr int kErrArgs = -6;     // 尺寸非法（0 或超上限）
+constexpr int kErrState = -5;    // 状态错误（未建目标就渲染 / 重复建目标 / 绘制项溢出）
+constexpr int kErrArgs = -6;     // 参数非法（尺寸越界 / 顶点布局不支持）
+constexpr int kErrHandle = -7;   // 句柄无效（TASK-B-UNITY-03：mesh 句柄）
 
 /// 一帧的统计（跨 ABI 的 POD；zplugin 转成 ZrUnityTargetStats）。
 /// centerRGBA 来自渲染完的**纹理回读**（不是屏幕抓取）——它是"这张纹理里到底
@@ -65,7 +66,67 @@ int GetTargetHandle(uint64_t* outHandle);
 int GetTargetResource(void** outResource);
 
 /// 渲染一帧到共享目标，返回前把纹理转到 PIXEL_SHADER_RESOURCE 并等待 GPU 完成。
+///
+/// 帧内容由**调用方**决定（TASK-B-UNITY-03）：
+///   - 本帧经 SetCamera + 至少一次 DrawMesh 提交了内容 → 画提交的内容；
+///   - 没有提交（或只有相机没有绘制项）→ 回落 B-UNITY-02 的硬编码三 cube 演示，
+///     这样 zrhi_d3d12_window --draw 与既有验证路径的行为完全不变。
 int RenderFrame(void);
+
+// ---- TASK-B-UNITY-03：场景提交（相机 + 网格 + 绘制）-----------------------------
+//
+// 调用顺序（每帧）：
+//   SetCamera(view, proj)                        // 行主序（本引擎约定，见下）
+//   BeginScene()                                 // 清空本帧绘制表（相机保留）
+//   DrawMesh(handle, world, rgba) × N            // N ≤ kMaxSceneDraws
+//   RenderFrame()                                // 真正录制并提交
+//   EndScene()                                   // 可选：仅置状态位（计数用）
+//
+// **矩阵约定（最容易翻车的地方）**：本模块与 first_draw.hlsl 一致，用**行主序
+// 存储 + 列向量**：clip = mvp * float4(pos,1)，平移量落在下标 3/7/11。Unity 的
+// Matrix4x4 是列主序存储（平移量落在 12/13/14），因此托管侧必须**按元素转置**
+// （dst[r*4+c] = m[r,c]）后再传进来，直接 memcpy 会得到转置画面。
+//
+// 深度约定：PSO 固定 D3D 标准深度（LESS，清 1.0，near→0/far→1）。调用方给的
+// proj **必须是标准 [0,1] 深度且 NDC +Y 朝上**；Unity 侧要先把
+// GL.GetGPUProjectionMatrix 的 Y 翻转与反向 Z 归一化掉（见 ZRenderSceneBridge）。
+
+constexpr uint32_t kMaxSceneDraws = 1024u; // 单帧绘制项上限（超出返回 kErrState）
+
+/// 设置本帧相机。view/proj 各 16 个 float（行主序，见上）；空指针返回 kErrNull。
+int SetCamera(const float* view16, const float* proj16);
+
+/// 上传一个网格（顶点 32B/顶点：pos3f + normal3f + uv2f，与 first_draw.hlsl 的
+/// 输入布局同源；strideFloats 必须是 8）。成功返回 kOk 并写 outHandle。
+/// 每份网格只该上传一次——调用方按 mesh 缓存句柄，别每帧调本函数。
+int CreateMesh(const float* vertices, uint32_t vertexCount, uint32_t strideFloats,
+    const uint32_t* indices, uint32_t indexCount, uint64_t* outHandle);
+
+/// 释放网格（句柄立即失效，代际推进）。无效句柄静默忽略。
+void DestroyMesh(uint64_t handle);
+
+/// 提交一次绘制：world 为 16 float 行主序 model 矩阵，rgba 为基色（可为空 = 白）。
+int DrawMesh(uint64_t handle, const float* world16, const float* rgba);
+
+/// 开始新一帧：清空绘制表（相机与网格句柄表保留）。
+int BeginScene(void);
+
+/// 结束本帧（仅置状态位并累计统计；真正提交在 RenderFrame）。
+int EndScene(void);
+
+/// 场景提交统计（POD，跨 ABI 用；"mesh 只上传一次"的证据在此）。
+struct SceneStats {
+    uint32_t structSize;      // 由实现填 sizeof(SceneStats)
+    uint32_t drawCount;       // 最近一帧提交的绘制项数（0 = 走了 cube 回落）
+    uint32_t meshCount;       // 句柄表里存活的网格数
+    uint32_t reserved;        // 对齐占位（保持 8B 字段对齐）
+    uint64_t uploadCount;     // 累计 CreateMesh 成功次数（应恒等于 mesh 种类数）
+    uint64_t sceneFrameCount; // 走过场景路径的帧数
+    uint64_t drawTotal;       // 累计提交的绘制项数
+};
+
+/// 取场景统计；out 为空返回 kErrNull。
+int GetSceneStats(SceneStats* out);
 
 /// 释放目标与所有渲染资源（解除设备包装，不动宿主设备本身）。
 void ReleaseTarget(void);

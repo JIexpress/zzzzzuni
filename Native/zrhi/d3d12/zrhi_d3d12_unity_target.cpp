@@ -11,24 +11,29 @@
 // 自己拥有纹理后两条同时消失：纹理只由本队列写，写完 fence 等完成，Unity 只读。
 //
 // 每帧顺序（RenderFrame）：
-//   RG(Import color+depth → ClearPass → CubeDrawPass → [ReadbackPass]) →
+//   RG(Import color+depth → ClearPass → DrawPass → [ReadbackPass]) →
 //   手动屏障 [ColorAttachmentOptimal|TransferSrcOptimal] → ShaderReadOnlyOptimal →
 //   Submit → WaitIdle →（回读帧）Map 中心像素
 // 返回时纹理恒为 PIXEL_SHADER_RESOURCE 且 GPU 已完成——这既是 Unity 采样的前提，
 // 也是"不需要跨队列 fence"的全部理由。
 //
-// 几何/着色器：与 --draw 同源（.zmesh cube 的 24 顶点 ±0.5 + first_draw.hlsl）。
+// 帧内容（TASK-B-UNITY-03 起由调用方决定，两条路径共用上面的 RG/屏障/回读）：
+//   - 场景路径：调用方 SetCamera + DrawMesh 提交了内容 → 画 Unity 的物件
+//     （常量 176B，scene_draw.hlsl；逐物件 world/mvp/albedo）
+//   - 回落路径：没有提交 → 仍画原来的三 cube 演示（first_draw.hlsl / 96B 常量），
+//     保证 --draw 与既有验证路径行为不变
+//
+// 几何/着色器：cube 与 --draw 同源（.zmesh cube 的 24 顶点 ±0.5 + first_draw.hlsl）。
 // 但 DLL 在 Player 里没有仓库路径，无法运行时读文件，故：
 //   - 顶点/索引以常量内嵌（数值与 Native/tests/data/cube.zmesh 完全一致）
-//   - HLSL 以字符串内嵌，**逐字**等于 Native/shaders/first_draw.hlsl
-//     （tests/test_zrhi_unity_target.cpp 做字节比对，漂移即红）
+//   - 两份 HLSL 都以字符串内嵌，**逐字**等于 Native/shaders/{first_draw,scene_draw}.hlsl
+//     （first_draw 有单测做字节比对；scene_draw 同规矩，改文件请同步内嵌副本）
 // =============================================================================
 #include "zrhi/d3d12/zrhi_d3d12_unity_target.h"
 
 #include <cmath>
 #include <cstring>
 
-#include "zrender/draw_list.h"
 #include "zrender/rg_render_graph.h"
 #include "zrhi/d3d12/zrhi_d3d12_device.h"
 
@@ -132,6 +137,80 @@ float4 PsMain(PsIn input) : SV_Target
 }
 )ZRHLSL";
 
+// -----------------------------------------------------------------------------
+// 嵌入式场景着色器：逐字等于 Native/shaders/scene_draw.hlsl（改 shader 请改文件
+// 后再整段同步到这里；两份不一致会造成"改了没生效"的假象）。
+// -----------------------------------------------------------------------------
+const char kSceneHlsl[] = R"ZRSCENEHLSL(// =============================================================================
+// scene_draw.hlsl —— Unity 场景提交着色器（TASK-B-UNITY-03）
+//
+// 与 first_draw.hlsl 的关系：**不改** first_draw.hlsl。那份是 --draw 与
+// B-UNITY-02 的内嵌基线（单测逐字节比对它，且 --draw 的常量布局是 96B），
+// 场景提交需要"逐物件世界矩阵 + 逐物件颜色"，常量布局因此多两块，独立成
+// 本文件（内嵌副本在 zrhi_d3d12_unity_target.cpp 的 kSceneHlsl）。
+//
+// 根签名约定的 b0 常量布局（176B，D3D 行主序存储）：
+//   row_major float4x4 mvp      // 64B：proj * view * world
+//   row_major float4x4 world    // 64B：model（法线要用它的 3x3，见下）
+//   float4 lightDir             // 16B：xyz = 指向光源的方向（世界空间，已归一化）
+//   float4 lightColor           // 16B：rgb = 光色
+//   float4 albedo               // 16B：rgb = 物件基色（Unity sharedMaterial 色）
+//
+// 顶点输入与 first_draw.hlsl 完全一致（v1 固定布局，stride 32B）：
+//   POSITION float3 | NORMAL float3 | TEXCOORD0 float2
+//
+// 为什么法线要用 world 矩阵：Unity 的顶点法线是**模型空间**的，顶点数据按
+// mesh 缓存（同一 mesh 被多个 transform 复用），所以法线只能在 VS 里随物件
+// 变换——否则所有旋转过的物件都会照出面黑的背光面。
+// =============================================================================
+
+cbuffer CBufSceneDraw : register(b0)
+{
+    row_major float4x4 mvp;
+    row_major float4x4 world;
+    float4 lightDir;
+    float4 lightColor;
+    float4 albedo;
+};
+
+struct VsIn
+{
+    float3 pos : POSITION;
+    float3 normal : NORMAL;
+    float2 uv : TEXCOORD0;
+};
+
+struct PsIn
+{
+    float4 pos : SV_POSITION;
+    float3 normal : NORMAL;
+    float2 uv : TEXCOORD0;
+};
+
+PsIn VsMain(VsIn input)
+{
+    PsIn output;
+    output.pos = mul(mvp, float4(input.pos, 1.0f));
+    // 法线转到世界空间（旋转 + 均匀缩放；非均匀缩放由 PS 的 normalize 兜住量级）
+    output.normal = mul((float3x3)world, input.normal);
+    output.uv = input.uv;
+    return output;
+}
+
+float4 PsMain(PsIn input) : SV_Target
+{
+    float3 n = normalize(input.normal);
+    float3 l = normalize(lightDir.xyz);
+    // 双面光照：地面 Plane 与部分资产的绕序不保证，背光面给半强度而不是全黑
+    float ndl = saturate(dot(n, l));
+    // 环境项抬到 0.45：ZRender 没有 URP 的球谐环境光，纯 Lambert 会把背光面压成
+    // 剪影（实测胶囊/角色发黑），这里用固定环境项兜住"能看清"这条底线。
+    float3 ambient = float3(0.45f, 0.47f, 0.52f);
+    float3 lit = lightColor.rgb * ndl;
+    return float4(albedo.rgb * (ambient + lit), 1.0f);
+}
+)ZRSCENEHLSL";
+
 // 立方体 24 顶点（±0.5，与 Native/tests/data/cube.zmesh 同尺寸；6 面 × 4 顶点）
 const TargetVertex kCubeVertices[24] = {
     // +X
@@ -166,6 +245,8 @@ const TargetVertex kCubeVertices[24] = {
     {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f}},
 };
 constexpr uint32_t kCubeVertexCount = 24u;
+static_assert(sizeof(kCubeVertices) / sizeof(kCubeVertices[0]) == kCubeVertexCount,
+    "cube vertex table size must match kCubeVertexCount");
 constexpr uint32_t kCubeIndexCount = 36u;
 const uint32_t kCubeIndices[36] = {
     0u, 1u, 2u, 0u, 2u, 3u,       // +X
@@ -250,11 +331,17 @@ struct TargetState {
     ZrImageView depthDsv {};
     ZrBuffer vb {};
     ZrBuffer ib {};
-    ZrBuffer cb[kDrawItems] {};
-    void* cbMapped[kDrawItems] {};
+    // 逐绘常量缓冲池（TASK-B-UNITY-03）：按需增长到本帧绘制项数，之后复用。
+    // 上限 = kMaxSceneDraws；每项 256B（根 CBV 对齐裕量），持久 Map。
+    ZrBuffer cb[kMaxSceneDraws] {};
+    void* cbMapped[kMaxSceneDraws] {};
+    uint32_t cbCount = 0u;
     ZrShader vs {};
     ZrShader ps {};
     ZrPipelineState pso {};
+    ZrShader sceneVs {};       // 场景提交变体（176B 常量，见 scene_draw.hlsl）
+    ZrShader scenePs {};
+    ZrPipelineState psoScene {};
     ZrCommandList cmd {};
     IZrQueue* queue = nullptr;
     ZrBuffer readback {};
@@ -269,6 +356,84 @@ struct TargetState {
 
 TargetState g_target;
 
+// ---- TASK-B-UNITY-03：场景提交（相机 / 网格表 / 绘制表）-------------------------
+// 全部定容静态存储：每帧不分配、不上传顶点（性能底线）。绘制表每帧由
+// BeginScene 清空、DrawMesh 追加、RenderFrame 消费。
+
+/// 一帧内的一次绘制（定容数组元素；88B）
+struct SceneDrawCmd {
+    uint32_t meshSlot = 0u;
+    uint32_t meshGeneration = 0u;
+    float world[16] = {}; // 行主序 model（平移量在下标 3/7/11）
+    float rgba[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+};
+static_assert(sizeof(SceneDrawCmd) == 88, "SceneDrawCmd must be 88 bytes");
+
+/// 网格句柄表项：句柄 = (代际<<32)|槽位，与 zplugin 的 .zmesh 表同一约定
+struct MeshEntry {
+    bool used = false;
+    uint32_t generation = 0u; // 从 1 起；释放即 +1（0 = 槽从未用过）
+    ZrBuffer vb {};
+    ZrBuffer ib {};
+    uint32_t indexCount = 0u;
+};
+
+constexpr uint32_t kMeshSlots = 512u;
+
+/// 场景着色器常量（176B）——与 scene_draw.hlsl 的 CBufSceneDraw 一一对应
+struct SceneDrawConstants {
+    float mvp[16];   // proj * view * world（行主序，列向量约定）
+    float world[16]; // 法线要用的 model
+    float lightDir[4];
+    float lightColor[4];
+    float albedo[4];
+};
+static_assert(sizeof(SceneDrawConstants) == 176, "SceneDrawConstants must be 176 bytes");
+
+/// 帧内绘制项（渲染链消费的形态：绑定什么、画多少）
+struct FrameDraw {
+    ZrBuffer vb {};
+    ZrBuffer ib {};
+    uint32_t indexCount = 0u;
+};
+
+struct SceneState {
+    bool cameraSet = false;
+    float view[16] = {};
+    float proj[16] = {};
+    uint32_t drawCount = 0u;
+    SceneDrawCmd draws[kMaxSceneDraws];
+    uint64_t uploadCount = 0u;  // CreateMesh 成功次数（应恒等于 mesh 种类数）
+    uint64_t frameCount = 0u;   // 走场景路径的帧数
+    uint64_t drawTotal = 0u;    // 累计绘制项
+    uint32_t lastDrawCount = 0u;
+};
+
+SceneState g_scene;
+MeshEntry g_meshes[kMeshSlots];
+/// 本帧实际要画的项（RenderFrame 填；定容静态，避免每帧分配）
+FrameDraw g_frameDraws[kMaxSceneDraws];
+
+uint64_t MakeMeshHandle(uint32_t slot, uint32_t generation)
+{
+    return (static_cast<uint64_t>(generation) << 32) | static_cast<uint64_t>(slot);
+}
+
+MeshEntry* LookupMesh(uint64_t handle)
+{
+    const uint32_t slot = static_cast<uint32_t>(handle & 0xFFFFFFFFull);
+    const uint32_t generation = static_cast<uint32_t>(handle >> 32);
+    if (slot >= kMeshSlots || generation == 0u) {
+        return nullptr;
+    }
+    MeshEntry& entry = g_meshes[slot];
+    if (!entry.used || entry.generation != generation) {
+        return nullptr;
+    }
+    return &entry;
+}
+
+
 /// 释放目标与整条渲染链（保留设备包装：尺寸变化后可直接重建，无需重新接入）
 void DestroyTargetObjects()
 {
@@ -281,6 +446,15 @@ void DestroyTargetObjects()
     if (g_target.readback.IsValid()) {
         device->Destroy(g_target.readback);
     }
+    if (g_target.psoScene.IsValid()) {
+        device->Destroy(g_target.psoScene);
+    }
+    if (g_target.scenePs.IsValid()) {
+        device->Destroy(g_target.scenePs);
+    }
+    if (g_target.sceneVs.IsValid()) {
+        device->Destroy(g_target.sceneVs);
+    }
     if (g_target.pso.IsValid()) {
         device->Destroy(g_target.pso);
     }
@@ -290,7 +464,8 @@ void DestroyTargetObjects()
     if (g_target.vs.IsValid()) {
         device->Destroy(g_target.vs);
     }
-    for (uint32_t i = 0; i < kDrawItems; ++i) {
+    // 常量缓冲池按实际增长量释放（不是 kMaxSceneDraws：绝大多数场景只用到几十个）
+    for (uint32_t i = 0; i < g_target.cbCount && i < kMaxSceneDraws; ++i) {
         if (g_target.cb[i].IsValid()) {
             device->Destroy(g_target.cb[i]);
         }
@@ -326,6 +501,36 @@ void DestroyTargetObjects()
     g_target.device = device;
 }
 
+/// 把逐绘常量缓冲池扩到 needed 个（只增长、不回收；每帧调用只做一次比较）。
+/// 为什么要池：每个绘制项要各自一份 96B/176B 常量，而 SetGraphicsConstantBuffer
+/// 只接受"整块缓冲"，因此一项一缓冲；按需建一次后写内容，避免每帧建缓冲。
+bool EnsureConstantBuffers(uint32_t needed)
+{
+    if (needed > kMaxSceneDraws || g_target.device == nullptr) {
+        return false;
+    }
+    while (g_target.cbCount < needed) {
+        ZrBufferDesc cbDesc {};
+        cbDesc.size = 256u; // 根 CBV 对齐裕量
+        cbDesc.usage = ZrBufferUsage::Uniform;
+        cbDesc.hostVisible = true;
+        ZrBuffer buffer = g_target.device->CreateBuffer(cbDesc);
+        if (!buffer.IsValid()) {
+            return false;
+        }
+        IZrBuffer* iface = g_target.device->GetBuffer(buffer);
+        void* mapped = (iface != nullptr) ? iface->Map() : nullptr;
+        if (mapped == nullptr) {
+            g_target.device->Destroy(buffer);
+            return false;
+        }
+        g_target.cb[g_target.cbCount] = buffer;
+        g_target.cbMapped[g_target.cbCount] = mapped;
+        ++g_target.cbCount;
+    }
+    return true;
+}
+
 /// 建 VB/IB/CB/PSO/命令链（目标与深度已就位）。失败返回 false。
 bool BuildRenderObjects(ZrD3D12Device* device)
 {
@@ -341,18 +546,9 @@ bool BuildRenderObjects(ZrD3D12Device* device)
         return false;
     }
 
-    // 每绘制项一个 hostVisible 缓冲（持久 Map，每帧写 96B 常量）
-    for (uint32_t i = 0; i < kDrawItems; ++i) {
-        ZrBufferDesc cbDesc {};
-        cbDesc.size = 256u; // 根 CBV 对齐裕量
-        cbDesc.usage = ZrBufferUsage::Uniform;
-        cbDesc.hostVisible = true;
-        g_target.cb[i] = device->CreateBuffer(cbDesc);
-        IZrBuffer* iface = device->GetBuffer(g_target.cb[i]);
-        g_target.cbMapped[i] = (iface != nullptr && g_target.cb[i].IsValid()) ? iface->Map() : nullptr;
-        if (g_target.cbMapped[i] == nullptr) {
-            return false;
-        }
+    // 逐绘常量缓冲池：先长到 legacy 三 cube 的量，场景路径再按需继续长
+    if (!EnsureConstantBuffers(kDrawItems)) {
+        return false;
     }
 
     g_target.vs = device->CompileHlsl(
@@ -375,6 +571,24 @@ bool BuildRenderObjects(ZrD3D12Device* device)
     psoDesc.cullMode = ZrCullMode::None;
     g_target.pso = device->CreatePipelineState(psoDesc);
     if (!g_target.pso.IsValid()) {
+        return false;
+    }
+
+    // 场景提交变体：同一顶点布局/深度/剔除，只是常量布局多两块（world + albedo）。
+    // 单独一套 shader/PSO 而不改 first_draw.hlsl —— 后者是 --draw 与 B-UNITY-02
+    // 的基线，动它会连带改 --draw 的常量布局与像素校验。
+    g_target.sceneVs = device->CompileHlsl(
+        ZrShaderStage::Vertex, kSceneHlsl, sizeof(kSceneHlsl) - 1u, "VsMain");
+    g_target.scenePs = device->CompileHlsl(
+        ZrShaderStage::Pixel, kSceneHlsl, sizeof(kSceneHlsl) - 1u, "PsMain");
+    if (!g_target.sceneVs.IsValid() || !g_target.scenePs.IsValid()) {
+        return false;
+    }
+    ZrGraphicsPsoDesc scenePsoDesc = psoDesc;
+    scenePsoDesc.vertexShader = g_target.sceneVs;
+    scenePsoDesc.pixelShader = g_target.scenePs;
+    g_target.psoScene = device->CreatePipelineState(scenePsoDesc);
+    if (!g_target.psoScene.IsValid()) {
         return false;
     }
 
@@ -523,61 +737,95 @@ int RenderFrame(void)
         return kErrDevice;
     }
 
-    // ---- 常量：绕 Y 匀速旋转 + 固定俯仰，三个 cube 横向排开 ----------------------
-    const float angle = 2.0f * kPi * static_cast<float>(g_target.frameCount % 120u) / 120.0f;
-    const float lightDir[3] = {0.5f, 0.8f, 0.6f};
-    const float invLen = 1.0f
-        / std::sqrt(lightDir[0] * lightDir[0] + lightDir[1] * lightDir[1]
-              + lightDir[2] * lightDir[2]);
-    const float lightColor[4] = {1.0f, 0.95f, 0.9f, 1.0f};
-
-    float proj[16];
-    MatPerspectiveFovLH(kPi / 3.0f, static_cast<float>(g_target.width) / static_cast<float>(g_target.height),
-        0.1f, 100.0f, proj);
-    const float view[16] = {1.0f, 0, 0, 0, 0, 1.0f, 0, 0, 0, 0, 1.0f, 0, 0, 0, 0, 1.0f};
-    float rotY[16];
-    MatRotationY(angle, rotY);
-    float rotX[16];
-    MatRotationX(0.35f, rotX);
-    float rx[16];
-    MatMultiply(rotX, rotY, rx);
-    float pv[16];
-    MatMultiply(proj, view, pv);
-    for (uint32_t i = 0; i < kDrawItems; ++i) {
-        const float tx = (static_cast<float>(i) - 1.0f) * 1.6f;
-        float trans[16] = {};
-        MatTranslation(tx, 0.0f, 3.2f, trans);
-        float model[16];
-        MatMultiply(trans, rx, model);
-        float mvp[16];
-        MatMultiply(pv, model, mvp);
-        DrawConstants constants;
-        std::memcpy(constants.mvp, mvp, sizeof(mvp));
-        constants.lightDir[0] = lightDir[0] * invLen;
-        constants.lightDir[1] = lightDir[1] * invLen;
-        constants.lightDir[2] = lightDir[2] * invLen;
-        constants.lightDir[3] = 0.0f;
-        std::memcpy(constants.lightColor, lightColor, sizeof(lightColor));
-        std::memcpy(g_target.cbMapped[i], &constants, sizeof(constants));
-    }
-
-    // 绘制列表：3 项同一 mesh/材质 → 单批（RG DrawPass 真实消费批）
-    DrawList drawList(16u);
-    drawList.RegisterMesh(1u, kCubeVertexCount);
-    for (uint32_t i = 0; i < kDrawItems; ++i) {
-        RenderItem item;
-        item.meshHandle = 1u;
-        item.materialId = 7u;
-        item.shaderId = 0u;
-        item.lod = 0u;
-        item.depth = 3.2f;
-        item.translucent = false;
-        if (!drawList.Add(item, 0x01u)) {
+    // ---- 帧内容：调用方提交优先，无提交回落硬编码三 cube ------------------------
+    // 这个分叉是任务判据 V1/V4 的分水岭：有相机 + 有绘制项 = 画 Unity 的场景；
+    // 否则保持 B-UNITY-02 的演示（--draw 与既有验证不受影响）。
+    const bool scenePath = g_scene.cameraSet && g_scene.drawCount > 0u;
+    uint32_t frameDrawCount = 0u;
+    ZrPipelineState framePso = g_target.pso;
+    if (scenePath) {
+        if (!EnsureConstantBuffers(g_scene.drawCount)) {
+            ++g_target.lastError;
             return kErrDevice;
         }
+        float vp[16];
+        MatMultiply(g_scene.proj, g_scene.view, vp);
+        const float lightDirS[3] = {0.5f, 0.8f, 0.6f};
+        const float invLenS = 1.0f
+            / std::sqrt(lightDirS[0] * lightDirS[0] + lightDirS[1] * lightDirS[1]
+                  + lightDirS[2] * lightDirS[2]);
+        for (uint32_t i = 0; i < g_scene.drawCount; ++i) {
+            const SceneDrawCmd& cmd = g_scene.draws[i];
+            const MeshEntry* mesh = LookupMesh(
+                MakeMeshHandle(cmd.meshSlot, cmd.meshGeneration));
+            if (mesh == nullptr) {
+                continue; // 句柄在提交后被释放：跳过即可，不毁整帧
+            }
+            SceneDrawConstants constants;
+            std::memset(&constants, 0, sizeof(constants));
+            MatMultiply(vp, cmd.world, constants.mvp);
+            std::memcpy(constants.world, cmd.world, sizeof(constants.world));
+            constants.lightDir[0] = lightDirS[0] * invLenS;
+            constants.lightDir[1] = lightDirS[1] * invLenS;
+            constants.lightDir[2] = lightDirS[2] * invLenS;
+            constants.lightColor[0] = 1.0f;
+            constants.lightColor[1] = 0.95f;
+            constants.lightColor[2] = 0.9f;
+            constants.lightColor[3] = 1.0f;
+            std::memcpy(constants.albedo, cmd.rgba, sizeof(constants.albedo));
+            std::memcpy(g_target.cbMapped[frameDrawCount], &constants, sizeof(constants));
+            g_frameDraws[frameDrawCount].vb = mesh->vb;
+            g_frameDraws[frameDrawCount].ib = mesh->ib;
+            g_frameDraws[frameDrawCount].indexCount = mesh->indexCount;
+            ++frameDrawCount;
+        }
+        framePso = g_target.psoScene;
     }
-    drawList.Sort();
-    drawList.BuildBatches();
+
+    if (!scenePath) {
+        // ---- 回落路径：绕 Y 匀速旋转 + 固定俯仰，三个 cube 横向排开（B-UNITY-02 原样）
+        const float angle = 2.0f * kPi * static_cast<float>(g_target.frameCount % 120u) / 120.0f;
+        const float lightDir[3] = {0.5f, 0.8f, 0.6f};
+        const float invLen = 1.0f
+            / std::sqrt(lightDir[0] * lightDir[0] + lightDir[1] * lightDir[1]
+                  + lightDir[2] * lightDir[2]);
+        const float lightColor[4] = {1.0f, 0.95f, 0.9f, 1.0f};
+
+        float proj[16];
+        MatPerspectiveFovLH(kPi / 3.0f,
+            static_cast<float>(g_target.width) / static_cast<float>(g_target.height), 0.1f, 100.0f,
+            proj);
+        const float view[16] = {1.0f, 0, 0, 0, 0, 1.0f, 0, 0, 0, 0, 1.0f, 0, 0, 0, 0, 1.0f};
+        float rotY[16];
+        MatRotationY(angle, rotY);
+        float rotX[16];
+        MatRotationX(0.35f, rotX);
+        float rx[16];
+        MatMultiply(rotX, rotY, rx);
+        float pv[16];
+        MatMultiply(proj, view, pv);
+        for (uint32_t i = 0; i < kDrawItems; ++i) {
+            const float tx = (static_cast<float>(i) - 1.0f) * 1.6f;
+            float trans[16] = {};
+            MatTranslation(tx, 0.0f, 3.2f, trans);
+            float model[16];
+            MatMultiply(trans, rx, model);
+            float mvp[16];
+            MatMultiply(pv, model, mvp);
+            DrawConstants constants;
+            std::memcpy(constants.mvp, mvp, sizeof(mvp));
+            constants.lightDir[0] = lightDir[0] * invLen;
+            constants.lightDir[1] = lightDir[1] * invLen;
+            constants.lightDir[2] = lightDir[2] * invLen;
+            constants.lightDir[3] = 0.0f;
+            std::memcpy(constants.lightColor, lightColor, sizeof(lightColor));
+            std::memcpy(g_target.cbMapped[i], &constants, sizeof(constants));
+            g_frameDraws[i].vb = g_target.vb;
+            g_frameDraws[i].ib = g_target.ib;
+            g_frameDraws[i].indexCount = kCubeIndexCount;
+        }
+        frameDrawCount = kDrawItems;
+    }
 
     const bool doReadback = (g_target.frameCount % kReadbackInterval) == 0u;
 
@@ -603,7 +851,7 @@ int RenderFrame(void)
                 D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0u, 0u, nullptr);
         });
 
-    graph.AddPass("ZRTargetCubeDraw",
+    graph.AddPass("ZRTargetSceneDraw",
         [&](RgPass& pass) {
             pass.Write(colorH, ZrImageLayout::ColorAttachmentOptimal,
                 ZrAccessBits::ColorAttachmentWrite, ZrPipelineStageBits::ColorAttachmentOutput);
@@ -611,18 +859,26 @@ int RenderFrame(void)
                 ZrAccessBits::DepthStencilAttachmentWrite, ZrPipelineStageBits::LateFragmentTests);
         },
         [&](RgContext&) {
-            cmdList->SetPipelineState(g_target.pso);
+            cmdList->SetPipelineState(framePso);
             cmdList->SetRenderTarget(g_target.colorRtv, g_target.depthDsv);
             cmdList->SetViewportScissor(g_target.width, g_target.height);
-            ZrBuffer vbs[1] = {g_target.vb};
-            cmdList->SetVertexBuffers(vbs, 1u);
-            cmdList->SetIndexBuffer(g_target.ib);
-            for (const ZrDrawBatch& batch : drawList.Batches()) {
-                for (uint32_t i = 0; i < batch.count; ++i) {
-                    const uint32_t itemIndex = batch.startIndex + i;
-                    cmdList->SetGraphicsConstantBuffer(0u, g_target.cb[itemIndex]);
-                    cmdList->DrawIndexedInstanced(kCubeIndexCount, 1u, 0u, 0u, 0u);
+            // 逐项绑定：场景里每个物件可能是不同 mesh（VB/IB 都得换），
+            // 同一 mesh 连续出现时只换常量缓冲（常见情形：一批敌人/道具）。
+            ZrBuffer boundVb {};
+            ZrBuffer boundIb {};
+            for (uint32_t i = 0; i < frameDrawCount; ++i) {
+                const FrameDraw& draw = g_frameDraws[i];
+                if (draw.vb.raw != boundVb.raw) {
+                    ZrBuffer vbs[1] = {draw.vb};
+                    cmdList->SetVertexBuffers(vbs, 1u);
+                    boundVb = draw.vb;
                 }
+                if (draw.ib.raw != boundIb.raw) {
+                    cmdList->SetIndexBuffer(draw.ib);
+                    boundIb = draw.ib;
+                }
+                cmdList->SetGraphicsConstantBuffer(0u, g_target.cb[i]);
+                cmdList->DrawIndexedInstanced(draw.indexCount, 1u, 0u, 0u, 0u);
             }
         });
 
@@ -687,6 +943,11 @@ int RenderFrame(void)
     graph.FlushRetired(*device);
 
     ++g_target.frameCount;
+    if (scenePath) {
+        ++g_scene.frameCount;
+        g_scene.drawTotal += frameDrawCount;
+        g_scene.lastDrawCount = frameDrawCount;
+    }
     if (doReadback) {
         const uint8_t* px = static_cast<const uint8_t*>(g_target.readbackMapped);
         // BGRA 字节序：纹理存的是 B,G,R,A
@@ -736,6 +997,165 @@ const char* EmbeddedFirstDrawHlsl(uint32_t* outSize)
         *outSize = size;
     }
     return kFirstDrawHlsl;
+}
+
+// ---- TASK-B-UNITY-03：场景提交 ------------------------------------------------
+
+int SetCamera(const float* view16, const float* proj16)
+{
+    if (view16 == nullptr || proj16 == nullptr) {
+        return kErrNull;
+    }
+    std::memcpy(g_scene.view, view16, sizeof(g_scene.view));
+    std::memcpy(g_scene.proj, proj16, sizeof(g_scene.proj));
+    g_scene.cameraSet = true;
+    return kOk;
+}
+
+int CreateMesh(const float* vertices, uint32_t vertexCount, uint32_t strideFloats,
+    const uint32_t* indices, uint32_t indexCount, uint64_t* outHandle)
+{
+    if (vertices == nullptr || indices == nullptr || outHandle == nullptr) {
+        return kErrNull;
+    }
+    *outHandle = 0u;
+    if (g_target.device == nullptr) {
+        return kErrNoDevice;
+    }
+    // 只支持 v1 固定顶点布局（Pos3f+Normal3f+Uv2f = 8 float / 32B）：
+    // 与 first_draw.hlsl / ZrD3D12_GraphicsInputLayout 的 stride 同源。
+    if (vertexCount == 0u || indexCount == 0u || strideFloats != 8u) {
+        return kErrArgs;
+    }
+
+    uint32_t slot = kMeshSlots;
+    for (uint32_t i = 0; i < kMeshSlots; ++i) {
+        if (!g_meshes[i].used) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot == kMeshSlots) {
+        return kErrState; // 槽位耗尽（512 种 mesh 对常规场景足够）
+    }
+
+    MeshEntry& entry = g_meshes[slot];
+    ZrBufferDesc vbDesc {};
+    vbDesc.size = static_cast<uint64_t>(vertexCount) * 32u;
+    vbDesc.usage = ZrBufferUsage::Vertex | ZrBufferUsage::TransferDst;
+    const ZrBuffer vb = g_target.device->CreateBuffer(vbDesc, vertices);
+    ZrBufferDesc ibDesc {};
+    ibDesc.size = static_cast<uint64_t>(indexCount) * 4u;
+    ibDesc.usage = ZrBufferUsage::Index | ZrBufferUsage::TransferDst;
+    const ZrBuffer ib = g_target.device->CreateBuffer(ibDesc, indices);
+    if (!vb.IsValid() || !ib.IsValid()) {
+        if (vb.IsValid()) {
+            g_target.device->Destroy(vb);
+        }
+        if (ib.IsValid()) {
+            g_target.device->Destroy(ib);
+        }
+        return kErrDevice;
+    }
+
+    if (entry.generation == 0u) {
+        entry.generation = 1u; // 槽位首次启用
+    }
+    entry.used = true;
+    entry.vb = vb;
+    entry.ib = ib;
+    entry.indexCount = indexCount;
+    ++g_scene.uploadCount;
+    *outHandle = MakeMeshHandle(slot, entry.generation);
+    return kOk;
+}
+
+void DestroyMesh(uint64_t handle)
+{
+    MeshEntry* entry = LookupMesh(handle);
+    if (entry == nullptr || g_target.device == nullptr) {
+        return;
+    }
+    // 缓冲可能被上一帧的命令列表引用：等 GPU 排空再放（调用频率 = mesh 种类数，非每帧）
+    g_target.device->WaitIdle();
+    if (entry->vb.IsValid()) {
+        g_target.device->Destroy(entry->vb);
+    }
+    if (entry->ib.IsValid()) {
+        g_target.device->Destroy(entry->ib);
+    }
+    entry->vb = ZrBuffer {};
+    entry->ib = ZrBuffer {};
+    entry->indexCount = 0u;
+    entry->used = false;
+    entry->generation += 1u; // 代际推进：旧句柄此后全部失效
+}
+
+int DrawMesh(uint64_t handle, const float* world16, const float* rgba)
+{
+    if (world16 == nullptr) {
+        return kErrNull;
+    }
+    const MeshEntry* mesh = LookupMesh(handle);
+    if (mesh == nullptr) {
+        return kErrHandle;
+    }
+    if (g_scene.drawCount >= kMaxSceneDraws) {
+        return kErrState;
+    }
+    SceneDrawCmd& cmd = g_scene.draws[g_scene.drawCount];
+    cmd.meshSlot = static_cast<uint32_t>(handle & 0xFFFFFFFFull);
+    cmd.meshGeneration = static_cast<uint32_t>(handle >> 32);
+    std::memcpy(cmd.world, world16, sizeof(cmd.world));
+    if (rgba != nullptr) {
+        std::memcpy(cmd.rgba, rgba, sizeof(cmd.rgba));
+    } else {
+        cmd.rgba[0] = 1.0f;
+        cmd.rgba[1] = 1.0f;
+        cmd.rgba[2] = 1.0f;
+        cmd.rgba[3] = 1.0f;
+    }
+    ++g_scene.drawCount;
+    return kOk;
+}
+
+int BeginScene(void)
+{
+    if (g_target.device == nullptr) {
+        return kErrNoDevice;
+    }
+    g_scene.drawCount = 0u;
+    return kOk;
+}
+
+int EndScene(void)
+{
+    if (g_target.device == nullptr) {
+        return kErrNoDevice;
+    }
+    g_scene.lastDrawCount = g_scene.drawCount;
+    return kOk;
+}
+
+int GetSceneStats(SceneStats* out)
+{
+    if (out == nullptr) {
+        return kErrNull;
+    }
+    out->structSize = static_cast<uint32_t>(sizeof(SceneStats));
+    out->drawCount = g_scene.lastDrawCount;
+    uint32_t meshes = 0u;
+    for (uint32_t i = 0; i < kMeshSlots; ++i) {
+        if (g_meshes[i].used) {
+            ++meshes;
+        }
+    }
+    out->meshCount = meshes;
+    out->reserved = 0u;
+    out->uploadCount = g_scene.uploadCount;
+    out->sceneFrameCount = g_scene.frameCount;
+    out->drawTotal = g_scene.drawTotal;
+    return kOk;
 }
 
 } // namespace unity_target

@@ -77,6 +77,35 @@ namespace ZFrame.Render.Bindings
         [DllImport("zrender")]
         internal static extern int ZR_Unity_GetTargetStats(out ZrUnityTargetStatsNative stats);
 
+        // ---- TASK-B-UNITY-03：场景提交（相机 + 网格 + 绘制）----
+        // 矩阵一律**行主序存储 + 列向量**（平移量在下标 3/7/11），托管侧须按元素
+        // 转置后传入（见 ZRenderSceneBridge.ToNativeRowMajor）。错误码 0=OK；
+        // -1=NULL、-2=未接入设备、-3=资源创建失败、-5=绘制项溢出、-6=参数非法、
+        // -7=句柄无效（ZR_UNITY_ERR_HANDLE）。
+
+        [DllImport("zrender")]
+        internal static extern int ZR_Unity_SetCamera([In] float[] view16, [In] float[] proj16);
+
+        [DllImport("zrender")]
+        internal static extern int ZR_Unity_CreateMesh([In] float[] vertices, uint vertexCount,
+            uint strideFloats, [In] uint[] indices, uint indexCount, out ulong outHandle);
+
+        [DllImport("zrender")]
+        internal static extern void ZR_Unity_DestroyMesh(ulong handle);
+
+        [DllImport("zrender")]
+        internal static extern int ZR_Unity_DrawMesh(ulong handle, [In] float[] world16,
+            [In] float[] rgba);
+
+        [DllImport("zrender")]
+        internal static extern int ZR_Unity_BeginScene();
+
+        [DllImport("zrender")]
+        internal static extern int ZR_Unity_EndScene();
+
+        [DllImport("zrender")]
+        internal static extern int ZR_Unity_GetSceneStats(out ZrUnitySceneStatsNative stats);
+
         /// <summary>原生 ZmeshStats（40B，全定宽；布局须与 zmesh.h 的 ZmeshStats 一致）。</summary>
         [StructLayout(LayoutKind.Sequential)]
         internal struct ZmeshStatsNative
@@ -295,5 +324,96 @@ namespace ZFrame.Render.Bindings
         {
             return ZrNative.ZR_Unity_GetTargetStats(out stats);
         }
+    }
+
+    /// <summary>
+    /// 场景提交的托管门面（TASK-B-UNITY-03）：把 Unity 的相机与物件交给 ZRender。
+    /// 每帧顺序：<c>SetCamera → BeginScene → DrawMesh×N → RenderFrame → EndScene</c>。
+    /// 矩阵是行主序存储 + 列向量约定（平移量在下标 3/7/11），必须按元素转置后传入，
+    /// 直接 memcpy 会得到转置画面。
+    /// </summary>
+    public static class ZrUnitySceneNative
+    {
+        /// <summary>0 = 成功。</summary>
+        public const int Ok = 0;
+
+        /// <summary>空指针参数。</summary>
+        public const int ErrNull = -1;
+
+        /// <summary>尚未接入宿主设备。</summary>
+        public const int ErrNoDevice = -2;
+
+        /// <summary>设备 / 缓冲创建失败。</summary>
+        public const int ErrDevice = -3;
+
+        /// <summary>绘制项溢出（超过原生 1024 上限）。</summary>
+        public const int ErrState = -5;
+
+        /// <summary>参数非法（顶点布局/数量）。</summary>
+        public const int ErrArgs = -6;
+
+        /// <summary>mesh 句柄无效（过期或从未创建）。</summary>
+        public const int ErrHandle = -7;
+
+        /// <summary>设置本帧相机（view/proj 各 16 float，行主序）。</summary>
+        public static int SetCamera(float[] view16, float[] proj16)
+        {
+            return ZrNative.ZR_Unity_SetCamera(view16, proj16);
+        }
+
+        /// <summary>上传网格（8 float/顶点 = pos+normal+uv，32B）；每个 mesh 只该传一次。</summary>
+        public static int CreateMesh(float[] vertices, uint vertexCount, uint strideFloats,
+            uint[] indices, uint indexCount, out ulong handle)
+        {
+            return ZrNative.ZR_Unity_CreateMesh(vertices, vertexCount, strideFloats, indices,
+                indexCount, out handle);
+        }
+
+        /// <summary>释放网格句柄（幂等；无效句柄静默忽略）。</summary>
+        public static void DestroyMesh(ulong handle)
+        {
+            ZrNative.ZR_Unity_DestroyMesh(handle);
+        }
+
+        /// <summary>提交一次绘制（world16 行主序；rgba 为空 = 白色）。</summary>
+        public static int DrawMesh(ulong handle, float[] world16, float[] rgba)
+        {
+            return ZrNative.ZR_Unity_DrawMesh(handle, world16, rgba);
+        }
+
+        /// <summary>开始新一帧（清空绘制表）。</summary>
+        public static int BeginScene()
+        {
+            return ZrNative.ZR_Unity_BeginScene();
+        }
+
+        /// <summary>结束本帧（累计统计）。</summary>
+        public static int EndScene()
+        {
+            return ZrNative.ZR_Unity_EndScene();
+        }
+
+        /// <summary>取场景统计（drawCount / meshCount / uploadCount 等）。</summary>
+        public static int GetSceneStats(out ZrUnitySceneStatsNative stats)
+        {
+            return ZrNative.ZR_Unity_GetSceneStats(out stats);
+        }
+    }
+
+    /// <summary>
+    /// 原生 ZrUnitySceneStats（40B @x64；布局须与 zplugin.h 一致）。
+    /// uploadCount 是"mesh 只上传一次"的硬证据：它应恒等于 mesh 种类数，
+    /// 而不是随帧数增长。
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct ZrUnitySceneStatsNative
+    {
+        public uint StructSize;
+        public uint DrawCount;
+        public uint MeshCount;
+        public uint Reserved;
+        public ulong UploadCount;
+        public ulong SceneFrameCount;
+        public ulong DrawTotal;
     }
 }

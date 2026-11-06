@@ -30,9 +30,11 @@ namespace ZFrame.Render
         private Texture2D _externalTexture;
         private CommandBuffer _commandBuffer;
         private Material _blitMaterial;
+        private ZRenderSceneBridge _sceneBridge;
         private int _targetWidth;
         private int _targetHeight;
         private uint _lastLoggedFrameCount;
+        private float _smoothedFps;
         private int _nextAttemptFrame;
         private bool _nativeReady;
         private bool _gateLogged;
@@ -75,6 +77,12 @@ namespace ZFrame.Render
                 context.Submit();
                 return;
             }
+
+            // ---- 把本帧的场景内容交给原生（TASK-B-UNITY-03）-----------------------------
+            // 没有可见物件时原生回落画 cube 演示（B-UNITY-02 的既有行为，--draw 同源），
+            // 因此这里的失败不阻断渲染：只影响"画什么"。
+            _sceneBridge ??= new ZRenderSceneBridge();
+            _sceneBridge.Submit(cameras[0]);
 
             int renderResult = ZrUnityTargetNative.RenderFrame();
             if (renderResult != ZrUnityTargetNative.Ok)
@@ -275,15 +283,36 @@ namespace ZFrame.Render
             }
 
             _lastLoggedFrameCount = stats.RenderFrameCount;
+
+            // 平滑帧率（每帧一次乘加，代价可忽略；用于"不低于 URP 一半"的现场判据）
+            float deltaTime = Time.unscaledDeltaTime;
+            if (deltaTime > 1e-5f)
+            {
+                float instant = 1f / deltaTime;
+                _smoothedFps = (_smoothedFps <= 0f) ? instant : Mathf.Lerp(_smoothedFps, instant, 0.05f);
+            }
+
             if (stats.RenderFrameCount % 120u != 0u)
             {
                 return;
             }
 
             var center = stats.CenterRGBA;
+            string sceneInfo = string.Empty;
+            if (ZrUnitySceneNative.GetSceneStats(out ZrUnitySceneStatsNative scene)
+                == ZrUnitySceneNative.Ok)
+            {
+                // drawCount = 最近一帧交给原生的物件数；uploadCount = 累计 mesh 上传次数
+                // （它只应在发现新 mesh 时增长——"只上传一次"的现场证据）
+                sceneInfo = $" 场景: 绘制={scene.DrawCount} 帧数={scene.SceneFrameCount} " +
+                            $"mesh 种类={scene.MeshCount} 上传累计={scene.UploadCount}";
+            }
+
             Debug.Log($"[ZRender] RenderFrame 计数={stats.RenderFrameCount} " +
+                      $"帧率≈{_smoothedFps:F1} " +
                       $"目标={stats.Width}x{stats.Height} handle=0x{stats.SharedHandle:X} " +
-                      $"中心像素回读=({center[0]},{center[1]},{center[2]}) 回读次数={stats.ReadbackCount}");
+                      $"中心像素回读=({center[0]},{center[1]},{center[2]}) 回读次数={stats.ReadbackCount}" +
+                      sceneInfo);
         }
 
         protected override void Dispose(bool disposing)
@@ -292,6 +321,8 @@ namespace ZFrame.Render
             {
                 try
                 {
+                    _sceneBridge?.Dispose(); // 先放 mesh 句柄，再放共享目标（顺序与创建相反）
+                    _sceneBridge = null;
                     ZrUnityTargetNative.ReleaseSharedTarget();
                 }
                 catch (Exception)

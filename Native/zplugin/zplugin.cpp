@@ -449,4 +449,60 @@ int ZR_Unity_GetTargetStats(ZrUnityTargetStats* out)
     return ZR_UNITY_OK;
 }
 
+// ---- TASK-B-UNITY-03：场景提交（相机 + 网格 + 绘制）----------------------------
+// 薄转发；状态全在 zr::unity_target。唯一带逻辑的是统计结构体的布局转换
+// （原生 SceneStats → ABI ZrUnitySceneStats，两者字段一一对应）。
+
+int ZR_Unity_SetCamera(const float* view16, const float* proj16)
+{
+    return zr::unity_target::SetCamera(view16, proj16);
+}
+
+int ZR_Unity_CreateMesh(const float* vertices, uint32_t vertexCount, uint32_t strideFloats,
+    const uint32_t* indices, uint32_t indexCount, uint64_t* outHandle)
+{
+    return zr::unity_target::CreateMesh(
+        vertices, vertexCount, strideFloats, indices, indexCount, outHandle);
+}
+
+void ZR_Unity_DestroyMesh(uint64_t handle)
+{
+    zr::unity_target::DestroyMesh(handle);
+}
+
+int ZR_Unity_DrawMesh(uint64_t handle, const float* world16, const float* rgba)
+{
+    return zr::unity_target::DrawMesh(handle, world16, rgba);
+}
+
+int ZR_Unity_BeginScene(void)
+{
+    return zr::unity_target::BeginScene();
+}
+
+int ZR_Unity_EndScene(void)
+{
+    return zr::unity_target::EndScene();
+}
+
+int ZR_Unity_GetSceneStats(ZrUnitySceneStats* out)
+{
+    if (out == nullptr) {
+        return ZR_UNITY_ERR_NULL;
+    }
+    zr::unity_target::SceneStats stats;
+    const int result = zr::unity_target::GetSceneStats(&stats);
+    if (result != ZR_UNITY_OK) {
+        return result;
+    }
+    out->structSize = static_cast<uint32_t>(sizeof(ZrUnitySceneStats));
+    out->drawCount = stats.drawCount;
+    out->meshCount = stats.meshCount;
+    out->reserved = 0u;
+    out->uploadCount = stats.uploadCount;
+    out->sceneFrameCount = stats.sceneFrameCount;
+    out->drawTotal = stats.drawTotal;
+    return ZR_UNITY_OK;
+}
+
 } // extern "C"

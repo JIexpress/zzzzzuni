@@ -288,6 +288,71 @@ typedef int (*ZrUnityRenderFrameFn)(void);
 typedef void (*ZrUnityReleaseSharedTargetFn)(void);
 typedef int (*ZrUnityGetTargetStatsFn)(ZrUnityTargetStats* out);
 
+// ---- TASK-B-UNITY-03：场景提交（把 Unity 的物件搬进 ZRender）-------------------
+//
+// 为什么需要：B-UNITY-02 打通了"纹理贴屏"，但 RenderFrame 内部固定画三个硬编码
+// cube —— 开 -zrender 后游戏物件一个都不出现。本组把"画什么"交给调用方：
+//
+//   SetCamera(view16, proj16) → BeginScene() → DrawMesh(handle, world16, rgba) × N
+//   → RenderFrame() → EndScene()
+//
+// 语义要点：
+//   - 矩阵是**行主序存储 + 列向量**（clip = mvp * pos），平移量在下标 3/7/11。
+//     Unity 的 Matrix4x4 是列主序，托管侧必须按元素转置后传入（见
+//     ZRenderSceneBridge 的 ToNativeRowMajor），直接 memcpy 会得到转置画面。
+//   - proj 必须是**标准 [0,1] 深度、NDC +Y 朝上**（PSO 固定 LESS + 清 1.0）；
+//     Unity 侧要先归一化 GL.GetGPUProjectionMatrix 的 Y 翻转与反向 Z。
+//   - 顶点布局 v1 固定 32B/顶点（pos3f + normal3f + uv2f），strideFloats 必须为 8。
+//   - 本帧没有任何 DrawMesh → RenderFrame 回落画硬编码 cube（--draw 不受影响）。
+//   - 单线程（Unity 渲染线程），与 B-UNITY-02 的接线同一约束。
+
+/// 返回"句柄无效"（mesh 句柄过期/从未创建）。
+#define ZR_UNITY_ERR_HANDLE (-7)
+
+/// 场景提交统计（全定宽 POD；"mesh 只上传一次"的证据在这里）。
+typedef struct ZrUnitySceneStats {
+    uint32_t structSize;      // 由实现填 sizeof(ZrUnitySceneStats)
+    uint32_t drawCount;       // 最近一帧实际提交的绘制项数（0 = 走了 cube 回落）
+    uint32_t meshCount;       // 句柄表里存活的网格数
+    uint32_t reserved;        // 对齐占位
+    uint64_t uploadCount;     // 累计 CreateMesh 成功次数（应恒等于 mesh 种类数）
+    uint64_t sceneFrameCount; // 走过场景路径的帧数
+    uint64_t drawTotal;       // 累计提交的绘制项数
+} ZrUnitySceneStats;
+
+/// 设置本帧相机（view/proj 各 16 float，行主序）。空指针返回 ZR_UNITY_ERR_NULL。
+int ZR_Unity_SetCamera(const float* view16, const float* proj16);
+
+/// 上传网格（顶点 32B/顶点，strideFloats 必须 8）。成功写 outHandle 并返回 OK。
+/// 每份 mesh 只该传一次：调用方按 Mesh.GetInstanceID 缓存句柄。
+int ZR_Unity_CreateMesh(const float* vertices, uint32_t vertexCount, uint32_t strideFloats,
+    const uint32_t* indices, uint32_t indexCount, uint64_t* outHandle);
+
+/// 释放网格（句柄立刻失效；无效句柄静默忽略）。
+void ZR_Unity_DestroyMesh(uint64_t handle);
+
+/// 提交一次绘制（world16 行主序；rgba 为空 = 白色）。
+int ZR_Unity_DrawMesh(uint64_t handle, const float* world16, const float* rgba);
+
+/// 开始新一帧（清空绘制表；相机与网格句柄表保留）。
+int ZR_Unity_BeginScene(void);
+
+/// 结束本帧（置状态位并累计统计）。
+int ZR_Unity_EndScene(void);
+
+/// 取场景统计；out 为空返回 ZR_UNITY_ERR_NULL。
+int ZR_Unity_GetSceneStats(ZrUnitySceneStats* out);
+
+typedef int (*ZrUnitySetCameraFn)(const float* view16, const float* proj16);
+typedef int (*ZrUnityCreateMeshFn)(const float* vertices, uint32_t vertexCount,
+    uint32_t strideFloats, const uint32_t* indices, uint32_t indexCount, uint64_t* outHandle);
+typedef void (*ZrUnityDestroyMeshFn)(uint64_t handle);
+typedef int (*ZrUnityDrawMeshFn)(uint64_t handle, const float* world16, const float* rgba);
+typedef int (*ZrUnityBeginSceneFn)(void);
+typedef int (*ZrUnityEndSceneFn)(void);
+typedef int (*ZrUnityGetSceneStatsFn)(ZrUnitySceneStats* out);
+
+
 #ifdef __cplusplus
 } // extern "C"
 #endif
