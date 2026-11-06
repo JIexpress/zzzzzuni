@@ -280,6 +280,34 @@ void ZR_Unity_ReleaseSharedTarget(void);
 /// 取统计快照；out 为空返回 ZR_UNITY_ERR_NULL。
 int ZR_Unity_GetTargetStats(ZrUnityTargetStats* out);
 
+// ---- TASK-B-UNITY-04：帧同步（fence 双缓冲）+ 双槽目标 ------------------------
+//
+// 语义变化（相对 B-UNITY-02/03）：
+//   - 目标颜色/深度是**双槽**（0/1 轮流），CreateSharedTarget 一次建两套；
+//   - RenderFrame **不再排空队列**，只等上一帧的 fence（帧 N 等 N-1）；
+//   - 宿主每帧要采样的是 GetReadableTargetIndex() 指出的槽位（= 上一帧那份，
+//     已确认画完），而不是"刚提交的槽位"——这就是不撕裂的全部理由。
+//   - 宿主须为两个槽位各建一张外部纹理（GetTargetResourceAt(0/1)）。
+
+/// 同步统计（全定宽 POD；"CPU 等待下降"的现场证据）。
+typedef struct ZrUnitySyncStats {
+    uint32_t structSize;    // 由实现填 sizeof(ZrUnitySyncStats)
+    uint32_t frames;        // RenderFrame 调用数
+    uint32_t blockedFrames; // 实际阻塞过的帧数（等待 >= 0.05ms）
+    uint32_t framesInFlight;// 当前在途帧数（0..2）
+    double lastWaitMs;      // 最近一次等待耗时（毫秒）
+    double avgWaitMs;       // 累计平均等待耗时（毫秒）
+} ZrUnitySyncStats;
+
+/// 取第 index 个（0/1）颜色目标的 ID3D12Resource*；越界返回 ZR_UNITY_ERR_ARGS。
+int ZR_Unity_GetTargetResourceAt(uint32_t index, void** outResource);
+
+/// 取可安全采样的槽位号（= 上一帧渲染的那一份）；out 为空返回 ZR_UNITY_ERR_NULL。
+int ZR_Unity_GetReadableTargetIndex(uint32_t* outIndex);
+
+/// 取同步统计；out 为空返回 ZR_UNITY_ERR_NULL。
+int ZR_Unity_GetSyncStats(ZrUnitySyncStats* out);
+
 typedef int (*ZrUnityAttachDeviceFromTextureFn)(void* d3d12Texture);
 typedef int (*ZrUnityCreateSharedTargetFn)(uint32_t width, uint32_t height);
 typedef int (*ZrUnityGetSharedTargetHandleFn)(uint64_t* outHandle);
@@ -287,6 +315,9 @@ typedef int (*ZrUnityGetSharedTargetResourceFn)(void** outResource);
 typedef int (*ZrUnityRenderFrameFn)(void);
 typedef void (*ZrUnityReleaseSharedTargetFn)(void);
 typedef int (*ZrUnityGetTargetStatsFn)(ZrUnityTargetStats* out);
+typedef int (*ZrUnityGetTargetResourceAtFn)(uint32_t index, void** outResource);
+typedef int (*ZrUnityGetReadableTargetIndexFn)(uint32_t* outIndex);
+typedef int (*ZrUnityGetSyncStatsFn)(ZrUnitySyncStats* out);
 
 // ---- TASK-B-UNITY-03：场景提交（把 Unity 的物件搬进 ZRender）-------------------
 //

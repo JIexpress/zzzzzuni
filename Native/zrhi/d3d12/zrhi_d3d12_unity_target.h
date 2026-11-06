@@ -65,7 +65,9 @@ int GetTargetHandle(uint64_t* outHandle);
 /// 期望 ID3D12Resource*；传 NT 句柄会在首帧崩在 UnityPlayer（实测 0xc0000005）。
 int GetTargetResource(void** outResource);
 
-/// 渲染一帧到共享目标，返回前把纹理转到 PIXEL_SHADER_RESOURCE 并等待 GPU 完成。
+/// 渲染一帧到**当前槽位**，帧末把纹理转到 PIXEL_SHADER_RESOURCE 后提交并 Signal
+/// 本队列的 fence；**不排空队列**（TASK-B-UNITY-04）。可安全采样的槽位由
+/// <see cref="GetReadableTargetIndex"/> 给出（= 上一帧那份，已确认完成）。
 ///
 /// 帧内容由**调用方**决定（TASK-B-UNITY-03）：
 ///   - 本帧经 SetCamera + 至少一次 DrawMesh 提交了内容 → 画提交的内容；
@@ -127,6 +129,38 @@ struct SceneStats {
 
 /// 取场景统计；out 为空返回 kErrNull。
 int GetSceneStats(SceneStats* out);
+
+// ---- TASK-B-UNITY-04：帧同步（fence 双缓冲）----------------------------------
+//
+// 背景：B-UNITY-02/03 每帧 Submit 后 `WaitIdle()`，CPU 必须等 GPU 把本帧干完才
+// 返回——完全没有帧间并行。现在改成：
+//   帧 N 提交后只等**帧 N-1** 的 fence（上一帧早已完成），本帧的完成由下一帧回收；
+//   纹理与深度各两套（双缓冲），交给宿主采样的是上一帧那份（已确认完成）。
+// 这样 CPU 每帧的等待从"整帧 GPU 时间"降到"通常 0"，画面也不会被撕裂（宿主采样的
+// 永远是已经画完的槽位，而不是正在写的槽位）。
+//
+// 为什么必须双缓冲纹理：单张纹理在"不等本帧"的前提下必然被下一帧覆盖，宿主会采到
+// 画了一半的内容；两套槽位后写读分离，才谈得上不撕裂。
+
+/// 同步统计（POD；"CPU 等待下降"的现场证据）。
+struct SyncStats {
+    uint32_t structSize;    // 由实现填 sizeof(SyncStats)
+    uint32_t frames;        // RenderFrame 调用数
+    uint32_t blockedFrames; // 实际阻塞过（等待 ≥ kBlockedThresholdMs）的帧数
+    uint32_t framesInFlight;// 当前在途帧数（0..2；WaitIdle 版恒为 0）
+    double lastWaitMs;      // 最近一次 fence 等待耗时
+    double avgWaitMs;       // 累计平均等待耗时
+};
+
+/// 取同步统计；out 为空返回 kErrNull。
+int GetSyncStats(SyncStats* out);
+
+/// 取第 index 个（0/1）颜色目标的 ID3D12Resource*（宿主为每个槽位各建一张外部纹理）。
+/// index 越界返回 kErrArgs。
+int GetTargetResourceAt(uint32_t index, void** outResource);
+
+/// 取"已完成、可以安全采样"的槽位号（= 上一帧渲染的槽位；帧 0 之后才有意义）。
+int GetReadableTargetIndex(uint32_t* outIndex);
 
 /// 释放目标与所有渲染资源（解除设备包装，不动宿主设备本身）。
 void ReleaseTarget(void);

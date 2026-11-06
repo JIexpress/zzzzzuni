@@ -77,6 +77,19 @@ namespace ZFrame.Render.Bindings
         [DllImport("zrender")]
         internal static extern int ZR_Unity_GetTargetStats(out ZrUnityTargetStatsNative stats);
 
+        // ---- TASK-B-UNITY-04：帧同步（fence 双缓冲）+ 双槽目标 ----
+        // 语义变化：目标颜色/深度是双槽（0/1 轮流），RenderFrame 不再排空队列，
+        // 宿主每帧采样 GetReadableTargetIndex() 指出的那一槽（= 上一帧那份，已画完）。
+
+        [DllImport("zrender")]
+        internal static extern int ZR_Unity_GetTargetResourceAt(uint index, out IntPtr outResource);
+
+        [DllImport("zrender")]
+        internal static extern int ZR_Unity_GetReadableTargetIndex(out uint outIndex);
+
+        [DllImport("zrender")]
+        internal static extern int ZR_Unity_GetSyncStats(out ZrUnitySyncStatsNative stats);
+
         // ---- TASK-B-UNITY-03：场景提交（相机 + 网格 + 绘制）----
         // 矩阵一律**行主序存储 + 列向量**（平移量在下标 3/7/11），托管侧须按元素
         // 转置后传入（见 ZRenderSceneBridge.ToNativeRowMajor）。错误码 0=OK；
@@ -307,7 +320,10 @@ namespace ZFrame.Render.Bindings
             return ZrNative.ZR_Unity_GetSharedTargetResource(out resource);
         }
 
-        /// <summary>渲染一帧；返回时纹理已是可采样状态且 GPU 完成。</summary>
+        /// <summary>
+        /// 渲染一帧（TASK-B-UNITY-04：提交后只 Signal fence，不再排空队列）。
+        /// 返回后可安全采样的是 <see cref="GetReadableTargetIndex"/> 指出的槽位。
+        /// </summary>
         public static int RenderFrame()
         {
             return ZrNative.ZR_Unity_RenderFrame();
@@ -324,6 +340,40 @@ namespace ZFrame.Render.Bindings
         {
             return ZrNative.ZR_Unity_GetTargetStats(out stats);
         }
+
+        /// <summary>取第 index 个（0/1）颜色目标的资源指针（每个槽位一张外部纹理）。</summary>
+        public static int GetTargetResourceAt(uint index, out IntPtr resource)
+        {
+            return ZrNative.ZR_Unity_GetTargetResourceAt(index, out resource);
+        }
+
+        /// <summary>取可安全采样的槽位号（= 上一帧渲染的那一份）。</summary>
+        public static int GetReadableTargetIndex(out uint index)
+        {
+            return ZrNative.ZR_Unity_GetReadableTargetIndex(out index);
+        }
+
+        /// <summary>取帧同步统计（等待耗时 / 在途帧数）。</summary>
+        public static int GetSyncStats(out ZrUnitySyncStatsNative stats)
+        {
+            return ZrNative.ZR_Unity_GetSyncStats(out stats);
+        }
+    }
+
+    /// <summary>
+    /// 原生 ZrUnitySyncStats（32B @x64；布局须与 zplugin.h 一致）。
+    /// avgWaitMs 是"CPU 等 GPU"的直接数字：WaitIdle 版每帧等整帧 GPU 时间，
+    /// fence 双缓冲后等的是上一帧（几乎总是已完成）。
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct ZrUnitySyncStatsNative
+    {
+        public uint StructSize;
+        public uint Frames;
+        public uint BlockedFrames;
+        public uint FramesInFlight;
+        public double LastWaitMs;
+        public double AvgWaitMs;
     }
 
     /// <summary>

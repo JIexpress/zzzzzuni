@@ -449,6 +449,37 @@ int ZR_Unity_GetTargetStats(ZrUnityTargetStats* out)
     return ZR_UNITY_OK;
 }
 
+// ---- TASK-B-UNITY-04：帧同步（fence 双缓冲）+ 双槽目标 -----------------------
+
+int ZR_Unity_GetTargetResourceAt(uint32_t index, void** outResource)
+{
+    return zr::unity_target::GetTargetResourceAt(index, outResource);
+}
+
+int ZR_Unity_GetReadableTargetIndex(uint32_t* outIndex)
+{
+    return zr::unity_target::GetReadableTargetIndex(outIndex);
+}
+
+int ZR_Unity_GetSyncStats(ZrUnitySyncStats* out)
+{
+    if (out == nullptr) {
+        return ZR_UNITY_ERR_NULL;
+    }
+    zr::unity_target::SyncStats stats;
+    const int result = zr::unity_target::GetSyncStats(&stats);
+    if (result != ZR_UNITY_OK) {
+        return result;
+    }
+    out->structSize = static_cast<uint32_t>(sizeof(ZrUnitySyncStats));
+    out->frames = stats.frames;
+    out->blockedFrames = stats.blockedFrames;
+    out->framesInFlight = stats.framesInFlight;
+    out->lastWaitMs = stats.lastWaitMs;
+    out->avgWaitMs = stats.avgWaitMs;
+    return ZR_UNITY_OK;
+}
+
 // ---- TASK-B-UNITY-03：场景提交（相机 + 网格 + 绘制）----------------------------
 // 薄转发；状态全在 zr::unity_target。唯一带逻辑的是统计结构体的布局转换
 // （原生 SceneStats → ABI ZrUnitySceneStats，两者字段一一对应）。

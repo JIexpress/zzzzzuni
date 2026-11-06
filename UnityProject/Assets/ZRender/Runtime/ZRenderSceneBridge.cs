@@ -99,16 +99,17 @@ namespace ZFrame.Render
                     Rescan();
                 }
 
-                ToNativeRowMajor(camera.worldToCameraMatrix, _view);
+                ZrSceneMath.ToNativeRowMajor(camera.worldToCameraMatrix, _view);
 
                 // renderIntoTexture=false：目标是我们自己的纹理，最终由 ZRenderBlit 上屏。
                 // GetGPUProjectionMatrix 会把 Unity 的 GL 约定（z∈[-1,1]）转成平台约定，
                 // 但 D3D 上它同时带 Y 翻转与反向 Z —— 我们的 PSO 固定 LESS + 清 1.0，
                 // 且纹理以"第 0 行 = 画面顶部"交给 Blit，所以这里把两者都归一化掉。
+                // （归一化与转置的实现在 ZrSceneMath，被 EditMode 单测逐值钉住。）
                 Matrix4x4 gpuProjection = GL.GetGPUProjectionMatrix(camera.projectionMatrix, false);
-                gpuProjection = NormalizeProjection(gpuProjection, camera.nearClipPlane,
+                gpuProjection = ZrSceneMath.NormalizeProjection(gpuProjection, camera.nearClipPlane,
                     camera.farClipPlane);
-                ToNativeRowMajor(gpuProjection, _proj);
+                ZrSceneMath.ToNativeRowMajor(gpuProjection, _proj);
 
                 if (ZrUnitySceneNative.SetCamera(_view, _proj) != ZrUnitySceneNative.Ok)
                 {
@@ -152,7 +153,7 @@ namespace ZFrame.Render
                         continue;
                     }
 
-                    if (!GeometryUtility.TestPlanesAABB(_planes, renderer.bounds))
+                    if (!ZrSceneMath.IsVisible(_planes, renderer.bounds))
                     {
                         skippedFrustum++;
                         continue;
@@ -165,7 +166,7 @@ namespace ZFrame.Render
                         continue;
                     }
 
-                    ToNativeRowMajor(renderer.localToWorldMatrix, _world);
+                    ZrSceneMath.ToNativeRowMajor(renderer.localToWorldMatrix, _world);
                     FillColor(renderer, _rgba);
                     if (ZrUnitySceneNative.DrawMesh(handle, _world, _rgba) != ZrUnitySceneNative.Ok)
                     {
@@ -365,29 +366,16 @@ namespace ZFrame.Render
                 return ZrUnitySceneNative.ErrArgs;
             }
 
-            // 8 float/顶点（strideFloats = 8 → 32B）
-            if (_vertexScratch.Length < vertexCount * 8)
+            // 8 float/顶点（strideFloats = 8 → 32B）；打包实现见 ZrSceneMath.PackVertices
+            //（pos3f + normal3f 归一化 + uv2f，被 EditMode 单测逐值钉住）。
+            if (_vertexScratch.Length < vertexCount * ZrSceneMath.VertexStrideFloats)
             {
-                _vertexScratch = new float[vertexCount * 8];
+                _vertexScratch = new float[vertexCount * ZrSceneMath.VertexStrideFloats];
             }
 
-            bool hasNormals = _normals.Count == vertexCount;
-            bool hasUvs = _uvs.Count == vertexCount;
-            int at = 0;
-            for (int i = 0; i < vertexCount; i++)
+            if (ZrSceneMath.PackVertices(_positions, _normals, _uvs, _vertexScratch) != vertexCount)
             {
-                Vector3 p = _positions[i];
-                Vector3 n = hasNormals ? _normals[i] : Vector3.up; // 缺法线时别给零向量（会发黑）
-                Vector2 uv = hasUvs ? _uvs[i] : Vector2.zero;
-                _vertexScratch[at] = p.x;
-                _vertexScratch[at + 1] = p.y;
-                _vertexScratch[at + 2] = p.z;
-                _vertexScratch[at + 3] = n.x;
-                _vertexScratch[at + 4] = n.y;
-                _vertexScratch[at + 5] = n.z;
-                _vertexScratch[at + 6] = uv.x;
-                _vertexScratch[at + 7] = uv.y;
-                at += 8;
+                return ZrUnitySceneNative.ErrArgs;
             }
 
             if (_indexScratch.Length < indexCount)
@@ -400,8 +388,8 @@ namespace ZFrame.Render
                 _indexScratch[i] = (uint)_triangles[i];
             }
 
-            return ZrUnitySceneNative.CreateMesh(_vertexScratch, (uint)vertexCount, 8u,
-                _indexScratch, (uint)indexCount, out handle);
+            return ZrUnitySceneNative.CreateMesh(_vertexScratch, (uint)vertexCount,
+                ZrSceneMath.VertexStrideFloats, _indexScratch, (uint)indexCount, out handle);
         }
 
         /// <summary>
@@ -654,68 +642,9 @@ namespace ZFrame.Render
             return (sign == 0) ? value : -value;
         }
 
-        // ---- 矩阵 / 颜色 -------------------------------------------------------------
-
-        /// <summary>
-        /// Unity Matrix4x4（列主序存储，索引器是 [行, 列]）→ 本引擎的行主序数组。
-        /// dst[r*4+c] = m[r,c]：存储布局转置，数学含义不变（平移量因此落在 3/7/11）。
-        /// 直接 memcpy Unity 的 float[16] 会得到**转置**的画面（物件位置全错）。
-        /// </summary>
-        private static void ToNativeRowMajor(Matrix4x4 matrix, float[] destination)
-        {
-            for (int row = 0; row < 4; row++)
-            {
-                int rowOffset = row * 4;
-                for (int column = 0; column < 4; column++)
-                {
-                    destination[rowOffset + column] = matrix[row, column];
-                }
-            }
-        }
-
-        /// <summary>
-        /// 把 Unity 的 GPU 投影矩阵归一化成我们 PSO 期望的约定：
-        ///   ① NDC +Y 朝上（m11 &gt; 0）——纹理第 0 行是画面顶部，Blit 端再做 Y 翻转；
-        ///   ② 标准 [0,1] 深度且 near→0 / far→1——PSO 固定 D3D12_COMPARISON_FUNC_LESS
-        ///      且清屏深度 1.0，反向 Z（Unity 在 D3D 上的默认）会让遮挡关系整个反过来。
-        /// </summary>
-        private static Matrix4x4 NormalizeProjection(Matrix4x4 projection, float nearPlane,
-            float farPlane)
-        {
-            if (projection.m11 < 0f)
-            {
-                projection.m10 = -projection.m10;
-                projection.m11 = -projection.m11;
-                projection.m12 = -projection.m12;
-                projection.m13 = -projection.m13;
-            }
-
-            float depthAtNear = DepthAtViewDepth(projection, nearPlane);
-            float depthAtFar = DepthAtViewDepth(projection, farPlane);
-            if (depthAtNear > depthAtFar)
-            {
-                // 反向 Z（Unity 在 D3D 上就是这样）→ z' = 1 - z。
-                // 行 2 = (0,0,-1,1)：z' = -z + w；行 3 = (0,0,0,1)：w' = w
-                // （两者写反会得到 z'/(w-z) 这种畸形投影 —— 画面直接全空）。
-                Matrix4x4 flip = Matrix4x4.zero;
-                flip.m00 = 1f;
-                flip.m11 = 1f;
-                flip.m22 = -1f;
-                flip.m23 = 1f;
-                flip.m33 = 1f;
-                projection = flip * projection;
-            }
-
-            return projection;
-        }
-
-        /// <summary>取相机前方 depth（正数）处的 NDC 深度（z/w）。</summary>
-        private static float DepthAtViewDepth(Matrix4x4 projection, float depth)
-        {
-            float z = projection.m22 * -depth + projection.m23;
-            float w = projection.m32 * -depth + projection.m33;
-            return (Mathf.Abs(w) > 1e-6f) ? z / w : 0f;
-        }
+        // ---- 颜色 -------------------------------------------------------------------
+        // 矩阵转换 / 投影归一化 / 顶点打包 / 剔除判断全部在 ZrSceneMath（纯函数，被
+        // EditMode 单测逐值钉住；这里不再保留副本，避免"测的是副本、跑的是另一份"）。
 
         /// <summary>物件基色：优先 URP 的 _BaseColor，其次内置的 _Color，拿不到用白。</summary>
         private static void FillColor(Renderer renderer, float[] rgba)

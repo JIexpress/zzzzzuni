@@ -31,6 +31,7 @@
 // =============================================================================
 #include "zrhi/d3d12/zrhi_d3d12_unity_target.h"
 
+#include <chrono>
 #include <cmath>
 #include <cstring>
 
@@ -322,13 +323,31 @@ ZrImageBarrier MakeBarrier(ZrImage image, ZrImageLayout prev, ZrImageLayout next
 }
 
 // 目标与整条渲染链（单线程；进程内单例）
+//
+// TASK-B-UNITY-04：颜色/深度目标改成**双槽**（0/1 轮流），配合 fence 做帧间并行。
+// 单槽在"不等本帧完成"的前提下必然被下一帧覆盖，宿主会采到画了一半的内容。
+constexpr uint32_t kTargetSlots = 2u;
+/// 判定"这一帧真的被阻塞过"的阈值（毫秒）：低于它的等待只是 fence 查询开销
+constexpr double kBlockedThresholdMs = 0.05;
+
 struct TargetState {
     ZrD3D12Device* device = nullptr; // 包装对象（CreateFrom 产物）
-    ZrImage color {};
-    HANDLE sharedHandle = nullptr;
-    ZrImage depth {};
-    ZrImageView colorRtv {};
-    ZrImageView depthDsv {};
+    ZrImage color[kTargetSlots] {};
+    HANDLE sharedHandle[kTargetSlots] = {nullptr, nullptr};
+    ZrImage depth[kTargetSlots] {};
+    ZrImageView colorRtv[kTargetSlots] {};
+    ZrImageView depthDsv[kTargetSlots] {};
+    // 帧同步（TASK-B-UNITY-04）：本队列自己的 fence，帧 N 提交后 Signal，
+    // 下一帧开头等 N-1 的完成。事件对象只建一次（WaitForSingleObject 复用）。
+    ID3D12Fence* syncFence = nullptr;
+    HANDLE syncEvent = nullptr;
+    uint64_t syncValue = 0u;                              // 已 Signal 的最大值
+    uint32_t readableSlot = 0u;                            // 宿主可安全采样的槽位
+    bool pendingReadback = false;                          // 上一帧的回读结果待取
+    double syncLastMs = 0.0;                               // 最近一次等待耗时
+    double syncTotalMs = 0.0;                              // 累计等待耗时
+    uint32_t syncFrames = 0u;                              // 发生过等待的帧数
+    uint32_t syncBlocked = 0u;                             // 其中真的被阻塞的帧数
     ZrBuffer vb {};
     ZrBuffer ib {};
     // 逐绘常量缓冲池（TASK-B-UNITY-03）：按需增长到本帧绘制项数，之后复用。
@@ -434,6 +453,42 @@ MeshEntry* LookupMesh(uint64_t handle)
 }
 
 
+/// 等本队列自己的 fence 到 value（TASK-B-UNITY-04）。顺手记一笔等待耗时：
+/// "CPU 等待下降了"这条判据的现场数字就来自这里。
+void WaitForSync(uint64_t value)
+{
+    if (g_target.syncFence == nullptr || g_target.syncEvent == nullptr) {
+        return;
+    }
+    const auto start = std::chrono::steady_clock::now();
+    if (g_target.syncFence->GetCompletedValue() < value) {
+        g_target.syncFence->SetEventOnCompletion(value, g_target.syncEvent);
+        WaitForSingleObject(g_target.syncEvent, INFINITE);
+    }
+    const std::chrono::duration<double, std::milli> elapsed =
+        std::chrono::steady_clock::now() - start;
+    g_target.syncLastMs = elapsed.count();
+    g_target.syncTotalMs += g_target.syncLastMs;
+    ++g_target.syncFrames;
+    if (g_target.syncLastMs >= kBlockedThresholdMs) {
+        ++g_target.syncBlocked;
+    }
+}
+
+/// 当前在途帧数（已 Signal 但 GPU 还没做完的帧；0 = 队列已排空）
+uint32_t FramesInFlight()
+{
+    if (g_target.syncFence == nullptr) {
+        return 0u;
+    }
+    const uint64_t completed = g_target.syncFence->GetCompletedValue();
+    if (completed >= g_target.syncValue) {
+        return 0u;
+    }
+    const uint64_t inFlight = g_target.syncValue - completed;
+    return (inFlight > kTargetSlots) ? kTargetSlots : static_cast<uint32_t>(inFlight);
+}
+
 /// 释放目标与整条渲染链（保留设备包装：尺寸变化后可直接重建，无需重新接入）
 void DestroyTargetObjects()
 {
@@ -477,24 +532,37 @@ void DestroyTargetObjects()
     if (g_target.vb.IsValid()) {
         device->Destroy(g_target.vb);
     }
-    if (g_target.depthDsv.IsValid()) {
-        device->Destroy(g_target.depthDsv);
-    }
-    if (g_target.colorRtv.IsValid()) {
-        device->Destroy(g_target.colorRtv);
+    for (uint32_t slot = 0; slot < kTargetSlots; ++slot) {
+        if (g_target.depthDsv[slot].IsValid()) {
+            device->Destroy(g_target.depthDsv[slot]);
+        }
+        if (g_target.colorRtv[slot].IsValid()) {
+            device->Destroy(g_target.colorRtv[slot]);
+        }
     }
     if (g_target.cmd.IsValid()) {
         device->Destroy(g_target.cmd);
     }
-    if (g_target.depth.IsValid()) {
-        device->Destroy(g_target.depth);
-    }
-    if (g_target.color.IsValid()) {
-        device->Destroy(g_target.color);
+    for (uint32_t slot = 0; slot < kTargetSlots; ++slot) {
+        if (g_target.depth[slot].IsValid()) {
+            device->Destroy(g_target.depth[slot]);
+        }
+        if (g_target.color[slot].IsValid()) {
+            device->Destroy(g_target.color[slot]);
+        }
     }
     // NT 句柄与资源生命周期独立：资源已释放，句柄本身仍须关掉（否则句柄泄漏）
-    if (g_target.sharedHandle != nullptr) {
-        CloseHandle(g_target.sharedHandle);
+    for (uint32_t slot = 0; slot < kTargetSlots; ++slot) {
+        if (g_target.sharedHandle[slot] != nullptr) {
+            CloseHandle(g_target.sharedHandle[slot]);
+        }
+    }
+    // fence 与等待事件也要跟着目标一起放（像素级泄漏计数器会看到它们）
+    if (g_target.syncFence != nullptr) {
+        g_target.syncFence->Release();
+    }
+    if (g_target.syncEvent != nullptr) {
+        CloseHandle(g_target.syncEvent);
     }
     device->WaitIdle();
     g_target = TargetState {};
@@ -598,6 +666,22 @@ bool BuildRenderObjects(ZrD3D12Device* device)
         return false;
     }
 
+    // 帧同步原语（TASK-B-UNITY-04）：本队列自己的 fence + 可复用的事件对象。
+    // 用独立 fence 而不是 IZrDevice::WaitIdle，因为后者是"排空到此刻"——
+    // 那样每帧都得等本帧干完，正是本任务要消掉的串行化。
+    if (g_target.syncFence == nullptr) {
+        ID3D12Device* nativeDevice = device->D3D12Device();
+        if (nativeDevice == nullptr
+            || FAILED(nativeDevice->CreateFence(0u, D3D12_FENCE_FLAG_NONE,
+                IID_PPV_ARGS(&g_target.syncFence)))) {
+            return false;
+        }
+        g_target.syncEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        if (g_target.syncEvent == nullptr) {
+            return false;
+        }
+    }
+
     // 中心 1x1 回读缓冲（证明纹理里真有画面，而非"Blit 已调用"）
     ZrBufferDesc rbDesc {};
     rbDesc.size = kReadbackPitch;
@@ -645,7 +729,7 @@ int CreateTarget(uint32_t width, uint32_t height)
     if (g_target.device == nullptr) {
         return kErrNoDevice;
     }
-    if (g_target.color.IsValid()) {
+    if (g_target.color[0].IsValid()) {
         if (g_target.width == width && g_target.height == height) {
             return kOk; // 同尺寸：复用现有目标（每帧重建会泄漏 —— 明令禁止）
         }
@@ -659,36 +743,48 @@ int CreateTarget(uint32_t width, uint32_t height)
     // TransferSrc：中心像素回读要走 COPY_SOURCE；Sampled：语义上声明"会被采样"
     colorDesc.usage = ZrImageUsage::ColorAttachment | ZrImageUsage::TransferSrc
         | ZrImageUsage::Sampled;
-    void* shared = nullptr;
-    g_target.color = g_target.device->CreateSharedImage(colorDesc, &shared);
-    if (!g_target.color.IsValid() || shared == nullptr) {
-        g_target = TargetState {}; // device 包装也已被释放
-        return kErrDevice;
+    for (uint32_t slot = 0; slot < kTargetSlots; ++slot) {
+        void* shared = nullptr;
+        g_target.color[slot] = g_target.device->CreateSharedImage(colorDesc, &shared);
+        if (!g_target.color[slot].IsValid() || shared == nullptr) {
+            g_target = TargetState {}; // device 包装也已被释放
+            return kErrDevice;
+        }
+        g_target.sharedHandle[slot] = static_cast<HANDLE>(shared);
     }
-    g_target.sharedHandle = static_cast<HANDLE>(shared);
 
     ZrImageDesc depthDesc {};
     depthDesc.format = ZrFormat::D32Float;
     depthDesc.width = width;
     depthDesc.height = height;
     depthDesc.usage = ZrImageUsage::DepthStencilAttachment;
-    g_target.depth = g_target.device->CreateImage(depthDesc);
+    for (uint32_t slot = 0; slot < kTargetSlots; ++slot) {
+        g_target.depth[slot] = g_target.device->CreateImage(depthDesc);
 
-    ZrImageViewDesc rtvDesc {};
-    rtvDesc.image = g_target.color;
-    rtvDesc.viewType = ZrImageViewType::Rtv;
-    g_target.colorRtv = g_target.device->CreateImageView(rtvDesc);
+        ZrImageViewDesc rtvDesc {};
+        rtvDesc.image = g_target.color[slot];
+        rtvDesc.viewType = ZrImageViewType::Rtv;
+        g_target.colorRtv[slot] = g_target.device->CreateImageView(rtvDesc);
 
-    ZrImageViewDesc dsvDesc {};
-    dsvDesc.image = g_target.depth;
-    dsvDesc.viewType = ZrImageViewType::Dsv;
-    g_target.depthDsv = g_target.device->CreateImageView(dsvDesc);
+        ZrImageViewDesc dsvDesc {};
+        dsvDesc.image = g_target.depth[slot];
+        dsvDesc.viewType = ZrImageViewType::Dsv;
+        g_target.depthDsv[slot] = g_target.device->CreateImageView(dsvDesc);
+    }
 
     g_target.width = width;
     g_target.height = height;
+    g_target.readableSlot = 0u;
 
-    if (!g_target.depth.IsValid() || !g_target.colorRtv.IsValid() || !g_target.depthDsv.IsValid()
-        || !BuildRenderObjects(g_target.device)) {
+    bool viewsOk = true;
+    for (uint32_t slot = 0; slot < kTargetSlots; ++slot) {
+        if (!g_target.depth[slot].IsValid() || !g_target.colorRtv[slot].IsValid()
+            || !g_target.depthDsv[slot].IsValid()) {
+            viewsOk = false;
+        }
+    }
+
+    if (!viewsOk || !BuildRenderObjects(g_target.device)) {
         DestroyTargetObjects();
         return kErrDevice;
     }
@@ -700,25 +796,60 @@ int GetTargetHandle(uint64_t* outHandle)
     if (outHandle == nullptr) {
         return kErrNull;
     }
-    if (g_target.sharedHandle == nullptr) {
+    if (g_target.sharedHandle[0] == nullptr) {
         *outHandle = 0u;
         return kErrState;
     }
-    *outHandle = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(g_target.sharedHandle));
+    *outHandle = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(g_target.sharedHandle[0]));
     return kOk;
 }
 
 int GetTargetResource(void** outResource)
 {
+    // 兼容旧入口（B-UNITY-02）：返回 0 号槽位。双槽路径请用 GetTargetResourceAt。
+    return GetTargetResourceAt(0u, outResource);
+}
+
+int GetTargetResourceAt(uint32_t index, void** outResource)
+{
     if (outResource == nullptr) {
         return kErrNull;
     }
-    if (!g_target.color.IsValid() || g_target.device == nullptr) {
+    if (index >= kTargetSlots) {
+        *outResource = nullptr;
+        return kErrArgs;
+    }
+    if (!g_target.color[index].IsValid() || g_target.device == nullptr) {
         *outResource = nullptr;
         return kErrState;
     }
-    *outResource = g_target.device->D3D12ResourceOf(g_target.color);
+    *outResource = g_target.device->D3D12ResourceOf(g_target.color[index]);
     return (*outResource != nullptr) ? kOk : kErrDevice;
+}
+
+int GetReadableTargetIndex(uint32_t* outIndex)
+{
+    if (outIndex == nullptr) {
+        return kErrNull;
+    }
+    *outIndex = g_target.readableSlot;
+    return kOk;
+}
+
+int GetSyncStats(SyncStats* out)
+{
+    if (out == nullptr) {
+        return kErrNull;
+    }
+    out->structSize = static_cast<uint32_t>(sizeof(SyncStats));
+    out->frames = g_target.frameCount; // RenderFrame 调用数（不是等待次数）
+    out->blockedFrames = g_target.syncBlocked;
+    out->framesInFlight = FramesInFlight();
+    out->lastWaitMs = g_target.syncLastMs;
+    out->avgWaitMs = (g_target.syncFrames > 0u)
+        ? (g_target.syncTotalMs / static_cast<double>(g_target.syncFrames))
+        : 0.0;
+    return kOk;
 }
 
 int RenderFrame(void)
@@ -726,7 +857,7 @@ int RenderFrame(void)
     if (g_target.device == nullptr) {
         return kErrNoDevice;
     }
-    if (!g_target.color.IsValid() || g_target.queue == nullptr || !g_target.cmd.IsValid()) {
+    if (!g_target.color[0].IsValid() || g_target.queue == nullptr || !g_target.cmd.IsValid()) {
         return kErrState;
     }
     ZrD3D12Device* device = g_target.device;
@@ -735,6 +866,30 @@ int RenderFrame(void)
     if (cmdList == nullptr || nativeCmd == nullptr) {
         ++g_target.lastError;
         return kErrDevice;
+    }
+
+    // ---- 帧首同步（TASK-B-UNITY-04）：只等**上一帧**（N-1）的 fence --------------
+    // 帧 N 提交后不等自己：syncValue 在这一刻 = 帧 N-1 的信号值，等它完成即可。
+    // 帧 N-1 在上一个宿主帧就提交了，中间隔了 Unity 自己的一整帧 → 绝大多数时候
+    // 已经完成，这里的等待是 0；旧的 WaitIdle 则要等本帧（刚提交）干完。
+    if (g_target.syncValue > 0u) {
+        WaitForSync(g_target.syncValue);
+    }
+
+    // 双槽：本帧画 slot，宿主采样 otherSlot（= 上一帧那份，刚刚确认完成）
+    const uint32_t slot = g_target.frameCount & 1u;
+    const uint32_t otherSlot = slot ^ 1u;
+
+    // 中心像素回读延后一帧取：等完帧 N-1 之后它的 COPY 才真正落盘
+    if (g_target.pendingReadback && g_target.readbackMapped != nullptr) {
+        const uint8_t* px = static_cast<const uint8_t*>(g_target.readbackMapped);
+        // BGRA 字节序：纹理存的是 B,G,R,A
+        g_target.centerRGBA[0] = px[2];
+        g_target.centerRGBA[1] = px[1];
+        g_target.centerRGBA[2] = px[0];
+        g_target.centerRGBA[3] = px[3];
+        ++g_target.readbackCount;
+        g_target.pendingReadback = false;
     }
 
     // ---- 帧内容：调用方提交优先，无提交回落硬编码三 cube ------------------------
@@ -832,8 +987,8 @@ int RenderFrame(void)
     // ---- 一帧：RG（Import → Clear → CubeDraw → [Readback]）------------------------
     cmdList->Begin();
     RgGraph graph;
-    RgHandle colorH = graph.Import(RgResourceDesc::ImportImage("zr_shared_target", g_target.color));
-    RgHandle depthH = graph.Import(RgResourceDesc::ImportImage("zr_depth", g_target.depth));
+    RgHandle colorH = graph.Import(RgResourceDesc::ImportImage("zr_shared_target", g_target.color[slot]));
+    RgHandle depthH = graph.Import(RgResourceDesc::ImportImage("zr_depth", g_target.depth[slot]));
 
     graph.AddPass("ZRTargetClear",
         [&](RgPass& pass) {
@@ -845,9 +1000,9 @@ int RenderFrame(void)
         [&](RgContext& ctx) {
             cmdList->ClearColorImage(ctx.GetImage(colorH), ZrImageLayout::ColorAttachmentOptimal,
                 kClearColor, ZrSubresourceRange::All());
-            nativeCmd->ClearRenderTargetView(device->D3D12ViewCpuOf(g_target.colorRtv), kClearColor,
+            nativeCmd->ClearRenderTargetView(device->D3D12ViewCpuOf(g_target.colorRtv[slot]), kClearColor,
                 0u, nullptr);
-            nativeCmd->ClearDepthStencilView(device->D3D12ViewCpuOf(g_target.depthDsv),
+            nativeCmd->ClearDepthStencilView(device->D3D12ViewCpuOf(g_target.depthDsv[slot]),
                 D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0u, 0u, nullptr);
         });
 
@@ -860,7 +1015,7 @@ int RenderFrame(void)
         },
         [&](RgContext&) {
             cmdList->SetPipelineState(framePso);
-            cmdList->SetRenderTarget(g_target.colorRtv, g_target.depthDsv);
+            cmdList->SetRenderTarget(g_target.colorRtv[slot], g_target.depthDsv[slot]);
             cmdList->SetViewportScissor(g_target.width, g_target.height);
             // 逐项绑定：场景里每个物件可能是不同 mesh（VB/IB 都得换），
             // 同一 mesh 连续出现时只换常量缓冲（常见情形：一批敌人/道具）。
@@ -921,7 +1076,7 @@ int RenderFrame(void)
     // 一张普通纹理绑定 SRV（PIXEL|NON_PIXEL 两级都置上，见 translate 的布局映射）。
     const ZrImageLayout layoutNow = doReadback ? ZrImageLayout::TransferSrcOptimal
                                               : ZrImageLayout::ColorAttachmentOptimal;
-    ZrImageBarrier toSrv = MakeBarrier(g_target.color, layoutNow,
+    ZrImageBarrier toSrv = MakeBarrier(g_target.color[slot], layoutNow,
         ZrImageLayout::ShaderReadOnlyOptimal,
         doReadback ? ZrAccessBits::TransferRead : ZrAccessBits::ColorAttachmentWrite,
         doReadback ? ZrPipelineStageBits::Transfer : ZrPipelineStageBits::ColorAttachmentOutput,
@@ -929,7 +1084,7 @@ int RenderFrame(void)
     cmdList->ResourceBarrier(&toSrv, 1u, nullptr, 0u);
 
     // 深度回 Undefined（下一帧 RG 起点假设；与 --draw 一致）
-    ZrImageBarrier depthReset = MakeBarrier(g_target.depth,
+    ZrImageBarrier depthReset = MakeBarrier(g_target.depth[slot],
         ZrImageLayout::DepthStencilAttachmentOptimal, ZrImageLayout::Undefined,
         ZrAccessBits::DepthStencilAttachmentWrite, ZrPipelineStageBits::LateFragmentTests,
         ZrAccessBits::None, ZrPipelineStageBits::TopOfPipe);
@@ -937,25 +1092,31 @@ int RenderFrame(void)
 
     cmdList->End();
     g_target.queue->Submit(g_target.cmd);
-    // 同队列 fence 排空：返回即 GPU 完成 → Unity 采样时纹理内容与状态都已就绪，
-    // 不需要（也无法）让 Unity 的队列与本队列做跨队列同步。
-    device->WaitIdle();
+
+    // ---- 提交后只 Signal，不排空（TASK-B-UNITY-04）--------------------------------
+    // 旧实现这里 device->WaitIdle()：CPU 必须等本帧 GPU 干完才返回，帧间完全串行。
+    // 现在只把"本帧完成"记进 fence：下一帧开头等 N-1 的完成，本帧的完成由再下一帧
+    // 回收。宿主采样的是上一帧那个槽位（已确认完成），画面不会被撕裂。
+    ++g_target.syncValue;
+    if (g_target.syncFence != nullptr) {
+        device->D3D12Queue()->Signal(g_target.syncFence, g_target.syncValue);
+    }
+
     graph.FlushRetired(*device);
 
     ++g_target.frameCount;
+    // 交给宿主的永远是"上一帧那份"；帧 0 还没有上一帧 → 保持 0 号槽
+    if (g_target.frameCount >= 2u) {
+        g_target.readableSlot = otherSlot;
+    }
     if (scenePath) {
         ++g_scene.frameCount;
         g_scene.drawTotal += frameDrawCount;
         g_scene.lastDrawCount = frameDrawCount;
     }
     if (doReadback) {
-        const uint8_t* px = static_cast<const uint8_t*>(g_target.readbackMapped);
-        // BGRA 字节序：纹理存的是 B,G,R,A
-        g_target.centerRGBA[0] = px[2];
-        g_target.centerRGBA[1] = px[1];
-        g_target.centerRGBA[2] = px[0];
-        g_target.centerRGBA[3] = px[3];
-        ++g_target.readbackCount;
+        // 回读结果要等这一帧真正完成才有效 → 下一帧的帧首同步之后取
+        g_target.pendingReadback = true;
     }
     return kOk;
 }
@@ -977,7 +1138,7 @@ int GetStats(TargetStats* outStats)
     outStats->height = g_target.height;
     outStats->readbackCount = g_target.readbackCount;
     outStats->sharedHandle = static_cast<uint64_t>(
-        reinterpret_cast<uintptr_t>(g_target.sharedHandle));
+        reinterpret_cast<uintptr_t>(g_target.sharedHandle[0]));
     for (uint32_t i = 0; i < 4u; ++i) {
         outStats->centerRGBA[i] = g_target.centerRGBA[i];
     }
@@ -987,7 +1148,7 @@ int GetStats(TargetStats* outStats)
 
 bool HasTarget(void)
 {
-    return g_target.color.IsValid();
+    return g_target.color[0].IsValid();
 }
 
 const char* EmbeddedFirstDrawHlsl(uint32_t* outSize)
