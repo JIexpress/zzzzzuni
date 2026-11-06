@@ -70,7 +70,40 @@
 
 ## 施工报告（施工代理写）
 
-（待填）
+### ⚠️ 本任务曾被 429 中断（主控说明，2026-11-07 03:40）
+
+**经过**：2026-11-06 14:05 派单 → 子代理已启动并落盘改动（15:28–15:47）→ 14:10 左右触发
+配额 429（`after subagent was created`），返回体丢失、**施工报告未写**。配额于 11-07 03:34 重置。
+
+**中断前已落盘的内容**（主控核对 `git status` 后确认，17 项）：
+
+| 文件 | 性质 |
+|---|---|
+| `Assets/ZRender/Runtime/ZrSceneMath.cs`（新） | 矩阵转换/顶点打包纯函数（任务 1 的落点） |
+| `Assets/ZRender/Tests/ZrSceneMathTests.cs`（新） | 矩阵主序 / 投影深度 / 顶点打包 / 剔除 单测 |
+| `Assets/ZRender/Tests/ZRenderPipelineTextureLifecycleTests.cs`（新） | 纹理重建泄漏（任务 2） |
+| `Assets/ZRender/Tests/ZRenderFrameSyncTests.cs`（新） | fence 双缓冲（任务 3） |
+| `ZRenderPipeline.cs` / `ZRenderSceneBridge.cs` / `ZrNative.cs` | 接线与绑定 |
+| `Native/zplugin/*`、`zrhi/d3d12/zrhi_d3d12_unity_target.*` | 原生侧配套 |
+| `Assets/Plugins/ZRender/zrender.dll` | 重建产物 |
+
+**主控接管后的验证**（非施工自述，可复跑）：
+
+```
+[1] native   PASS  317 cases / 776,740 assertions / 0 failed；ctest 100%
+[2] editmode PASS  total=925 passed=925 failed=0   (916 基线 + 9 新增)
+[3] playmode PASS  total=48  passed=48  failed=0
+[4-6] arch/config/naming 全 PASS
+```
+
+**一次抖动已排除**：首轮 PlayMode 有 1 例失败——
+`DoorToggleEvents_BrightenTheFrame_AtTheDoorPosition_BothDirections`
+（`0.000312` vs 阈值 `0.004000`，"门事件没在屏幕上产生火花"）。
+重跑 **48/48 通过**，判定为像素测试抖动；该用例属**游戏内容侧粒子事件**，与本任务改动无关
+（本任务未触碰 URP 路径与粒子系统）。
+
+**待办**：施工报告正文未写（子代理被中断），上述接管说明替代之；判据结论以**独立验收**为准。
+
 
 ---
 
