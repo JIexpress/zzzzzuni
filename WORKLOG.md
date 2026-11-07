@@ -4,6 +4,9 @@
 
 | 日期 | 任务 | 结果 | commit |
 |---|---|---|---|
+| 2026-11-04 | B-TECH-03 行星尺度切片 | done：施工→验收 PASS（抖动消除 24,576x、轨道数值 Python 逐位复算） | da5bc78 |
+| 2026-11-04 | A-TECH-02 模块化装配切片 | done：施工→验收 PASS with受限 4 项（物理调参核心发现：软关节=正确动力学） | a44e7af |
+| 2026-11-04 | A-TECH-01 自主NPC效用AI | done：接手半成品续建→验收 PASS（928 用例、三 NPC 自主分化实证） | 83c277d |
 | 2026-11-05 | **G-124 A-R9-16 闭环 + 离线渲染体检 + 数字校准** | done：21 条剥离规则 / 计数工具 / 36 用例入库；主控只读体检（材质 shader 悬空 0、Assets 零位图、SRP Batcher 运行期材质 11 处待目测）；四份治理文档统一到 EditMode 916 / 103 done | G-124（本次治理提交） |
 | 2026-11-05 | **A-R9-16 URP 变体收敛** | done：独立验收 **PASS with 受限**，走简报「允许降级出口」。21 条规则（核对三档矩阵后推翻候选表 `_MAIN_LIGHT_SHADOWS_CASCADE`）、纯函数、`IPreprocessShaders`（默认关闭 + 16 白名单 + 可回滚）、`Tools/run_urp_variant_counter.sh`、36 条 EditMode 用例。EditMode **916/916/0**、PlayMode 48、native 311 持平、三校验器 exit 0；验收亲自复做变异 916/916/0→916/912/4→916/916/0。**关键口径**：同命令 stripped `0→14` 是**规则命中数**（73 关键字中命中 21 规则的个数），**不是减少的变体数**；batchmode 无构建 → `IPreprocessShaders` 不触发、变体日志为 0、`ShaderUtil.GetShaderVariantCount` 在 2022.3 不存在。**真实构建变体数/时长对照、剥离器实际删除、12288 重测均列未验证**，未宣称收敛 | acef951 |
 | 2026-11-04 | **G-123 A-R9-15 闭环 + 数字校准** | done：群体默认可见 + 首次真实像素证据；README/HANDOFF/TASKS/WORKLOG 统一到 PlayMode 48 / 102 done | G-123（本次治理提交） |
