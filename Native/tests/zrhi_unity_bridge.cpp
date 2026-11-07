@@ -161,7 +161,16 @@ bool HostClear(HostGpu& gpu, ID3D12Resource* texture, const float color[4])
     return gpu.ExecuteAndWait();
 }
 
-/// 回读整张纹理（宿主自己记录 CopyTextureRegion + Map READBACK 缓冲）
+/// 回读整张纹理（宿主自己记录 CopyTextureRegion + Map READBACK 缓冲）。
+///
+/// 只用于**宿主自己拥有、且处于 COMMON** 的纹理（本程序里就是那张 256x256 的
+/// 自建纹理）。读共享目标请用产品导出 ZR_Unity_ReadTargetPixels：同一块显存在
+/// D3D12 里可以有两个资源对象，**状态跟踪是按对象走的**，用 OpenSharedHandle 那
+/// 个对象去整面拷贝渲染过的内容会得到"每 8 行 1 行有内容、其余为 0"（TASK-B-UNITY-05）。
+///
+/// 行距一律取 footprint.Footprint.RowPitch（= 256 对齐后的 width*bpp），绝不假设
+/// width*4：非 256 对齐宽度（986x611 → 4096 vs 3944、641x357 → 2816 vs 2564）上
+/// 这个假设会让整帧逐行错位。
 bool ReadbackTexture(HostGpu& gpu, ID3D12Resource* texture, std::vector<uint8_t>* out,
     uint32_t* outRowPitch)
 {
@@ -483,13 +492,18 @@ int main()
         GetProcAddress(dll, "ZR_Unity_ReleaseSharedTarget"));
     auto getStats = reinterpret_cast<ZrUnityGetTargetStatsFn>(
         GetProcAddress(dll, "ZR_Unity_GetTargetStats"));
+    auto readPixels = reinterpret_cast<ZrUnityReadTargetPixelsFn>(
+        GetProcAddress(dll, "ZR_Unity_ReadTargetPixels")); // TASK-B-UNITY-05：整面回读
     if (attachTex == nullptr || createTarget == nullptr || getHandle == nullptr
-        || renderFrame == nullptr || releaseTarget == nullptr || getStats == nullptr) {
+        || renderFrame == nullptr || releaseTarget == nullptr || getStats == nullptr
+        || readPixels == nullptr) {
         std::printf("FAILED: missing ZR_Unity_* export(s) for shared target\n");
         FreeLibrary(dll);
         return 2;
     }
-    Check(true, "六个共享目标导出均可从 zrender.dll 导出表解析");
+    Check(true, "七个共享目标导出（含 B-UNITY-05 的整面回读）均可从 zrender.dll 导出表解析");
+    Check(readPixels(nullptr, 0u, nullptr, nullptr) == ZR_UNITY_ERR_NULL,
+        "ReadTargetPixels(nullptr) 返回 ZR_UNITY_ERR_NULL");
 
     Check(getStats(nullptr) == ZR_UNITY_ERR_NULL, "GetTargetStats(nullptr) 返回 ZR_UNITY_ERR_NULL");
     Check(attachTex(nullptr) == ZR_UNITY_ERR_NULL,
@@ -524,13 +538,14 @@ int main()
     }
 
     // ---- 渲染 + 逐帧计数 ---------------------------------------------------------
-    // 注意（本任务的实测边界，必须说清）：宿主对**通过 OpenSharedHandle 拿到的**
-    // 资源做 CopyTextureRegion 整面回读，在本机（AMD 780M / D3D12）上不可靠——
-    // 只有"每隔 8 行"的行序能读到正确内容，其余行读到 0。同一张纹理由 ZRender
-    // 用自己的资源对象回读则完全正确（同一像素两边数字一致），因此这是**宿主导入
-    // 侧的拷贝路径问题，不是渲染问题**。故本程序的像素证据取自 ZRender 自己的
-    // 回读（ZR_Unity_GetTargetStats），宿主导入侧只验证"能开句柄、描述符正确、
-    // 能读写"。Unity 侧的屏幕证据由 Player 截图另出（见任务报告）。
+    // TASK-B-UNITY-02 曾在这里记过一条错误结论：「宿主 OpenSharedHandle 后整面回读
+    // 只有 1/8 行正确，故宿主导入侧不可用于取证」。TASK-B-UNITY-05 量化后的结论相反：
+    //   · 真实脚印（RowPitch=2560 @640x480 / 4096 @986x611 / 2816 @641x357）逐行拷贝
+    //     时，own→own、own→imported、imported→own 三条路径**逐像素一致**；
+    //   · "1/8 行有内容、其余 7/8 为 0"只在"写侧行距 = 8×读侧行距"时出现（见
+    //     zrhi_shared_pitch_probe 的推演段），即 8 倍行距假设事故；
+    //   · 而"假设 width*4"只会得到剪切（第 0 行对、其余整行错位），不是 1/8 + 0。
+    // 所以宿主导入侧回读是可信的 —— 前提是状态与行距都取真实值。下面这段就是这条回归。
     Check(renderFrame() == ZR_UNITY_OK, "RenderFrame() 第 1 帧返回 0");
     ZrUnityTargetStats stats {};
     Check(getStats(&stats) == ZR_UNITY_OK && stats.structSize == sizeof(ZrUnityTargetStats),
@@ -539,18 +554,11 @@ int main()
         stats.renderFrameCount, stats.readbackCount,
         static_cast<unsigned long long>(stats.sharedHandle), stats.width, stats.height,
         stats.centerRGBA[0], stats.centerRGBA[1], stats.centerRGBA[2]);
-    Check(stats.renderFrameCount == 1u && stats.readbackCount == 1u,
-        "RenderFrame 真调用计数 = 1，中心像素回读计数 = 1");
-    {
-        const int clearR = static_cast<int>(ZR_UNITY_CLEAR_R);
-        const int clearG = static_cast<int>(ZR_UNITY_CLEAR_G);
-        const int clearB = static_cast<int>(ZR_UNITY_CLEAR_B);
-        const bool centerDiffers = std::abs(static_cast<int>(stats.centerRGBA[0]) - clearR) > 2
-            || std::abs(static_cast<int>(stats.centerRGBA[1]) - clearG) > 2
-            || std::abs(static_cast<int>(stats.centerRGBA[2]) - clearB) > 2;
-        Check(centerDiffers,
-            "纹理中心像素 ≠ 清屏色（cube 落在中心 —— 纹理里真是画面，不是纯清屏）");
-    }
+    // B-UNITY-04 起中心像素回读是"延后一帧取"的：帧 N 录 COPY、帧 N+1 的帧首同步
+    // 之后才读得到。所以帧 0 结束时 readbackCount 必须是 0（旧断言写成 1，是
+    // B-UNITY-04 改了语义后没跟着改的测试漂移）。
+    Check(stats.renderFrameCount == 1u && stats.readbackCount == 0u,
+        "RenderFrame 真调用计数 = 1；中心像素回读延后一帧（此刻 readbacks=0）");
 
     constexpr uint32_t kExtraFrames = 9u;
     bool allFramesOk = true;
@@ -562,6 +570,58 @@ int main()
     Check(getStats(&stats) == ZR_UNITY_OK && allFramesOk
             && stats.renderFrameCount == 1u + kExtraFrames,
         "RenderFrame 连续 10 帧全部返回 0（计数累加到 10）");
+    Check(stats.readbackCount == 1u,
+        "延后的那一次中心像素回读已在下一帧落地（readbacks=1）");
+    {
+        const int clearR = static_cast<int>(ZR_UNITY_CLEAR_R);
+        const int clearG = static_cast<int>(ZR_UNITY_CLEAR_G);
+        const int clearB = static_cast<int>(ZR_UNITY_CLEAR_B);
+        std::printf("  center pixel after deferral: RGB=(%u,%u,%u)\n", stats.centerRGBA[0],
+            stats.centerRGBA[1], stats.centerRGBA[2]);
+        const bool centerDiffers = std::abs(static_cast<int>(stats.centerRGBA[0]) - clearR) > 2
+            || std::abs(static_cast<int>(stats.centerRGBA[1]) - clearG) > 2
+            || std::abs(static_cast<int>(stats.centerRGBA[2]) - clearB) > 2;
+        Check(centerDiffers,
+            "纹理中心像素 ≠ 清屏色（cube 落在中心 —— 纹理里真是画面，不是纯清屏）");
+    }
+
+    // ---- 整面回读（TASK-B-UNITY-05 的回归）---------------------------------------
+    // 走产品导出 ZR_Unity_ReadTargetPixels：真实脚印逐行拷 + 由本模块自己那个资源
+    // 对象做状态转换。下面三条断言正是 B-UNITY-02 当初"1/8 行正确"那种事故的探针。
+    if (sharedTexture != nullptr && readPixels != nullptr) {
+        std::vector<uint8_t> pixels2(static_cast<size_t>(kSharedWidth) * 4u * kSharedHeight, 0x77u);
+        uint32_t readW = 0u;
+        uint32_t readH = 0u;
+        const int rc = readPixels(pixels2.data(), kSharedWidth * 4u, &readW, &readH);
+        uint32_t zeroRows = 0u;
+        for (uint32_t y = 0u; y < readH; ++y) {
+            const uint8_t* row = pixels2.data() + static_cast<size_t>(y) * kSharedWidth * 4u;
+            bool allZero = true;
+            for (uint32_t x = 0u; x < kSharedWidth * 4u; ++x) {
+                if (row[x] != 0u) {
+                    allZero = false;
+                    break;
+                }
+            }
+            if (allZero) {
+                ++zeroRows;
+            }
+        }
+        std::printf("  full readback: rc=%d %ux%u zeroRows=%u corner BGRA=(%u,%u,%u)\n", rc, readW,
+            readH, zeroRows, static_cast<unsigned>(pixels2[0]), static_cast<unsigned>(pixels2[1]),
+            static_cast<unsigned>(pixels2[2]));
+        Check(rc == ZR_UNITY_OK && readW == kSharedWidth && readH == kSharedHeight,
+            "ZR_Unity_ReadTargetPixels 返回 0 且尺寸 = 640x480");
+        Check(zeroRows == 0u,
+            "整面回读无全零行（\"每 8 行只有 1 行有内容\"那种事故的签名）");
+        const int cb = static_cast<int>(pixels2[0]);
+        const int cg = static_cast<int>(pixels2[1]);
+        const int cr = static_cast<int>(pixels2[2]);
+        Check(std::abs(cb - static_cast<int>(ZR_UNITY_CLEAR_B)) <= 2
+                && std::abs(cg - static_cast<int>(ZR_UNITY_CLEAR_G)) <= 2
+                && std::abs(cr - static_cast<int>(ZR_UNITY_CLEAR_R)) <= 2,
+            "整面回读的 (0,0) 角像素 == 清屏色 BGRA(38,26,13)（行序/列序都没错位）");
+    }
 
     // 宿主导入侧可达性：宿主用自己的队列把这纹理清成洋红并能读回（1 行 1 列采样）
     if (sharedTexture != nullptr) {

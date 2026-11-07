@@ -46,7 +46,6 @@ namespace {
 constexpr float kClearColor[4] = {0.05f, 0.10f, 0.15f, 1.0f};
 constexpr uint32_t kDrawItems = 3u;      // 三个 cube 横向排开（与 --draw 同布局）
 constexpr uint32_t kReadbackInterval = 30u; // 每 30 帧回读一次中心像素（全程都回读太浪费屏障）
-constexpr uint32_t kReadbackPitch = 256u;   // READBACK 行距（256B 对齐）
 constexpr float kPi = 3.14159265358979f;
 
 // 常量布局（96B）——与 first_draw.hlsl 的 CBufPerDraw 一一对应
@@ -365,6 +364,20 @@ struct TargetState {
     IZrQueue* queue = nullptr;
     ZrBuffer readback {};
     void* readbackMapped = nullptr;
+    // 中心 1x1 回读的真实脚印（TASK-B-UNITY-05）：RowPitch 是设备给的，不是 width*bpp。
+    // 旧版把 256 写死成 kReadbackPitch —— 恰好对 1x1 BGRA8 成立，但那是"假设行距"
+    // 这类事故（整面回读只有 1/8 行正确）的同款起点，故改为向 GetCopyableFootprints 问。
+    uint32_t readbackPitch = 0u;
+    uint64_t readbackBytes = 0u;
+    // 整面回读（TASK-B-UNITY-05）：按需建一次、随目标一起释放
+    ZrBuffer fullReadback {};
+    void* fullReadbackMapped = nullptr;
+    uint32_t fullReadbackPitch = 0u;
+    uint64_t fullReadbackBytes = 0u;
+    // 每个槽位"帧末"的真实 D3D12 状态：整面回读必须从它出发做屏障。
+    // （D3D12 的状态跟踪按资源对象走；本模块只用自己那个对象，故这张表就是真值。）
+    D3D12_RESOURCE_STATES colorState[kTargetSlots] = {
+        D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COMMON};
     uint32_t width = 0u;
     uint32_t height = 0u;
     uint32_t frameCount = 0u;
@@ -498,6 +511,10 @@ void DestroyTargetObjects()
     }
     ZrD3D12Device* device = g_target.device;
     device->WaitIdle();
+    if (g_target.fullReadback.IsValid()) {
+        device->Destroy(g_target.fullReadback);
+        g_target.fullReadbackMapped = nullptr;
+    }
     if (g_target.readback.IsValid()) {
         device->Destroy(g_target.readback);
     }
@@ -682,9 +699,37 @@ bool BuildRenderObjects(ZrD3D12Device* device)
         }
     }
 
-    // 中心 1x1 回读缓冲（证明纹理里真有画面，而非"Blit 已调用"）
+    // 中心 1x1 回读缓冲（证明纹理里真有画面，而非"Blit 已调用"）。
+    // 尺寸与行距都取 1x1 BGRA8 的**实际脚印**：D3D12 的 RowPitch 是 256 对齐后的
+    // 值，写死 width*bpp（或任何常数）在非对齐宽度上会逐行错位——本任务 1/8 那件事
+    // 的根因就在这一类假设上，所以这里一次也不假设。
+    {
+        ID3D12Device* nativeDevice = device->D3D12Device();
+        if (nativeDevice == nullptr) {
+            return false;
+        }
+        D3D12_RESOURCE_DESC readbackTexDesc {};
+        readbackTexDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        readbackTexDesc.Width = 1u;
+        readbackTexDesc.Height = 1u;
+        readbackTexDesc.DepthOrArraySize = 1u;
+        readbackTexDesc.MipLevels = 1u;
+        readbackTexDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        readbackTexDesc.SampleDesc.Count = 1u;
+        D3D12_PLACED_SUBRESOURCE_FOOTPRINT placed {};
+        UINT64 rowBytes = 0u;
+        UINT numRows = 0u;
+        UINT64 totalBytes = 0u;
+        nativeDevice->GetCopyableFootprints(&readbackTexDesc, 0u, 1u, 0u, &placed, &numRows,
+            &rowBytes, &totalBytes);
+        if (totalBytes == 0u || placed.Footprint.RowPitch == 0u) {
+            return false;
+        }
+        g_target.readbackPitch = placed.Footprint.RowPitch;
+        g_target.readbackBytes = totalBytes;
+    }
     ZrBufferDesc rbDesc {};
-    rbDesc.size = kReadbackPitch;
+    rbDesc.size = g_target.readbackBytes;
     rbDesc.readback = true;
     g_target.readback = device->CreateBuffer(rbDesc);
     if (!g_target.readback.IsValid()) {
@@ -833,6 +878,148 @@ int GetReadableTargetIndex(uint32_t* outIndex)
         return kErrNull;
     }
     *outIndex = g_target.readableSlot;
+    return kOk;
+}
+
+/// 整面回读（TASK-B-UNITY-05）。细节与理由见头文件：状态必须由**拥有纹理的那侧**
+/// 转换，行距必须来自设备脚印。
+int ReadTargetPixels(void* dst, uint32_t dstRowPitch, uint32_t* outWidth, uint32_t* outHeight)
+{
+    if (dst == nullptr) {
+        return kErrNull;
+    }
+    if (g_target.device == nullptr) {
+        return kErrNoDevice;
+    }
+    if (!g_target.color[0].IsValid() || g_target.queue == nullptr || !g_target.cmd.IsValid()) {
+        return kErrState;
+    }
+    const uint32_t width = g_target.width;
+    const uint32_t height = g_target.height;
+    const uint64_t rowBytes = static_cast<uint64_t>(width) * 4u;
+    if (dstRowPitch < rowBytes) {
+        return kErrArgs;
+    }
+
+    ZrD3D12Device* device = g_target.device;
+    ID3D12Device* nativeDevice = device->D3D12Device();
+    ID3D12GraphicsCommandList* nativeCmd = device->D3D12CommandListOf(g_target.cmd);
+    IZrCommandList* cmdList = device->GetCommandList(g_target.cmd);
+    ID3D12Resource* texture = device->D3D12ResourceOf(g_target.color[0]);
+    if (nativeDevice == nullptr || nativeCmd == nullptr || cmdList == nullptr
+        || texture == nullptr) {
+        return kErrDevice;
+    }
+
+    // 1) 先等本队列排空到此刻：读的必须是"已经画完"的内容（不是正在写的那一帧）
+    if (g_target.syncValue > 0u) {
+        if (g_target.syncFence != nullptr && g_target.syncEvent != nullptr) {
+            if (g_target.syncFence->GetCompletedValue() < g_target.syncValue) {
+                g_target.syncFence->SetEventOnCompletion(g_target.syncValue, g_target.syncEvent);
+                WaitForSingleObject(g_target.syncEvent, INFINITE);
+            }
+        } else {
+            device->WaitIdle();
+        }
+    }
+
+    // 2) 真实脚印（RowPitch 是 256 对齐后的值，不是 width*4）
+    const D3D12_RESOURCE_DESC texDesc = texture->GetDesc();
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT placed {};
+    UINT numRows = 0u;
+    UINT64 rowSizeBytes = 0u;
+    UINT64 totalBytes = 0u;
+    nativeDevice->GetCopyableFootprints(&texDesc, 0u, 1u, 0u, &placed, &numRows, &rowSizeBytes,
+        &totalBytes);
+    if (placed.Footprint.RowPitch == 0u || totalBytes == 0u) {
+        return kErrDevice;
+    }
+
+    // 3) READBACK 缓冲（按需建一次；尺寸/行距变了就重建）
+    if (!g_target.fullReadback.IsValid() || g_target.fullReadbackBytes < totalBytes
+        || g_target.fullReadbackPitch != placed.Footprint.RowPitch) {
+        if (g_target.fullReadback.IsValid()) {
+            device->Destroy(g_target.fullReadback);
+            g_target.fullReadback = ZrBuffer {};
+            g_target.fullReadbackMapped = nullptr;
+        }
+        ZrBufferDesc rbDesc {};
+        rbDesc.size = totalBytes;
+        rbDesc.readback = true;
+        g_target.fullReadback = device->CreateBuffer(rbDesc);
+        if (!g_target.fullReadback.IsValid()) {
+            return kErrDevice;
+        }
+        IZrBuffer* iface = device->GetBuffer(g_target.fullReadback);
+        g_target.fullReadbackMapped = (iface != nullptr) ? iface->Map() : nullptr;
+        if (g_target.fullReadbackMapped == nullptr) {
+            device->Destroy(g_target.fullReadback);
+            g_target.fullReadback = ZrBuffer {};
+            return kErrDevice;
+        }
+        g_target.fullReadbackPitch = placed.Footprint.RowPitch;
+        g_target.fullReadbackBytes = totalBytes;
+    }
+
+    // 4) 录制：真实状态 → COPY_SOURCE → 拷贝 → 转回可采样态
+    const D3D12_RESOURCE_STATES srvState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
+        | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    const D3D12_RESOURCE_STATES before = g_target.colorState[0];
+    cmdList->Begin();
+    D3D12_RESOURCE_BARRIER barrier {};
+    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barrier.Transition.pResource = texture;
+    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    barrier.Transition.StateBefore = before;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+    nativeCmd->ResourceBarrier(1u, &barrier);
+
+    D3D12_TEXTURE_COPY_LOCATION copyDst {};
+    copyDst.pResource = device->D3D12ResourceOf(g_target.fullReadback);
+    copyDst.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+    copyDst.PlacedFootprint = placed;
+    D3D12_TEXTURE_COPY_LOCATION copySrc {};
+    copySrc.pResource = texture;
+    copySrc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    copySrc.SubresourceIndex = 0u;
+    nativeCmd->CopyTextureRegion(&copyDst, 0u, 0u, 0u, &copySrc, nullptr);
+
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
+    barrier.Transition.StateAfter = srvState;
+    nativeCmd->ResourceBarrier(1u, &barrier);
+
+    cmdList->End();
+    g_target.queue->Submit(g_target.cmd);
+    g_target.colorState[0] = srvState;
+
+    // 5) 等这一次拷贝落盘（不污染 GetSyncStats 的等待统计）
+    ++g_target.syncValue;
+    if (g_target.syncFence != nullptr) {
+        device->D3D12Queue()->Signal(g_target.syncFence, g_target.syncValue);
+        if (g_target.syncFence->GetCompletedValue() < g_target.syncValue) {
+            g_target.syncFence->SetEventOnCompletion(g_target.syncValue, g_target.syncEvent);
+            WaitForSingleObject(g_target.syncEvent, INFINITE);
+        }
+    } else {
+        device->WaitIdle();
+    }
+
+    // 6) 逐行拷到调用方缓冲：源行距 = placed.Footprint.RowPitch，目标行距 = dstRowPitch。
+    //    绝不 memcpy 整块（那就是"假设紧凑布局"，最后一个行还有尾部对齐字节）。
+    const auto* mapped = static_cast<const uint8_t*>(g_target.fullReadbackMapped)
+        + placed.Offset; // Offset 只作用于 READBACK 缓冲，不作用于调用方缓冲
+    auto* out = static_cast<uint8_t*>(dst);
+    const size_t srcPitch = static_cast<size_t>(placed.Footprint.RowPitch);
+    for (uint32_t y = 0u; y < height; ++y) {
+        std::memcpy(out + static_cast<size_t>(y) * dstRowPitch,
+            mapped + static_cast<size_t>(y) * srcPitch, static_cast<size_t>(rowBytes));
+    }
+    if (outWidth != nullptr) {
+        *outWidth = width;
+    }
+    if (outHeight != nullptr) {
+        *outHeight = height;
+    }
     return kOk;
 }
 
@@ -1056,7 +1243,7 @@ int RenderFrame(void)
                 dst.PlacedFootprint.Footprint.Width = 1u;
                 dst.PlacedFootprint.Footprint.Height = 1u;
                 dst.PlacedFootprint.Footprint.Depth = 1u;
-                dst.PlacedFootprint.Footprint.RowPitch = kReadbackPitch;
+                dst.PlacedFootprint.Footprint.RowPitch = g_target.readbackPitch;
                 D3D12_TEXTURE_COPY_LOCATION src {};
                 src.pResource = texture;
                 src.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
@@ -1082,6 +1269,9 @@ int RenderFrame(void)
         doReadback ? ZrPipelineStageBits::Transfer : ZrPipelineStageBits::ColorAttachmentOutput,
         ZrAccessBits::ShaderRead, ZrPipelineStageBits::FragmentShader);
     cmdList->ResourceBarrier(&toSrv, 1u, nullptr, 0u);
+    // 帧末真实状态（整面回读要从这里出发做屏障；见 ReadTargetPixels）
+    g_target.colorState[slot] = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
+        | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
 
     // 深度回 Undefined（下一帧 RG 起点假设；与 --draw 一致）
     ZrImageBarrier depthReset = MakeBarrier(g_target.depth[slot],

@@ -461,6 +461,12 @@ int ZR_Unity_GetReadableTargetIndex(uint32_t* outIndex)
     return zr::unity_target::GetReadableTargetIndex(outIndex);
 }
 
+int ZR_Unity_ReadTargetPixels(void* dst, uint32_t dstRowPitch, uint32_t* outWidth,
+    uint32_t* outHeight)
+{
+    return zr::unity_target::ReadTargetPixels(dst, dstRowPitch, outWidth, outHeight);
+}
+
 int ZR_Unity_GetSyncStats(ZrUnitySyncStats* out)
 {
     if (out == nullptr) {

@@ -308,6 +308,13 @@ int ZR_Unity_GetReadableTargetIndex(uint32_t* outIndex);
 /// 取同步统计；out 为空返回 ZR_UNITY_ERR_NULL。
 int ZR_Unity_GetSyncStats(ZrUnitySyncStats* out);
 
+/// 整面回读槽位 0（TASK-B-UNITY-05）：逐行拷到 dst，dstRowPitch 是调用方行距（>= width*4）。
+/// 行距一律取设备脚印（RowPitch 256 对齐），并且**由本模块自己那个资源对象**做
+/// PSR→COPY_SOURCE 的屏障 —— 宿主 OpenSharedHandle 出来的对象状态跟踪是独立的，
+/// 用它在渲染过的纹理上整面拷贝只会得到"每 8 行 1 行有内容、其余为 0"。
+int ZR_Unity_ReadTargetPixels(void* dst, uint32_t dstRowPitch, uint32_t* outWidth,
+    uint32_t* outHeight);
+
 typedef int (*ZrUnityAttachDeviceFromTextureFn)(void* d3d12Texture);
 typedef int (*ZrUnityCreateSharedTargetFn)(uint32_t width, uint32_t height);
 typedef int (*ZrUnityGetSharedTargetHandleFn)(uint64_t* outHandle);
@@ -318,6 +325,8 @@ typedef int (*ZrUnityGetTargetStatsFn)(ZrUnityTargetStats* out);
 typedef int (*ZrUnityGetTargetResourceAtFn)(uint32_t index, void** outResource);
 typedef int (*ZrUnityGetReadableTargetIndexFn)(uint32_t* outIndex);
 typedef int (*ZrUnityGetSyncStatsFn)(ZrUnitySyncStats* out);
+typedef int (*ZrUnityReadTargetPixelsFn)(void* dst, uint32_t dstRowPitch, uint32_t* outWidth,
+    uint32_t* outHeight);
 
 // ---- TASK-B-UNITY-03：场景提交（把 Unity 的物件搬进 ZRender）-------------------
 //

@@ -11,6 +11,7 @@
 ; TASK-B-UNITY-02 新增：共享渲染目标六导出（自建共享纹理 + 渲染 + 句柄导出 + 统计）。
 ; TASK-B-UNITY-03 新增：场景提交七导出（相机 + 网格 + 绘制 + 场景统计）。
 ; TASK-B-UNITY-04 新增：帧同步三导出（双槽资源 / 可读槽位 / 等待耗时统计）。
+; TASK-B-UNITY-05 新增：整面回读一导出（真实脚印 + 本侧状态转换）。
 LIBRARY zrender
 EXPORTS
     ZR_ApiVersion
@@ -39,6 +40,7 @@ EXPORTS
     ZR_Unity_GetTargetResourceAt
     ZR_Unity_GetReadableTargetIndex
     ZR_Unity_GetSyncStats
+    ZR_Unity_ReadTargetPixels
     ZR_Unity_SetCamera
     ZR_Unity_CreateMesh
     ZR_Unity_DestroyMesh

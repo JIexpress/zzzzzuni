@@ -501,6 +501,16 @@ target_link_libraries(zrhi_unity_bridge PRIVATE d3d12 dxgi)
 add_dependencies(zrhi_unity_bridge zrender)
 set_target_properties(zrhi_unity_bridge PROPERTIES FOLDER "ZRender/Tests")
 
+# ---- TASK-B-UNITY-05：共享纹理跨侧回读的行距/布局诊断（1/8 行问题的量化器）-----
+# 与 zrhi_unity_bridge 同构（运行期 LoadLibrary 取导出）。用途：把"整面回读只有
+# 1/8 行正确"量化成 RowPitch / 行映射数字，并作为修复后的逐像素回归入口。
+# 用法：zrhi_shared_pitch_probe.exe [width height]，默认 640x480。
+add_executable(zrhi_shared_pitch_probe tests/zrhi_shared_pitch_probe.cpp)
+target_include_directories(zrhi_shared_pitch_probe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(zrhi_shared_pitch_probe PRIVATE d3d12 dxgi)
+add_dependencies(zrhi_shared_pitch_probe zrender)
+set_target_properties(zrhi_shared_pitch_probe PROPERTIES FOLDER "ZRender/Tests")
+
 # ---- TASK-B-R9-01 阶段 0：DXGI 交换链探测 hook（spike，默认不构建）-----------
 # 目的：实证 Unity 2022.3/D3D12 走哪条 DXGI 交换链创建路径（只记录不替换）。
 # 门禁结论为 STOP 时这些目标不进入产品构建：全部 EXCLUDE_FROM_DEFAULT_BUILD，

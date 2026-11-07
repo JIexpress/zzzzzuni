@@ -162,6 +162,28 @@ int GetTargetResourceAt(uint32_t index, void** outResource);
 /// 取"已完成、可以安全采样"的槽位号（= 上一帧渲染的槽位；帧 0 之后才有意义）。
 int GetReadableTargetIndex(uint32_t* outIndex);
 
+// ---- TASK-B-UNITY-05：整面回读 -------------------------------------------------
+//
+// 为什么需要它：**同一块共享显存在 D3D12 里可以有两个 ID3D12Resource 对象**
+// （DLL 自己那个 + 宿主 OpenSharedHandle 出来的那个），而 D3D12 的**状态跟踪是
+// 按对象走的**。宿主在自己那个对象上做 PSR→COPY_SOURCE 的屏障，并不能把"另一个
+// 对象用 RTV 写进去的内容"变成可线性拷贝的状态：实测（AMD 780M）整面
+// CopyTextureRegion 回读会得到"每 8 行只有 1 行有内容、其余 7 行为 0"的结果，
+// 而行距是对的（RowPitch 2560 = width*4，两个对象的脚印完全一致）。
+// 反过来，先用**真正被渲染的那个对象**把状态落回 COMMON，同一个 imported 对象
+// 立刻能读到全部 480 行 —— 这是本函数的全部理由：状态只由拥有它的那侧转。
+//
+// 语义：
+//   · 读槽位 0（= GetTargetResource / GetTargetHandle 暴露的那一张）；
+//   · 先把本队列排空到此刻，再转 COPY_SOURCE → 拷贝 → 转回 PIXEL_SHADER_RESOURCE，
+//     读完纹理仍然处于 Unity 可采样态；
+//   · **逐行**用设备给的真实脚印拷贝（RowPitch/SlicePitch 一律问
+//     GetCopyableFootprints，绝不假设 width*4），dstRowPitch 是调用方缓冲的行距；
+//   · 返回时 outWidth/outHeight 写实际尺寸（可为空）。
+//
+// dst 为空 → kErrNull；dstRowPitch < width*4 → kErrArgs；无目标 → kErrState。
+int ReadTargetPixels(void* dst, uint32_t dstRowPitch, uint32_t* outWidth, uint32_t* outHeight);
+
 /// 释放目标与所有渲染资源（解除设备包装，不动宿主设备本身）。
 void ReleaseTarget(void);
 
