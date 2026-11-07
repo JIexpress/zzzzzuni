@@ -1126,6 +1126,12 @@ void ReleaseTarget(void)
     // 只释放目标与渲染链，保留设备包装：尺寸变化时可直接再 CreateTarget，
     // 不必回头找宿主要一张纹理重新接入。进程退出时随 DLL 卸载一并回收。
     DestroyTargetObjects();
+    // TASK-B-PSO-01：Unity 侧设备包装按设计不在 ReleaseTarget 销毁（DLL 卸载才回收），
+    // 析构里的自动刷写因此不会在播放器退出时发生 —— 这里显式刷写 PSO 缓存
+    // （幂等：没有新条目时不写盘；尺寸变化时只是空刷写，代价可忽略）。
+    if (g_target.device != nullptr) {
+        g_target.device->FlushPsoCache();
+    }
 }
 
 int GetStats(TargetStats* outStats)

@@ -238,11 +238,34 @@ bool ZrD3D12Device::InitializeRuntime(bool configureDebugSettings)
     for (uint32_t i = 0; i < 3u; ++i) {
         m_queues[i].reset(new ZrD3D12Queue(this, static_cast<ZrQueueType>(i)));
     }
+
+    // ---- TASK-B-PSO-01：PSO 磁盘缓存（能力探测 + 加载；任何失败只是禁用缓存）---------
+    // 放在设备全部就绪之后：库反序列化依赖设备；失败不影响 InitializeRuntime 的
+    // 返回值（缓存是纯优化，兜底是直接创建）。
+    m_psoCache.reset(new ZrD3D12PsoCache());
+    m_psoCache->Initialize(m_device.Get());
     return true;
+}
+
+ZrPsoCacheStats ZrD3D12Device::GetPsoCacheStats() const
+{
+    return m_psoCache != nullptr ? m_psoCache->Stats() : ZrPsoCacheStats {};
+}
+
+void ZrD3D12Device::FlushPsoCache()
+{
+    if (m_psoCache != nullptr) {
+        m_psoCache->Flush();
+    }
 }
 
 ZrD3D12Device::~ZrD3D12Device()
 {
+    // TASK-B-PSO-01：先把本进程新建的 PSO 条目序列化落盘（原子替换），再走资源断言。
+    // 缓存刷写失败不影响销毁流程（Flush 内部吞掉所有错误）。
+    if (m_psoCache != nullptr) {
+        m_psoCache->Flush();
+    }
     // 调用方须先 WaitIdle 并 Destroy 全部资源（≈ Vulkan 设备销毁前资源归还次序）
     assert(m_imageTable.AliveCount() == 0u && m_bufferTable.AliveCount() == 0u
         && m_imageViewTable.AliveCount() == 0u && m_samplerTable.AliveCount() == 0u
@@ -951,8 +974,19 @@ ZrPipelineState ZrD3D12Device::CreatePipelineState(const ZrGraphicsPsoDesc& desc
         : D3D12_SHADER_BYTECODE { ps->bytecode.data(), ps->bytecode.size() };
     const D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc
         = ZrD3D12_GraphicsPsoDesc(desc, obj->rootSignature.Get(), vsBytecode, psBytecode);
-    if (FAILED(m_device->CreateGraphicsPipelineState(
-            &psoDesc, IID_PPV_ARGS(&obj->pipelineState)))) {
+
+    // TASK-B-PSO-01：优先 ID3D12PipelineLibrary（按 desc 稳定哈希命名；命中直接复用
+    // 驱动缓存），库不可用/未命中/调用失败一律回退 ID3D12Device::CreateGraphicsPipelineState。
+    // 缓存层内部保证不抛、不崩；这里只看最终 HRESULT。
+    HRESULT psoHr = E_FAIL;
+    if (m_psoCache != nullptr) {
+        psoHr = m_psoCache->CreateGraphicsPipelineState(psoDesc, vs->bytecode.data(),
+            vs->bytecode.size(), psBytecode.pShaderBytecode, psBytecode.BytecodeLength,
+            cbvCount, srvTableCount, IID_PPV_ARGS(&obj->pipelineState));
+    } else {
+        psoHr = m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&obj->pipelineState));
+    }
+    if (FAILED(psoHr)) {
         delete obj;
         return ZrPipelineState{};
     }

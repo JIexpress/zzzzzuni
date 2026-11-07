@@ -51,6 +51,7 @@
 
 #include "zrhi/d3d12/zrhi_d3d12_slots.h"
 #include "zrhi/d3d12/zrhi_d3d12_translate.h" // TASK-H-02 D3：ZrD3D12PresentStatus
+#include "zrhi/d3d12/zrhi_d3d12_pso_cache.h" // TASK-B-PSO-01：PSO 磁盘缓存
 
 class ZrD3D12CommandList;
 class ZrD3D12Device;
@@ -305,6 +306,14 @@ public:
     /// 诊断用：销毁时只有自建设备会被真正释放（外部设备仅解引用）。
     bool OwnsDevice() const { return m_ownsDevice; }
 
+    // ---- TASK-B-PSO-01：PSO 磁盘缓存（ID3D12PipelineLibrary）-----------------------
+    /// 缓存统计（命中/未命中/加载耗时/序列化字节；验证程序与日志共用）
+    ZrPsoCacheStats GetPsoCacheStats() const;
+    /// 缓存是否真正生效（false = 能力不支持/被环境变量禁用/已降级到直接创建）
+    bool IsPsoCacheActive() const { return m_psoCache != nullptr && m_psoCache->IsActive(); }
+    /// 显式刷写（析构时自动调用；测试可提前调用，幂等）
+    void FlushPsoCache();
+
     // ---- TASK-B-R4-03：运行时着色器编译（D3D12 后端扩展，非 IZrDevice 接口）-----
     // HLSL 源码 → DXBC：内部 D3DCompile（FXC，SM5.0）。DXC/SM6 升级路径：改用
     // dxc.exe（/T vs_6_0 /T ps_6_0，-spirv 可出 Vulkan 轨 SPIR-V）——本接口的
@@ -369,6 +378,7 @@ private:
 
     Microsoft::WRL::ComPtr<IDXGIFactory4> m_factory;
     Microsoft::WRL::ComPtr<ID3D12Device> m_device;
+    std::unique_ptr<ZrD3D12PsoCache> m_psoCache; // TASK-B-PSO-01：PSO 磁盘缓存
     Microsoft::WRL::ComPtr<ID3D12CommandQueue> m_queue; // DIRECT（三域共用）
     Microsoft::WRL::ComPtr<ID3D12InfoQueue> m_infoQueue; // null = 调试层降级
 

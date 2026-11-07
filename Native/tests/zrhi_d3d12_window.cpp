@@ -13779,6 +13779,130 @@ static int RunDevConsoleMode(int argc, char** argv)
     return 0;
 }
 
+// =============================================================================
+// TASK-B-PSO-01：--psocache [salt] —— PSO 磁盘缓存基准（连续两次启动对比用）
+//
+// 用 first_draw.hlsl（VsMain/PsMain）建 24 个**互不相同**的图形 PSO（根 CBV 数 /
+// RTV 格式 / DSV 格式 / 剔除模式 / SRV 表数交叉组合），打印本进程 PSO 创建总耗时
+// 与缓存统计（命中/未命中/加载耗时）。
+//
+// salt（可选，默认 0）：把常量环境项扰动 1e-7*salt —— 产生**驱动从未见过**的
+// 着色器字节码，从而可复现"驱动着色器缓存冷"的首次启动；同一 salt 的第二次
+// 启动由本库命中（不再进驱动编译）。测量方法：
+//   rm cache.bin; exe --psocache 20261107   → 第一次（未命中/现编）
+//   exe --psocache 20261107                  → 第二次（全部命中）
+// 环境变量 ZFRAME_PSO_CACHE 指定缓存路径（测量用临时文件，勿污染仓库）。
+// =============================================================================
+int RunPsoCacheBench(uint32_t salt)
+{
+    std::setvbuf(stdout, nullptr, _IONBF, 0); // 逐行可见（崩溃定位友好）
+    ZrD3D12Device* device = ZrD3D12CreateDevice();
+    if (device == nullptr) {
+        std::printf("zrhi_d3d12_window: --psocache FAILED to create D3D12 device\n");
+        return 1;
+    }
+
+    std::vector<char> hlsl;
+    if (!ReadWholeFile("Native/shaders/first_draw.hlsl", hlsl)) {
+        std::printf("zrhi_d3d12_window: --psocache FAILED to open hlsl\n");
+        ZrD3D12DestroyDevice(device);
+        return 1;
+    }
+    // salt：改写常量环境项 → 每次换 salt 得到驱动从未编译过的 DXBC
+    // （复现"首次启动冷编译"；同一 salt 的第二次启动走本库命中）
+    {
+        const char* const kAmbient = "float3 ambient = float3(0.25f, 0.25f, 0.25f);";
+        std::string source(hlsl.begin(), hlsl.end());
+        const size_t at = source.find(kAmbient);
+        if (at != std::string::npos) {
+            char patched[128] {};
+            std::snprintf(patched, sizeof(patched),
+                "float3 ambient = float3(0.25f, 0.25f, 0.25f + %.9ff);",
+                1e-7 * static_cast<double>(salt + 1u));
+            source.replace(at, std::strlen(kAmbient), patched);
+            hlsl.assign(source.begin(), source.end());
+        } else {
+            std::printf("zrhi_d3d12_window: --psocache WARNING salt patch point not found "
+                        "(shader changed?); using source as-is\n");
+        }
+    }
+    const ZrShader vs
+        = device->CompileHlsl(ZrShaderStage::Vertex, hlsl.data(), hlsl.size(), "VsMain");
+    const ZrShader ps
+        = device->CompileHlsl(ZrShaderStage::Pixel, hlsl.data(), hlsl.size(), "PsMain");
+    if (!vs.IsValid() || !ps.IsValid()) {
+        std::printf("zrhi_d3d12_window: --psocache shader compilation FAILED\n");
+        ZrD3D12DestroyDevice(device);
+        return 1;
+    }
+
+    constexpr uint32_t kTargetPsos = 24u;
+    std::vector<ZrPipelineState> psos;
+    psos.reserve(kTargetPsos);
+    uint32_t made = 0;
+    double sumMs = 0.0;
+    const auto begin = std::chrono::steady_clock::now();
+    for (uint32_t cbv = 1u; cbv <= 5u && made < kTargetPsos; ++cbv) {
+        for (uint32_t rtvSel = 0u; rtvSel < 2u && made < kTargetPsos; ++rtvSel) {
+            for (uint32_t dsvSel = 0u; dsvSel < 3u && made < kTargetPsos; ++dsvSel) {
+                for (uint32_t cullSel = 0u; cullSel < 3u && made < kTargetPsos; ++cullSel) {
+                    ZrGraphicsPsoDesc desc {};
+                    desc.vertexShader = vs;
+                    desc.pixelShader = ps;
+                    desc.rtvFormat = rtvSel != 0u ? ZrFormat::RGBA8Unorm
+                                                  : ZrFormat::BGRA8Unorm;
+                    desc.dsvFormat = dsvSel == 0u
+                        ? ZrFormat::D32Float
+                        : (dsvSel == 1u ? ZrFormat::D24UnormS8 : ZrFormat::Count);
+                    desc.depthTest = dsvSel != 2u;
+                    desc.depthWrite = dsvSel != 2u;
+                    desc.cullMode = cullSel == 0u
+                        ? ZrCullMode::None
+                        : (cullSel == 1u ? ZrCullMode::Back : ZrCullMode::Front);
+                    desc.rootCbvCount = cbv;
+                    desc.srvTableCount = cullSel == 2u ? 2u : 0u;
+
+                    const auto t0 = std::chrono::steady_clock::now();
+                    const ZrPipelineState pso = device->CreatePipelineState(desc);
+                    sumMs += std::chrono::duration<double, std::milli>(
+                        std::chrono::steady_clock::now() - t0).count();
+                    if (!pso.IsValid()) {
+                        std::printf("zrhi_d3d12_window: --psocache FAILED at PSO %u "
+                                    "(cbv=%u rtv=%u dsv=%u cull=%u)\n",
+                            made, cbv, rtvSel, dsvSel, cullSel);
+                        for (const ZrPipelineState& p : psos) {
+                            device->Destroy(p);
+                        }
+                        device->Destroy(vs);
+                        device->Destroy(ps);
+                        ZrD3D12DestroyDevice(device);
+                        return 1;
+                    }
+                    psos.push_back(pso);
+                    made += 1u;
+                }
+            }
+        }
+    }
+    const double totalMs = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - begin).count();
+    const ZrPsoCacheStats st = device->GetPsoCacheStats();
+    std::printf("zrhi_d3d12_window: --psocache salt=%u created=%u create_total_ms=%.3f "
+                "sum_ms=%.3f cache_active=%d hits=%u misses=%u fallbacks=%u "
+                "loaded=%d load_ms=%.3f\n",
+        salt, made, totalMs, sumMs, device->IsPsoCacheActive() ? 1 : 0, st.hits,
+        st.misses, st.fallbacks, st.diskLoaded ? 1 : 0, st.loadMs);
+    std::printf("D3D12 PSOCACHE BENCH OK (%u PSOs)\n", made);
+
+    for (const ZrPipelineState& p : psos) {
+        device->Destroy(p);
+    }
+    device->Destroy(vs);
+    device->Destroy(ps);
+    ZrD3D12DestroyDevice(device); // 析构内 Flush：Serialize + 原子写盘 + 统计日志
+    return 0;
+}
+
 int main(int argc, char** argv)
 {
     bool headless = false;
@@ -13806,6 +13930,16 @@ int main(int argc, char** argv)
                         "(expected vulkan|d3d12|both)\n",
                 backendStr);
             return 1;
+        }
+    }
+    // TASK-B-PSO-01：--psocache [salt] —— PSO 磁盘缓存基准（连续两次启动对比）
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--psocache") == 0) {
+            uint32_t salt = 0u;
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                salt = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 10));
+            }
+            return RunPsoCacheBench(salt);
         }
     }
     // TASK-B-R4-03：--draw [zmeshPath] [hlslPath] —— RG+绘制列表真渲染首绘模式

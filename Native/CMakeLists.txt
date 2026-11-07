@@ -193,6 +193,7 @@ add_library(zrhi         STATIC
     zrhi/d3d12/zrhi_d3d12_commandlist.cpp
     zrhi/d3d12/zrhi_d3d12_slots.cpp
     zrhi/d3d12/zrhi_d3d12_translate.cpp
+    zrhi/d3d12/zrhi_d3d12_pso_cache.cpp # TASK-B-PSO-01：PSO 磁盘缓存（ID3D12PipelineLibrary）
     zrhi/d3d12/zrhi_d3d12_unity_bridge.cpp # TASK-B-UNITY-01：外部设备包装 + 外部纹理清屏
     zrhi/d3d12/zrhi_d3d12_unity_target.cpp # TASK-B-UNITY-02：共享纹理 + cube 渲染 + 句柄导出
     ${ZR_VULKAN_SOURCES}
