@@ -81,7 +81,7 @@
 | R10-06 | A/R10 | 修复审计P2 C#批(A-9相机还原) | done(验收PASS with受限 6/6；EditMode 719) | Docs/Logs/TASK-R10-06.md | fa671ba |
 | R10-07 | B/R10 | 补审计漏项(A-10 split屏障 + B-6 采集泄漏) | done(验收PASS with受限 10/10；native 253/711,537) | Docs/Logs/TASK-R10-07.md | 98d377b |
 
-**统计**：done 108 ／ doing 0 ／ todo 0 ／ blocked 0 ／ held 0
+**统计**：done 108 ／ doing 1（X-HYGIENE-01）／ todo 0 ／ blocked 0 ／ held 0
 
 > **2026-10-28 G-64 文档对齐（接管）**：修三处失真 ①R8 六行原被追加在「里程碑对照」标题**下方**导致表格断裂、`B-R8-03` 仍挂 `doing`（实际已 PASS，commit `be2adcf`）——已并入主表并改正状态
 > ②`HANDOFF.md` 表头仍写「R8 推进 3/4、B-R8-02 待派」（实际 47 任务全闭环）③`README.md` 与 HANDOFF 注意事项里的任务数/用例数/`TestReport.txt` 是否入库均过期。
@@ -155,4 +155,5 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | B-UNITY-04 | B/UNITY | 集成稳定性：矩阵/顶点单测 + 纹理重建泄漏 + 帧同步双缓冲 | done(验收PASS；9条单测有牙；WaitIdle→双缓冲阻塞0/720;纹理计数恒2) | Docs/Logs/TASK-B-UNITY-04.md | 2d5e954 |
 | B-PSO-01 | B/PSO | PSO 磁盘缓存（ID3D12PipelineLibrary 落盘 + 失效重建 + 兜底） | done(验收PASS；76.7ms→2.9ms -96.2%；17进程无AV;坏缓存全识别) | Docs/Logs/TASK-B-PSO-01.md | 4feffbd |
 | A-PKG-01 | A/PKG | Windows 安装包（Inno Setup，24MB，静默安装已验证） | done(实测exit0;167文件;Burts已排除;卸载器在) | Docs/Logs/TASK-A-PKG-01.md | — |
+| X-HYGIENE-01 | X/HYG | 缺口卫生清理：体积口径 + gpu_hud 语义 + PSO 两条尾巴 | doing | Docs/Logs/TASK-X-HYGIENE-01.md | — |
 | A-R9-16 | A/R9 | URP 变体收敛（12288 变体成本中心） | done(验收 PASS with 受限；按降级出口交付；EditMode 916；14 是规则命中数非变体减少；真实构建收益未验证) | Docs/Logs/TASK-A-R9-16.md | acef951 |
