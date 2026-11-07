@@ -81,7 +81,7 @@
 | R10-06 | A/R10 | 修复审计P2 C#批(A-9相机还原) | done(验收PASS with受限 6/6；EditMode 719) | Docs/Logs/TASK-R10-06.md | fa671ba |
 | R10-07 | B/R10 | 补审计漏项(A-10 split屏障 + B-6 采集泄漏) | done(验收PASS with受限 10/10；native 253/711,537) | Docs/Logs/TASK-R10-07.md | 98d377b |
 
-**统计**：done 112 ／ doing 0 ／ todo 0 ／ blocked 0 ／ held 0
+**统计**：done 112 ／ doing 1（A-R9-17）／ todo 0 ／ blocked 0 ／ held 0
 
 > **2026-10-28 G-64 文档对齐（接管）**：修三处失真 ①R8 六行原被追加在「里程碑对照」标题**下方**导致表格断裂、`B-R8-03` 仍挂 `doing`（实际已 PASS，commit `be2adcf`）——已并入主表并改正状态
 > ②`HANDOFF.md` 表头仍写「R8 推进 3/4、B-R8-02 待派」（实际 47 任务全闭环）③`README.md` 与 HANDOFF 注意事项里的任务数/用例数/`TestReport.txt` 是否入库均过期。
@@ -159,4 +159,5 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | X-SEC-01 | X/SEC | DevConsole 认证 + rg.export 路径限定（默认拒绝） | done(验收PASS；token常量时间实测;五种路径攻击全拒;332用例) | Docs/Logs/TASK-X-SEC-01.md | 0d4e115 |
 | B-UNITY-05 | B/UNITY | 共享纹理整面回读只有 1/8 行正确（根因 + 修复） | done(验收PASS with受限；根因=跨对象状态跟踪;A/B/C/D/E五组对照;334用例) | Docs/Logs/TASK-B-UNITY-05.md | 2d1254d |
 | X-RGDESC-01 | X/DIAG | rg.export 的 Imported 资源导出真实 desc | done(根因=ZrImageDesc默认就是1x1无法判"未填";加hasImageDesc;产品路径三参+诊断路径成员resolver;实测 BGRA8/D32Float 640x480) | — | 09437ef |
+| A-R9-17 | A/URP | URP 变体剥离真实收益（变体数 + 构建时长对照） | doing | Docs/Logs/TASK-A-R9-17.md | — |
 | A-R9-16 | A/R9 | URP 变体收敛（12288 变体成本中心） | done(验收 PASS with 受限；按降级出口交付；EditMode 916；14 是规则命中数非变体减少；真实构建收益未验证) | Docs/Logs/TASK-A-R9-16.md | acef951 |
