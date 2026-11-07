@@ -7,7 +7,8 @@
 //       命中 → 直接返回驱动缓存的 PSO；
 //       未命中 → 设备直接创建（兜底）→ library->StorePipeline 入册，退出时落盘
 //   - 任何库路径失败 → 回退 ID3D12Device::CreateGraphicsPipelineState（兜底优先）
-//   - 退出时 Serialize() → 临时文件 + MoveFileEx 原子替换写盘
+//   - 退出时 Serialize() → 临时文件 + FlushFileBuffers + MoveFileEx 原子替换写盘
+//     （FlushFileBuffers 只在退出/显式刷写路径，不在每帧路径）
 //   - 文件坏了（截断/改字节/版本不符/换 GPU）→ 识别 → 删除重建 → 绝不崩溃
 //
 // 文件布局（头 72B + name 数组 + D3D12 库 blob）：

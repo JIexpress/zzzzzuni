@@ -12,8 +12,11 @@
 //      必有该 PSO（命中）；不在 ⇒ 本次在库内新建（未命中）。
 //   4. 兜底：库不可用 / 调用失败 / 重建后仍失败 → 一律退回
 //      ID3D12Device::CreateGraphicsPipelineState，缓存问题绝不影响启动。
-//   5. 写盘：唯一临时文件 + MoveFileEx(REPLACE_EXISTING)，多进程并发安全
-//      （最后写入者胜出，读到的永远是完整文件）。
+//   5. 写盘：唯一临时文件 + FlushFileBuffers（数据落盘）+ MoveFileEx(REPLACE_EXISTING)
+//      原子替换，多进程并发安全（最后写入者胜出，读到的永远是完整文件）。
+//   6. 释放顺序：库对象（ID3D12PipelineLibrary）持有建库 blob 的裸指针，D3D12 契约
+//      要求该内存活到库释放 → 一律 m_library.Reset() 之后再 m_diskBlob.clear()
+//      （TASK-X-HYGIENE-01；顺序反了就是 UAF）。
 // =============================================================================
 #include "zrhi/d3d12/zrhi_d3d12_pso_cache.h"
 
@@ -333,8 +336,10 @@ bool ZrD3D12PsoCache::Initialize(ID3D12Device* device)
                 "[zrhi][d3d12][pso-cache] CreatePipelineLibrary(disk blob) failed "
                 "hr=0x%08lX: dropping cache and rebuilding\n",
                 static_cast<unsigned long>(hr));
-            DeleteCacheFile();
+            // 释放顺序：库对象先死，保活 blob 后死（契约见 DeleteCacheFile）
             m_library.Reset();
+            m_diskBlob.clear();
+            DeleteCacheFile();
             names.clear();
             blob.clear();
         } else {
@@ -464,7 +469,12 @@ bool ZrD3D12PsoCache::ReadCacheFile(std::vector<uint64_t>& names, std::vector<ui
 
 void ZrD3D12PsoCache::DeleteCacheFile()
 {
-    m_diskBlob.clear();
+    // 只删文件，**不碰 m_diskBlob**：库对象（ID3D12PipelineLibrary）内部保存的是
+    // 建库时传入的 blob 裸指针，D3D12 契约要求该内存活到库对象释放之后
+    // （ID3D12Device1::CreatePipelineLibrary 文档：The pointer provided as input to
+    // this method must remain valid for the lifetime of the object returned；数据不做
+    // 拷贝）。因此释放顺序固定为 m_library.Reset() → m_diskBlob.clear() → 删文件，
+    // 任何"先清 blob 再 Reset"都是 UAF（TASK-X-HYGIENE-01）。
     if (m_path.empty()) {
         return;
     }
@@ -521,6 +531,18 @@ bool ZrD3D12PsoCache::WriteCacheFile(
     }
     if (ok) {
         ok = WriteAll(file, blob, blobBytes);
+    }
+    // 断电持久化（TASK-X-HYGIENE-01）：WriteFile 只把页写进系统文件缓存，
+    // 掉电时可能留下 0 字节/半截内容——下面 MoveFileEx 的 MOVEFILE_WRITE_THROUGH
+    // 只保证"改名"这一步的元数据落盘，不保证数据块已落到介质。所以显式
+    // FlushFileBuffers：阻塞到存储栈确认（毫秒级，代价随 blob 大小增长）。
+    // **不在热路径**：本函数唯一调用者是 Flush() —— 设备析构、Unity ReleaseTarget、
+    // 显式 FlushPsoCache；创建 PSO 的路径只置 m_dirty，从不写盘。
+    if (ok && !FlushFileBuffers(file)) {
+        std::fprintf(stderr,
+            "[zrhi][d3d12][pso-cache] FlushFileBuffers failed (err=%lu): "
+            "cache written but durability not guaranteed\n",
+            static_cast<unsigned long>(GetLastError()));
     }
     CloseHandle(file);
 
@@ -652,6 +674,10 @@ HRESULT ZrD3D12PsoCache::CreateGraphicsPipelineState(
                     "[zrhi][d3d12][pso-cache] known entry failed to load hr=0x%08lX: "
                     "dropping cache and rebuilding empty library\n",
                     static_cast<unsigned long>(hr));
+                // 运行期重建：库对象先释放，保活 blob 再丢，最后删文件。
+                // 反过来（先 clear blob 后 Reset）会让仍存活的库引用已释放内存 → UAF。
+                m_library.Reset();
+                m_diskBlob.clear();
                 DeleteCacheFile();
                 m_names.clear();
                 m_nameLookup.clear();
@@ -689,8 +715,10 @@ HRESULT ZrD3D12PsoCache::CreateGraphicsPipelineState(
                         std::fprintf(stderr,
                             "[zrhi][d3d12][pso-cache] StorePipeline failed: disabling "
                             "pipeline library for this process\n");
-                        DeleteCacheFile();
+                        // 同一条释放顺序契约：库对象 → blob → 文件
                         m_library.Reset();
+                        m_diskBlob.clear();
+                        DeleteCacheFile();
                     }
                 } else {
                     ++m_stats.directCreates;

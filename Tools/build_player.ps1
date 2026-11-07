@@ -11,9 +11,13 @@
 #           (LocalLow/<companyName>/<productName>/Player.log, company/product
 #            parsed from ProjectSettings.asset), then taskkill the player.
 #           Crash within the window or missing markers => FAIL.
-#   report: Top-20 largest files + totals + version/smoke lines =>
-#           Build/build_report.txt (UTF-8 no BOM, LF - same style as
-#           run_tests' TestReport.txt).
+#   report: size breakdown (Player / Installer / Other - only Player is the
+#           shippable payload) + Player Top-20 largest files + version/smoke
+#           lines => Build/build_report.txt (UTF-8 no BOM, LF - same style as
+#           run_tests' TestReport.txt).  TASK-X-HYGIENE-01: the old report
+#           recursed over the whole Build/ and printed one 385MB-ish total,
+#           which mixed Android packages, DevConsoleProbe probes and installer
+#           staging into "the player size".
 #
 # Unity batch-mode discipline (mirrors Tools/run_tests.ps1):
 #   1. single instance: abort if Unity.exe is already running
@@ -355,10 +359,42 @@ try {
 
     # ---- report (after smoke so it can carry its verdict) ------------------
     Write-Host ''
-    Write-Host '==== [3] report: Top-20 size table -> Build/build_report.txt ====' -ForegroundColor Cyan
-    $files = @(Get-ChildItem -LiteralPath $BuildDir -Recurse -File | Sort-Object Length -Descending)
-    $totalBytes = [long]($files | Measure-Object Length -Sum).Sum
-    $top = @($files | Select-Object -First 20)
+    Write-Host '==== [3] report: size breakdown + Player Top-20 -> Build/build_report.txt ====' -ForegroundColor Cyan
+    # Size scope (TASK-X-HYGIENE-01): Build/ is a work area - it also holds the
+    # Android packages, the DevConsoleProbe probes and Installer staging. Count
+    # three disjoint buckets; only "Player" is what a player actually receives.
+    $PlayerDir    = Join-Path $BuildDir 'Windows64'
+    $InstallerDir = Join-Path $BuildDir 'Installer'
+
+    function Sum-Bytes($items) {
+        $arr = @($items)
+        if ($arr.Count -eq 0) { return [long]0 }
+        return [long]($arr | Measure-Object Length -Sum).Sum
+    }
+
+    $playerItems = @()
+    if (Test-Path -LiteralPath $PlayerDir) {
+        $playerItems = @(Get-ChildItem -LiteralPath $PlayerDir -Recurse -File)
+    }
+    # Installer = the single-file setup only (Build\Installer\*.exe, no recurse:
+    # Installer\staging is a packaging intermediate and belongs to "Other").
+    $installerItems = @()
+    if (Test-Path -LiteralPath $InstallerDir) {
+        $installerItems = @(Get-ChildItem -LiteralPath $InstallerDir -File -Filter '*.exe')
+    }
+    $playerNames = New-Object 'System.Collections.Generic.HashSet[string]'
+    foreach ($f in $playerItems) { [void]$playerNames.Add($f.FullName) }
+    $installerNames = New-Object 'System.Collections.Generic.HashSet[string]'
+    foreach ($f in $installerItems) { [void]$installerNames.Add($f.FullName) }
+
+    $allItems = @(Get-ChildItem -LiteralPath $BuildDir -Recurse -File)
+    $otherItems = @($allItems | Where-Object {
+        -not $playerNames.Contains($_.FullName) -and -not $installerNames.Contains($_.FullName) })
+
+    $playerBytes    = Sum-Bytes $playerItems
+    $installerBytes = Sum-Bytes $installerItems
+    $otherBytes     = Sum-Bytes $otherItems
+    $totalBytes     = $playerBytes + $installerBytes + $otherBytes
 
     $rep = New-Object System.Collections.Generic.List[string]
     $rep.Add('ZFrame / ZRender - player build report (Tools/build_player.ps1)')
@@ -370,17 +406,50 @@ try {
     $rep.Add(('Smoke:     {0} (wait {1}s; Player.log: LocalLow/{2}/{3}/Player.log)' -f $smokeVerdict, $SmokeWaitSec, $CompanyName, $ProductName))
     $rep.Add(('           markers: {0}' -f ($SmokeKeywords -join ' ; ')))
     $rep.Add('')
-    $rep.Add(('Files: {0} files, total {1} ({2} bytes)' -f $files.Count, (Format-Size $totalBytes), $totalBytes))
-    $rep.Add('Top-20 largest files:')
+    $rep.Add('Size breakdown of Build/ (TASK-X-HYGIENE-01): the old single total recursed')
+    $rep.Add('over the whole Build/ and mixed Android / DevConsoleProbe / Installer staging')
+    $rep.Add('into "the player size". Items below are disjoint and add up to the total.')
+    $rep.Add('')
+    $rep.Add(('  Player    : {0,9}  ({1,12:N0} B, {2,4} files)  Build\Windows64' -f (Format-Size $playerBytes), $playerBytes, $playerItems.Count))
+    $rep.Add('              ==> SHIPPABLE PAYLOAD = DISTRIBUTION SIZE - the size a player receives')
+    $rep.Add(('  Installer : {0,9}  ({1,12:N0} B, {2,4} files)  Build\Installer\*.exe' -f (Format-Size $installerBytes), $installerBytes, $installerItems.Count))
+    $rep.Add('              ==> SHIPPABLE = DISTRIBUTION SIZE (single-file setup, compressed; 0 files = none built)')
+    $rep.Add(('  Other     : {0,9}  ({1,12:N0} B, {2,4} files)  Android / DevConsoleProbe / Installer\staging / report' -f (Format-Size $otherBytes), $otherBytes, $otherItems.Count))
+    $rep.Add('              ==> NOT SHIPPED - intermediates and other platforms, not the player size')
+    $rep.Add(('  Total     : {0,9}  ({1,12:N0} B)  whole Build\ tree - diagnostic only, NOT a shipping size' -f (Format-Size $totalBytes), $totalBytes))
+    $rep.Add('')
+    $top = @($playerItems | Sort-Object Length -Descending | Select-Object -First 20)
+    $rep.Add(('Player Top-20 largest files (shippable payload, {0} files):' -f $playerItems.Count))
     $rank = 0
     foreach ($f in $top) {
+        $rank++
+        $rel = $f.FullName.Substring($PlayerDir.Length + 1)
+        $rep.Add(('  {0,2}. {1,12:N0} bytes  {2,9}  {3}' -f $rank, $f.Length, (Format-Size $f.Length), $rel))
+    }
+    $rep.Add('')
+    if ($installerItems.Count -gt 0) {
+        $rep.Add('Installer files (Build\Installer\*.exe, shippable):')
+        foreach ($f in @($installerItems | Sort-Object Length -Descending)) {
+            $rep.Add(('      {0,12:N0} bytes  {1,9}  Installer\{2}' -f $f.Length, (Format-Size $f.Length), $f.Name))
+        }
+    } else {
+        $rep.Add('Installer files: (none - no installer built for this run)')
+    }
+    $rep.Add('')
+    $rep.Add(('Other (NOT shipped; diagnostic only): {0} files, {1}' -f $otherItems.Count, (Format-Size $otherBytes)))
+    $rank = 0
+    foreach ($f in @($otherItems | Sort-Object Length -Descending | Select-Object -First 5)) {
         $rank++
         $rel = $f.FullName.Substring($BuildDir.Length + 1)
         $rep.Add(('  {0,2}. {1,12:N0} bytes  {2,9}  {3}' -f $rank, $f.Length, (Format-Size $f.Length), $rel))
     }
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllText($ReportPath, (($rep -join "`n") + "`n"), $utf8NoBom)
-    Write-Host ("  report written: {0}  ({1} files, total {2})" -f $ReportPath, $files.Count, (Format-Size $totalBytes)) -ForegroundColor Green
+    Write-Host ("  report written: {0}" -f $ReportPath) -ForegroundColor Green
+    Write-Host ("    Player    {0}  ({1} files)  <== shippable payload" -f (Format-Size $playerBytes), $playerItems.Count) -ForegroundColor Green
+    Write-Host ("    Installer {0}  ({1} files)  <== shippable installer" -f (Format-Size $installerBytes), $installerItems.Count)
+    Write-Host ("    Other     {0}  ({1} files)  (not shipped)" -f (Format-Size $otherBytes), $otherItems.Count)
+    Write-Host ("    Total     {0}  (Build/ whole tree, diagnostic only)" -f (Format-Size $totalBytes))
 
     Write-Host ''
     Write-Host 'RESULT: PASS (build + smoke + report)' -ForegroundColor Green

@@ -30,8 +30,12 @@ namespace zrender {
 // 额外缓冲）存在差异，用于 HUD 趋势显示与资源量级判断，不作精确计量）
 // =============================================================================
 
-/// 图像字节估算：Σ_mip ceil(w/2^m/blockW)×ceil(h/2^m/blockH)×bytesPerBlock，
-/// ×arrayLayers。blockW/blockH 走 ZrGetFormatTraits（压缩格式按块计）。
+/// 图像字节估算：Σ_mip ceil(max(1, floor(w/2^m))/blockW)
+///                   ×ceil(max(1, floor(h/2^m))/blockH)×bytesPerBlock，×arrayLayers。
+/// 口径（TASK-X-HYGIENE-01 与实现对齐）：**mip 尺寸先按 D3D12 规则 floor 减半
+/// （下限 1），再向上取整到块**——不是 ceil(w/2^m)。本函数只吃 desc（无 mip 索引
+/// 参数），mip 链由实现自己逐级 w/=2 走；blockW/blockH 走 ZrGetFormatTraits
+/// （压缩格式按块计，最后一列/行不满块也按整块计）。
 uint64_t ZrEstimateImageBytes(const ZrImageDesc& desc);
 
 /// 缓冲字节估算：desc.size（不含隐式对齐填充）。

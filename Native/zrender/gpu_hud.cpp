@@ -29,7 +29,8 @@ uint64_t ZrEstimateImageBytes(const ZrImageDesc& desc)
     uint64_t width = desc.width;
     uint64_t height = desc.height;
     for (uint32_t mip = 0; mip < desc.mipLevels; ++mip) {
-        // 逐 mip：尺寸减半下取整（≥1），向上取整到块
+        // 逐 mip：尺寸减半下取整（≥1）→ blocks = ceil(mipSize / blockSize)
+        // 即 ceil(max(1, floor(w/2^m)) / blockW)；**不是** ceil(w/2^m)，勿改回
         const uint64_t blocksX = (width + blockW - 1u) / blockW;
         const uint64_t blocksY = (height + blockH - 1u) / blockH;
         total += blocksX * blocksY * traits.bytesPerBlock;
