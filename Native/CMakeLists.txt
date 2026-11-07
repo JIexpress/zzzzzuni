@@ -218,6 +218,8 @@ add_library(zrender_core STATIC
     zrender/rg_export.cpp       # TASK-B-R9-16：RG 编译产物导出（JSON/文本纯函数）
     zrender/gpu_hud.cpp         # TASK-B-R9-16：DrawCall/显存 HUD 统计聚合纯函数
     zrender/devconsole_proto.cpp # TASK-B-R9-16：原生 DevConsole 协议纯逻辑（白名单/信封）
+    zrender/devconsole_auth.cpp  # TASK-X-SEC-01：DevConsole token 认证（CSPRNG/常量时间比较/限流）
+    zrender/rg_export_path.cpp   # TASK-X-SEC-01：rg.export 落盘路径限定（根白名单/规范化/符号链接）
     zrender/renderdoc_capture.cpp # TASK-B-R9-16：RenderDoc 应用内 API 封装（挂接/捕获）
     zrender/zmesh.cpp
     zrender/draw_list.cpp
@@ -231,6 +233,8 @@ add_library(zrender_core STATIC
   # TASK-B-R5-03: gi_probes/ssr_pass 并入（GI 探针辐射缓存+SSR Hi-Z/模糊/RG 声明）
 # TASK-B-R9-16：renderdoc_capture.cpp 的第三方头 include 根（renderdoc/renderdoc_app.h）
 target_include_directories(zrender_core PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty)
+# TASK-X-SEC-01：devconsole_auth.cpp 用 BCryptGenRandom 生成 token（系统 CSPRNG）
+target_link_libraries(zrender_core PRIVATE bcrypt)
 # TASK-B-R6-01：zupscaler 并入超分框架（UpscalerChain 选优/状态机 + Bilinear 基线 +
 # FSR 统一运行时后端）。第三方（ffx-fsr）仅消费官方头 + 预编译 dll（运行时
 # LoadLibrary），无第三方编译单元 → 无需 /WX 豁免 target；ffx 头在
@@ -338,6 +342,8 @@ add_executable(zrender_test
     tests/test_gpu_hud.cpp # TASK-B-R9-16（HUD 聚合纯函数：字节估算/滑窗峰值/JSON 格式）
     tests/test_renderdoc_capture.cpp # TASK-B-R9-16（RenderDoc 挂接/捕获错误路径 + 假表转发）
     tests/test_devconsole_proto.cpp # TASK-B-R9-16（DevConsole 白名单解析/参数/信封转义）
+    tests/test_devconsole_auth.cpp # TASK-X-SEC-01（token 常量时间比较/限流窗口/形态校验）
+    tests/test_rg_export_path.cpp # TASK-X-SEC-01（rg.export 根白名单/`..`/绝对路径/junction 逃逸）
     # zfgprobe 的 hook/wrap/dll 三个编译单元并入测试目标（TASK-R10-05 B-3/B-7 需要
     # 直接驱动 HookCreateSwapChainForHwnd / WrapShutdown / ZFG_FgShutdown）。
     # 注意：zfg_dxgi_proxy.cpp **有意不并入**——其 ForwardArgs 会把测试进程内的

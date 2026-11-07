@@ -165,11 +165,13 @@
 
 #include "zrhi/d3d12/zrhi_d3d12_device.h"
 #include "zrender/cluster_lighting.h"
+#include "zrender/devconsole_auth.h"   // TASK-X-SEC-01：token 认证/常量时间比较/限流
 #include "zrender/devconsole_proto.h" // TASK-B-R9-16：--devconsole 协议纯逻辑
 #include "zrender/draw_list.h"
 #include "zrender/gi_probes.h"
 #include "zrender/gpu_hud.h"           // TASK-B-R9-16：HUD 统计聚合
 #include "zrender/rg_export.h"         // TASK-B-R9-16：RG 编译产物导出
+#include "zrender/rg_export_path.h"    // TASK-X-SEC-01：rg.export 落盘路径限定
 #include "zrender/rg_render_graph.h"
 #include "zrender/renderdoc_capture.h" // TASK-B-R9-16：RenderDoc 应用内 API
 #include "zrender/shadows.h"
@@ -12977,6 +12979,9 @@ static int RunResizeModeVulkan()
 //   - 传输：TCP 只绑 127.0.0.1（绝不 0.0.0.0），端口缺省 17323（避开 Editor
 //     17321 与 Unity 运行期 17322），可 --devconsole-port <n> 覆盖；
 //   - 协议：一行一条请求、一行一条 JSON 响应，单行上限 4KB；
+//   - 认证（TASK-X-SEC-01）：每连接首帧必须 `auth <token>`（128 位 CSPRNG，
+//     启动打到 stdout，仅本地调试）；常量时间比较；连续 5 次失败封 30s 并记录
+//     对端；未认证一律 auth_required/auth_failed/auth_locked；
 //   - 白名单（硬编码，解析/信封在 zrender/devconsole_proto.* 纯逻辑层）：
 //       help | hud | rg.export [path] [json|text] | renderdoc.capture [name] | quit
 //   - 线程纪律：监听线程只做 socket 收发；命令在渲染线程的帧循环内执行
@@ -12991,6 +12996,8 @@ static int RunResizeModeVulkan()
 //               明确错误 {"ok":false,"error":"renderdoc_not_attached"}（不
 //               静默假成功——RenderDoc 本体仍是用户手动启动，本程序不注入）；
 //   3. rg.export —— 当帧 RgGraph 编译产物经 RgExportJson/RgExportText 落盘。
+//               TASK-X-SEC-01：落盘路径限定在允许根内（zrender/rg_export_path.*），
+//               根外/含 `..`/符号链接逃逸一律拒绝并记录。
 // =============================================================================
 
 namespace devconsole {
@@ -13004,12 +13011,125 @@ constexpr size_t kMaxQueuedRequests = 64u;
 /// 单连接读行超时（毫秒）：客户端连上后须立即发整行
 constexpr DWORD kRecvTimeoutMs = 5000u;
 
+// ---- TASK-X-SEC-01：认证辅助 ---------------------------------------------------
+
+uint64_t NowMs()
+{
+    return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch())
+                                     .count());
+}
+
+std::string FormatPeer(const sockaddr_in& from)
+{
+    char ip[INET_ADDRSTRLEN] = {};
+    if (::inet_ntop(AF_INET, &from.sin_addr, ip, sizeof(ip)) == nullptr) {
+        return std::string("unknown");
+    }
+    return std::string(ip) + ':'
+        + std::to_string(static_cast<unsigned>(::ntohs(from.sin_port)));
+}
+
+bool IsLoopbackPeer(const sockaddr_in& from)
+{
+    return from.sin_family == AF_INET
+        && (static_cast<unsigned>(::ntohl(from.sin_addr.s_addr)) >> 24) == 127u;
+}
+
+struct LineRead {
+    bool gotLine = false;
+    bool overflow = false;
+    std::string line;
+};
+
+/// 按行读取协议帧（每个连接一个实例）：保留一次 recv 里跨行的剩余字节。
+/// 认证帧与命令帧可能在同一个 TCP 段到达（客户端管道化发送），若每次读行都
+/// 丢弃尾随字节，第二条命令就会被吞掉。
+class ProtocolLineReader {
+public:
+    ProtocolLineReader(SOCKET client, DWORD timeoutMs)
+        : m_client(client)
+    {
+        DWORD tv = timeoutMs;
+        ::setsockopt(m_client, SOL_SOCKET, SO_RCVTIMEO,
+            reinterpret_cast<const char*>(&tv), sizeof(tv));
+    }
+
+    LineRead Next()
+    {
+        LineRead out;
+        for (;;) {
+            const size_t newline = m_pending.find('\n');
+            if (newline != std::string::npos) {
+                out.line = m_pending.substr(0u, newline);
+                m_pending.erase(0u, newline + 1u);
+                out.gotLine = true;
+                return out;
+            }
+            if (m_pending.size() > zrender::kZrDevConsoleMaxLineBytes) {
+                out.overflow = true;
+                m_pending.clear();
+                return out;
+            }
+            char buffer[512];
+            const int got = ::recv(m_client, buffer, sizeof(buffer), 0);
+            if (got <= 0) {
+                return out; // 超时/断开：gotLine=false
+            }
+            m_pending.append(buffer, static_cast<size_t>(got));
+        }
+    }
+
+private:
+    SOCKET m_client;
+    std::string m_pending;
+};
+
+/// 首帧形态：`auth <token>`（恰好两个 token）。命令关键字不是秘密，普通比较即可；
+/// token 的相等判断一律走 zrender::ZrDevConsoleTokenEquals（常量时间）。
+bool ParseAuthLine(const std::string& line, std::string& outToken)
+{
+    const auto isSpace = [](unsigned char c) {
+        return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+    };
+    size_t begin = 0;
+    size_t end = line.size();
+    while (begin < end && isSpace(static_cast<unsigned char>(line[begin]))) {
+        ++begin;
+    }
+    while (end > begin && isSpace(static_cast<unsigned char>(line[end - 1]))) {
+        --end;
+    }
+    std::vector<std::string> tokens;
+    std::string current;
+    for (size_t i = begin; i < end; ++i) {
+        const unsigned char c = static_cast<unsigned char>(line[i]);
+        if (isSpace(c)) {
+            if (!current.empty()) {
+                tokens.push_back(current);
+                current.clear();
+            }
+        } else {
+            current += static_cast<char>(c);
+        }
+    }
+    if (!current.empty()) {
+        tokens.push_back(current);
+    }
+    if (tokens.size() != 2u || tokens[0] != "auth") {
+        return false;
+    }
+    outToken = tokens[1];
+    return true;
+}
+
 // ---- TCP 白名单控制台（监听线程只收发；执行在渲染线程）---------------------------
 class DevConsoleServer {
 public:
     struct Request {
         SOCKET client;
         std::string line;
+        std::string peer; // 认证通过后的对端标识（日志/拒绝记录）
     };
 
     DevConsoleServer() = default;
@@ -13017,8 +13137,14 @@ public:
     DevConsoleServer& operator=(const DevConsoleServer&) = delete;
     ~DevConsoleServer() { Stop(); }
 
-    bool Start(uint16_t port, std::string& outError)
+    /// token 为空拒绝启动（fail-closed：绝不出现"无 token 即放行"）
+    bool Start(uint16_t port, const std::string& token, std::string& outError)
     {
+        if (token.empty()) {
+            outError = "empty auth token - refusing to listen";
+            return false;
+        }
+        m_auth.SetToken(token);
         WSADATA wsa {};
         if (::WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
             outError = "WSAStartup failed";
@@ -13088,11 +13214,11 @@ public:
         return out;
     }
 
-    /// 回一行 JSON 响应并关闭连接（单行协议：响应追加 '\n'；处理部分发送）
-    static void SendAndClose(SOCKET client, const std::string& response)
+    /// 发一行并保持连接（认证回执用；失败返回 false）
+    static bool SendLine(SOCKET client, const std::string& response)
     {
         if (client == INVALID_SOCKET) {
-            return;
+            return false;
         }
         std::string line = response;
         line += '\n';
@@ -13101,12 +13227,37 @@ public:
         while (remaining > 0u) {
             const int sent = ::send(client, cursor, static_cast<int>(remaining), 0);
             if (sent == SOCKET_ERROR || sent <= 0) {
-                break; // 对端已关：丢弃响应（客户端违约）
+                return false;
             }
             cursor += sent;
             remaining -= static_cast<size_t>(sent);
         }
-        ::shutdown(client, SD_BOTH);
+        return true;
+    }
+
+    /// 回一行 JSON 响应并关闭连接（单行协议：响应追加 '\n'；处理部分发送）
+    static void SendAndClose(SOCKET client, const std::string& response)
+    {
+        if (client == INVALID_SOCKET) {
+            return;
+        }
+        SendLine(client, response);
+        ::shutdown(client, SD_SEND);
+        // 排空对端已管道化发送的剩余字节：带着未读数据 closesocket 会让 TCP
+        // 回 RST 并丢弃刚发出的响应（客户端只看到连接被重置，看不到拒绝原因）。
+        // 上限 8KB + 100ms，避免恶意客户端拖住监听/渲染线程。
+        DWORD drainTimeoutMs = 100u;
+        ::setsockopt(client, SOL_SOCKET, SO_RCVTIMEO,
+            reinterpret_cast<const char*>(&drainTimeoutMs), sizeof(drainTimeoutMs));
+        char scratch[512];
+        size_t drained = 0u;
+        while (drained < 8192u) {
+            const int got = ::recv(client, scratch, sizeof(scratch), 0);
+            if (got <= 0) {
+                break;
+            }
+            drained += static_cast<size_t>(got);
+        }
         ::closesocket(client);
     }
 
@@ -13132,53 +13283,123 @@ private:
             if (client == INVALID_SOCKET) {
                 continue;
             }
-            HandleConnection(client);
+            HandleConnection(client, from);
         }
     }
 
-    void HandleConnection(SOCKET client)
+    /// TASK-X-SEC-01：连接生命周期 = 首帧 `auth <token>`（回执不关连接）→
+    /// 第二行命令（入队，渲染线程执行并回包关闭）。认证失败限流 + 记录对端。
+    void HandleConnection(SOCKET client, const sockaddr_in& from)
     {
-        // 一行一请求：读到 '\n' 为止；单行 >4KB 即回错误并断开（防 OOM 口径）
-        DWORD timeoutMs = kRecvTimeoutMs;
-        ::setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeoutMs),
-            sizeof(timeoutMs));
-        std::string line;
-        char buffer[512];
-        bool overflow = false;
-        bool gotLine = false;
-        while (!overflow) {
-            const int got = ::recv(client, buffer, sizeof(buffer), 0);
-            if (got <= 0) {
-                break; // 超时/断开且无完整行：客户端违约，直接关闭
-            }
-            line.append(buffer, static_cast<size_t>(got));
-            if (line.size() > zrender::kZrDevConsoleMaxLineBytes) {
-                overflow = true;
-                break;
-            }
-            const size_t newline = line.find('\n');
-            if (newline != std::string::npos) {
-                line.resize(newline);
-                gotLine = true;
-                break;
-            }
-        }
-        if (overflow) {
+        const std::string peer = FormatPeer(from);
+        const uint64_t now = NowMs();
+
+        // 纵深防御：bind 已限定 127.0.0.1，这里再挡一次非回环对端
+        if (!IsLoopbackPeer(from)) {
+            std::printf("zrhi_d3d12_window: DEVCONSOLE AUTH DENIED peer=%s "
+                        "reason=non_loopback (LOCAL DEBUG ONLY)\n",
+                peer.c_str());
+            std::fflush(stdout);
             SendAndClose(client,
-                zrender::ZrDevConsoleError("line_too_long", "request line exceeds 4096 bytes"));
+                zrender::ZrDevConsoleError("auth_denied", "loopback peers only"));
             return;
         }
-        if (!gotLine) {
+
+        if (m_auth.IsLocked(now)) {
+            const uint64_t remaining = m_auth.LockRemainingMs(now);
+            std::printf("zrhi_d3d12_window: DEVCONSOLE AUTH DENIED peer=%s reason=locked "
+                        "remaining_ms=%llu failures=%u/%u (LOCAL DEBUG ONLY)\n",
+                peer.c_str(), static_cast<unsigned long long>(remaining),
+                m_auth.ConsecutiveFailures(), m_auth.MaxFailures());
+            std::fflush(stdout);
+            SendAndClose(client,
+                zrender::ZrDevConsoleError("auth_locked",
+                    "too many failed attempts; retry in "
+                        + std::to_string(remaining) + " ms"));
+            return;
+        }
+
+        ProtocolLineReader reader(client, kRecvTimeoutMs);
+        const LineRead first = reader.Next();
+        if (first.overflow) {
+            std::printf("zrhi_d3d12_window: DEVCONSOLE AUTH DENIED peer=%s "
+                        "reason=line_too_long (LOCAL DEBUG ONLY)\n",
+                peer.c_str());
+            std::fflush(stdout);
+            SendAndClose(client, zrender::ZrDevConsoleError("line_too_long",
+                "auth line exceeds 4096 bytes"));
+            return;
+        }
+        if (!first.gotLine) {
+            // 连上不发帧即断开：不计数（避免误连/探测把正常客户端拖入封禁）
+            std::printf("zrhi_d3d12_window: DEVCONSOLE AUTH DENIED peer=%s "
+                        "reason=no_auth_frame (LOCAL DEBUG ONLY)\n",
+                peer.c_str());
+            std::fflush(stdout);
             ::closesocket(client);
             return;
         }
+
+        std::string presented;
+        if (!ParseAuthLine(first.line, presented)) {
+            m_auth.Verify(std::string(), now); // 计入一次失败
+            std::printf("zrhi_d3d12_window: DEVCONSOLE AUTH DENIED peer=%s "
+                        "reason=missing_auth failures=%u/%u (LOCAL DEBUG ONLY)\n",
+                peer.c_str(), m_auth.ConsecutiveFailures(), m_auth.MaxFailures());
+            std::fflush(stdout);
+            SendAndClose(client, zrender::ZrDevConsoleError("auth_required",
+                "first frame must be: auth <token> (token is printed at startup)"));
+            return;
+        }
+
+        const zrender::ZrDevConsoleAuthenticator::Verdict verdict
+            = m_auth.Verify(presented, now);
+        if (verdict != zrender::ZrDevConsoleAuthenticator::Verdict::Accepted) {
+            const bool locked
+                = verdict == zrender::ZrDevConsoleAuthenticator::Verdict::Locked;
+            if (locked) {
+                std::printf("zrhi_d3d12_window: DEVCONSOLE AUTH DENIED peer=%s "
+                            "reason=locked remaining_ms=%llu (LOCAL DEBUG ONLY)\n",
+                    peer.c_str(),
+                    static_cast<unsigned long long>(m_auth.LockRemainingMs(NowMs())));
+            } else {
+                std::printf("zrhi_d3d12_window: DEVCONSOLE AUTH DENIED peer=%s "
+                            "reason=bad_token failures=%u/%u%s (LOCAL DEBUG ONLY)\n",
+                    peer.c_str(), m_auth.ConsecutiveFailures(), m_auth.MaxFailures(),
+                    m_auth.IsLocked(NowMs()) ? " NOW_LOCKED" : "");
+            }
+            std::fflush(stdout);
+            SendAndClose(client,
+                zrender::ZrDevConsoleError(locked ? "auth_locked" : "auth_failed",
+                    "invalid DevConsole token"));
+            return;
+        }
+
+        std::printf("zrhi_d3d12_window: DEVCONSOLE AUTH OK peer=%s (LOCAL DEBUG ONLY)\n",
+            peer.c_str());
+        std::fflush(stdout);
+
+        // 回执保持连接（客户端可以先发命令再读两行，也可以逐帧握手）
+        if (!SendLine(client, zrender::ZrDevConsoleOk("\"authenticated\":true"))) {
+            ::closesocket(client);
+            return;
+        }
+
+        const LineRead cmd = reader.Next();
+        if (cmd.overflow) {
+            SendAndClose(client, zrender::ZrDevConsoleError("line_too_long",
+                "request line exceeds 4096 bytes"));
+            return;
+        }
+        if (!cmd.gotLine) {
+            ::closesocket(client); // 认证后不发命令：只握手不执行
+            return;
+        }
+
         {
             std::lock_guard<std::mutex> lock(m_mutex);
-            if (m_queue.size() >= kMaxQueuedRequests) {
-                // 满载拒收标记（锁外回写——渲染线程卡死时客户端也能拿到明确错误）
-                overflow = true; // 复用 overflow 作为"待拒收"标记
-            } else {
-                m_queue.push_back(Request { client, line });
+            if (m_queue.size() < kMaxQueuedRequests) {
+                m_queue.push_back(Request { client, cmd.line, peer });
                 return;
             }
         }
@@ -13189,6 +13410,7 @@ private:
     std::thread m_thread;
     std::mutex m_mutex;
     std::vector<Request> m_queue;
+    zrender::ZrDevConsoleAuthenticator m_auth; // 监听线程独占（不跨线程）
     std::atomic<bool> m_running { false };
     SOCKET m_listener = INVALID_SOCKET;
     bool m_wsaStarted = false;
@@ -13205,6 +13427,7 @@ static int RunDevConsoleMode(int argc, char** argv)
     const char* zmeshPath = "Native/tests/data/cube.zmesh";
     const char* hlslPath = "Native/shaders/first_draw.hlsl";
     std::string outputDir = devconsole::kDefaultOutputDir;
+    std::string explicitExportDir; // TASK-X-SEC-01：--rg-export-dir（显式允许根）
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--devconsole-port") == 0 && i + 1 < argc) {
             port = static_cast<uint16_t>(std::atoi(argv[++i]));
@@ -13216,12 +13439,95 @@ static int RunDevConsoleMode(int argc, char** argv)
             hlslPath = argv[++i];
         } else if (std::strcmp(argv[i], "--devconsole-dir") == 0 && i + 1 < argc) {
             outputDir = argv[++i];
+        } else if (std::strcmp(argv[i], "--rg-export-dir") == 0 && i + 1 < argc) {
+            explicitExportDir = argv[++i];
         }
     }
-    std::printf("zrhi_d3d12_window: --devconsole mode (TASK-B-R9-16): port=%u zmesh='%s' "
-                "hlsl='%s' dir='%s' frames=%s\n",
+
+    // ---- TASK-X-SEC-01：rg.export 允许根（默认拒绝，显式授权）---------------------
+    // 三个根并列生效：exe 同目录 rg_export / %LOCALAPPDATA%\ZFrame\rg_export /
+    // 显式 --rg-export-dir。缺省落点优先级同上（后者最高），均与进程 CWD 无关。
+    std::filesystem::path exeExportRoot;
+    {
+        wchar_t exePath[4096] = {};
+        const DWORD len = ::GetModuleFileNameW(nullptr, exePath, 4096u);
+        if (len > 0u && len < 4096u) {
+            exeExportRoot = std::filesystem::path(exePath).parent_path() / "rg_export";
+        }
+    }
+    std::filesystem::path localExportRoot;
+    {
+        wchar_t buffer[4096] = {};
+        const DWORD len = ::GetEnvironmentVariableW(L"LOCALAPPDATA", buffer, 4096u);
+        if (len > 0u && len < 4096u) {
+            localExportRoot = std::filesystem::path(buffer) / "ZFrame" / "rg_export";
+        }
+    }
+    zrender::ZrRgExportRoots exportRoots;
+    if (!exeExportRoot.empty()) {
+        exportRoots.allowed.push_back(exeExportRoot.u8string());
+    }
+    if (!localExportRoot.empty()) {
+        exportRoots.allowed.push_back(localExportRoot.u8string());
+    }
+    if (!explicitExportDir.empty()) {
+        std::error_code ec;
+        const std::filesystem::path absoluteExportDir
+            = std::filesystem::absolute(std::filesystem::u8path(explicitExportDir), ec);
+        if (ec) {
+            std::printf("zrhi_d3d12_window: --devconsole FAILED to resolve --rg-export-dir "
+                        "'%s': %s\n",
+                explicitExportDir.c_str(), ec.message().c_str());
+            return 1;
+        }
+        exportRoots.allowed.push_back(absoluteExportDir.u8string());
+        exportRoots.defaultRoot = absoluteExportDir.u8string();
+    } else if (!localExportRoot.empty()) {
+        exportRoots.defaultRoot = localExportRoot.u8string();
+    } else if (!exeExportRoot.empty()) {
+        exportRoots.defaultRoot = exeExportRoot.u8string();
+    }
+    if (exportRoots.defaultRoot.empty()) {
+        std::printf("zrhi_d3d12_window: --devconsole FAILED: no rg.export root available "
+                    "(LOCALAPPDATA unset and exe path unknown)\n");
+        return 1;
+    }
+    {
+        std::error_code ec;
+        std::filesystem::create_directories(
+            std::filesystem::u8path(exportRoots.defaultRoot), ec);
+        if (ec) {
+            std::printf("zrhi_d3d12_window: --devconsole WARNING: cannot create rg.export "
+                        "root '%s': %s\n",
+                exportRoots.defaultRoot.c_str(), ec.message().c_str());
+        }
+    }
+
+    // ---- TASK-X-SEC-01：一次性 token（128 位 CSPRNG）-----------------------------
+    // 只打到 stdout 日志（本地调试通道），不写进任何随包分发的位置；
+    // 生成失败即拒绝启动（不退化到弱随机/无认证）。
+    std::string authTokenError;
+    const std::string authToken = zrender::ZrDevConsoleGenerateToken(authTokenError);
+    if (authToken.empty()) {
+        std::printf("zrhi_d3d12_window: --devconsole FAILED to generate auth token: %s\n",
+            authTokenError.c_str());
+        return 1;
+    }
+
+    std::printf("zrhi_d3d12_window: --devconsole mode (TASK-B-R9-16/X-SEC-01): port=%u "
+                "zmesh='%s' hlsl='%s' dir='%s' rg_export_root='%s' frames=%s\n",
         static_cast<unsigned>(port), zmeshPath, hlslPath, outputDir.c_str(),
+        exportRoots.defaultRoot.c_str(),
         maxFrames == 0u ? "unbounded" : std::to_string(maxFrames).c_str());
+    std::printf("zrhi_d3d12_window: DEVCONSOLE rg.export allowed roots:");
+    for (const std::string& rootText : exportRoots.allowed) {
+        std::printf(" '%s'", rootText.c_str());
+    }
+    std::printf("\n");
+    std::printf("zrhi_d3d12_window: DEVCONSOLE auth token (LOCAL DEBUG ONLY - do not ship "
+                "this log): %s\n",
+        authToken.c_str());
+    std::fflush(stdout);
 
     // ---- 设备 / 队列 / 命令表（--draw 同构）--------------------------------------
     ZrD3D12Device* device = ZrD3D12CreateDevice();
@@ -13431,15 +13737,16 @@ static int RunDevConsoleMode(int argc, char** argv)
     // ---- DevConsole 服务（127.0.0.1:port）-----------------------------------------
     devconsole::DevConsoleServer server;
     std::string serverError;
-    if (!server.Start(port, serverError)) {
+    if (!server.Start(port, authToken, serverError)) {
         std::printf("zrhi_d3d12_window: --devconsole server FAILED to start: %s\n",
             serverError.c_str());
         ZrD3D12DestroyDevice(device);
         return 1;
     }
     std::printf("zrhi_d3d12_window: DEVCONSOLE listening on 127.0.0.1:%u "
-                "(help|hud|rg.export|renderdoc.capture|quit)\n",
+                "(auth <token> required; help|hud|rg.export|renderdoc.capture|quit)\n",
         static_cast<unsigned>(port));
+    std::fflush(stdout);
 
     // ---- 帧循环（quit / 窗口关闭 / --devconsole-frames / 百万帧安全闸退出）---------
     const float lightDir[3] = {0.5f, 0.8f, 0.6f};
@@ -13465,8 +13772,9 @@ static int RunDevConsoleMode(int argc, char** argv)
         // ---- 帧首取请求：即时响应型就地处理；rg.export 等编译产物 → 帧内延后回写 --
         struct PendingExport {
             SOCKET client;
-            std::string path;
+            std::string path;   // 已通过 ZrResolveRgExportPath 校验的规范化绝对路径
             std::string format;
+            std::string peer;
         };
         std::vector<devconsole::DevConsoleServer::Request> requests = server.Drain();
         std::vector<PendingExport> pendingExports;
@@ -13503,6 +13811,23 @@ static int RunDevConsoleMode(int argc, char** argv)
                 break;
             }
             case zrender::ZrDevConsoleCommand::RenderDocCapture: {
+                // 可选 [name]：换捕获名（模板 = <dir>/<name>，RenderDoc 追加 _帧号.rdc）
+                // TASK-X-SEC-01：name 只允许纯文件名（分隔符/`..`/设备名一律拒绝），
+                // 否则它同样是一条"任意路径写文件"的旁路。先于挂接判定校验参数
+                // （输入合法性不依赖运行环境）。
+                if (!parsed.args.empty()) {
+                    const std::string nameError
+                        = zrender::ZrRgExportValidateLeafName(parsed.args[0]);
+                    if (!nameError.empty()) {
+                        std::printf("zrhi_d3d12_window: DEVCONSOLE renderdoc.capture REJECTED "
+                                    "peer=%s name='%s' reason=%s\n",
+                            req.peer.c_str(), parsed.args[0].c_str(), nameError.c_str());
+                        std::fflush(stdout);
+                        devconsole::DevConsoleServer::SendAndClose(req.client,
+                            zrender::ZrDevConsoleError("bad_capture_name", nameError));
+                        break;
+                    }
+                }
                 if (!renderdoc.IsAttached()) {
                     // 简报硬要求：未挂接 → 明确报错（不静默、不假成功）
                     devconsole::DevConsoleServer::SendAndClose(req.client,
@@ -13512,7 +13837,6 @@ static int RunDevConsoleMode(int argc, char** argv)
                                 + zrender::ZrRenderDocErrorText(rdError)));
                     break;
                 }
-                // 可选 [name]：换捕获名（模板 = <dir>/<name>，RenderDoc 追加 _帧号.rdc）
                 if (!parsed.args.empty()) {
                     const std::string tmpl = outputDir + "/" + parsed.args[0];
                     renderdoc.SetCaptureFilePathTemplate(tmpl.c_str());
@@ -13544,10 +13868,10 @@ static int RunDevConsoleMode(int argc, char** argv)
             }
             case zrender::ZrDevConsoleCommand::RgExport: {
                 // 参数校验（格式值域在本执行层——协议层只管形状）
-                std::string path = outputDir + "/rg_export.json";
+                std::string requested;
                 std::string format = "json";
                 if (!parsed.args.empty()) {
-                    path = parsed.args[0];
+                    requested = parsed.args[0];
                 }
                 if (parsed.args.size() >= 2u) {
                     format = parsed.args[1];
@@ -13558,7 +13882,21 @@ static int RunDevConsoleMode(int argc, char** argv)
                             "usage: rg.export [path] [json|text] (got '" + format + "')"));
                     break;
                 }
-                pendingExports.push_back(PendingExport { req.client, path, format });
+                // TASK-X-SEC-01：路径白名单（规范化 + 根内判定 + 拒绝 `..`/符号链接）
+                const zrender::ZrRgExportPathResult resolved
+                    = zrender::ZrResolveRgExportPath(requested, exportRoots);
+                if (!resolved.ok) {
+                    std::printf("zrhi_d3d12_window: DEVCONSOLE rg.export REJECTED peer=%s "
+                                "error=%s req='%s' detail=%s\n",
+                        req.peer.c_str(), resolved.code.c_str(), requested.c_str(),
+                        resolved.detail.c_str());
+                    std::fflush(stdout);
+                    devconsole::DevConsoleServer::SendAndClose(req.client,
+                        zrender::ZrDevConsoleError(resolved.code, resolved.detail));
+                    break;
+                }
+                pendingExports.push_back(
+                    PendingExport { req.client, resolved.path, format, req.peer });
                 break;
             }
             case zrender::ZrDevConsoleCommand::Quit: {
@@ -13680,8 +14018,28 @@ static int RunDevConsoleMode(int argc, char** argv)
             for (const PendingExport& pe : pendingExports) {
                 const std::string content = pe.format == "text" ? zrender::RgExportText(graph)
                                                                 : zrender::RgExportJson(graph);
-                std::ofstream out(pe.path, std::ios::binary);
+                // 路径已通过 ZrResolveRgExportPath 校验；这里只补建根内子目录
+                const std::filesystem::path outPath
+                    = std::filesystem::u8path(pe.path);
+                std::error_code dirEc;
+                std::filesystem::create_directories(outPath.parent_path(), dirEc);
+                if (dirEc) {
+                    std::printf("zrhi_d3d12_window: DEVCONSOLE rg.export WRITE FAILED peer=%s "
+                                "path='%s' reason=create_directories: %s\n",
+                        pe.peer.c_str(), pe.path.c_str(), dirEc.message().c_str());
+                    std::fflush(stdout);
+                    devconsole::DevConsoleServer::SendAndClose(pe.client,
+                        zrender::ZrDevConsoleError("write_failed",
+                            "cannot create parent directory for '" + pe.path
+                                + "': " + dirEc.message()));
+                    continue;
+                }
+                std::ofstream out(outPath, std::ios::binary);
                 if (!out) {
+                    std::printf("zrhi_d3d12_window: DEVCONSOLE rg.export WRITE FAILED peer=%s "
+                                "path='%s' reason=cannot_open\n",
+                        pe.peer.c_str(), pe.path.c_str());
+                    std::fflush(stdout);
                     devconsole::DevConsoleServer::SendAndClose(pe.client,
                         zrender::ZrDevConsoleError("write_failed",
                             "cannot open '" + pe.path + "' for writing"));
@@ -13690,12 +14048,21 @@ static int RunDevConsoleMode(int argc, char** argv)
                 out << content;
                 out.close();
                 if (!out) {
+                    std::printf("zrhi_d3d12_window: DEVCONSOLE rg.export WRITE FAILED peer=%s "
+                                "path='%s' reason=short_write\n",
+                        pe.peer.c_str(), pe.path.c_str());
+                    std::fflush(stdout);
                     devconsole::DevConsoleServer::SendAndClose(pe.client,
                         zrender::ZrDevConsoleError("write_failed",
                             "short write on '" + pe.path + "'"));
                     continue;
                 }
                 exportsWritten += 1u;
+                std::printf("zrhi_d3d12_window: DEVCONSOLE rg.export OK peer=%s path='%s' "
+                            "bytes=%llu\n",
+                    pe.peer.c_str(), pe.path.c_str(),
+                    static_cast<unsigned long long>(content.size()));
+                std::fflush(stdout);
                 const std::string payload = "\"path\":\""
                     + zrender::ZrDevConsoleJsonEscape(pe.path) + "\",\"format\":\""
                     + pe.format + "\",\"bytes\":"
@@ -14105,8 +14472,11 @@ int main(int argc, char** argv)
         // TASK-B-R9-16：--devconsole —— GPU 工具链运行时入口（方案 §5.7）：
         // 127.0.0.1 白名单控制台（缺省端口 17323）+ hud 统计 + rg.export +
         // renderdoc.capture。选项：--devconsole-port <n> / --devconsole-frames <n>
-        // (0=不限，quit/窗口关闭退出) / --devconsole-dir <path>（捕获与导出落盘
+        // (0=不限，quit/窗口关闭退出) / --devconsole-dir <path>（RenderDoc 捕获落盘
         // 目录，缺省 Native/build/renderdoc）/ --devconsole-zmesh|hlsl <path>。
+        // TASK-X-SEC-01：首帧必须 `auth <token>`（token 打到启动日志，仅本地调试）；
+        // rg.export 只能写到 exe 同目录 rg_export / %LOCALAPPDATA%\ZFrame\rg_export /
+        // --rg-export-dir <path> 之下。
         // D3D12 路径（与 --draw 同源 PSO/编译链；RenderDoc 挂接在后端无关层）。
         if (std::strcmp(argv[i], "--devconsole") == 0) {
             return RunDevConsoleMode(argc, argv);
