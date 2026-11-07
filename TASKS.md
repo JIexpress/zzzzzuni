@@ -81,7 +81,7 @@
 | R10-06 | A/R10 | 修复审计P2 C#批(A-9相机还原) | done(验收PASS with受限 6/6；EditMode 719) | Docs/Logs/TASK-R10-06.md | fa671ba |
 | R10-07 | B/R10 | 补审计漏项(A-10 split屏障 + B-6 采集泄漏) | done(验收PASS with受限 10/10；native 253/711,537) | Docs/Logs/TASK-R10-07.md | 98d377b |
 
-**统计**：done 113 ／ doing 1（A-R9-18）／ todo 0 ／ blocked 0 ／ held 0
+**统计**：done 114 ／ doing 0 ／ todo 0 ／ blocked 0 ／ held 0
 
 > **2026-10-28 G-64 文档对齐（接管）**：修三处失真 ①R8 六行原被追加在「里程碑对照」标题**下方**导致表格断裂、`B-R8-03` 仍挂 `doing`（实际已 PASS，commit `be2adcf`）——已并入主表并改正状态
 > ②`HANDOFF.md` 表头仍写「R8 推进 3/4、B-R8-02 待派」（实际 47 任务全闭环）③`README.md` 与 HANDOFF 注意事项里的任务数/用例数/`TestReport.txt` 是否入库均过期。
@@ -160,5 +160,5 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | B-UNITY-05 | B/UNITY | 共享纹理整面回读只有 1/8 行正确（根因 + 修复） | done(验收PASS with受限；根因=跨对象状态跟踪;A/B/C/D/E五组对照;334用例) | Docs/Logs/TASK-B-UNITY-05.md | 2d1254d |
 | X-RGDESC-01 | X/DIAG | rg.export 的 Imported 资源导出真实 desc | done(根因=ZrImageDesc默认就是1x1无法判"未填";加hasImageDesc;产品路径三参+诊断路径成员resolver;实测 BGRA8/D32Float 640x480) | — | 09437ef |
 | A-R9-17 | A/URP | URP 变体剥离真实收益（变体数 + 构建时长对照） | done(验收PASS with受限；0收益 7830→7830;21条规则结构性冗余;发现官方开关m_StripUnusedPostProcessingVariants=0) | Docs/Logs/TASK-A-R9-17.md | ea7df8e |
-| A-R9-18 | A/URP | 打开 m_StripUnusedPostProcessingVariants 测真实收益 | doing | Docs/Logs/TASK-A-R9-18.md | — |
+| A-R9-18 | A/URP | 打开 m_StripUnusedPostProcessingVariants（已落地为 1） | done(验收PASS with受限；变体7830→7096 -9.4%;构建284.9→238.5s -16.3%;包体-175KB;Bloom/FinalPost/Particles未动;画面无可见回归;Android未验) | Docs/Logs/TASK-A-R9-18.md | 待填 |
 | A-R9-16 | A/R9 | URP 变体收敛（12288 变体成本中心） | done(验收 PASS with 受限；按降级出口交付；EditMode 916；14 是规则命中数非变体减少；真实构建收益未验证) | Docs/Logs/TASK-A-R9-16.md | acef951 |
