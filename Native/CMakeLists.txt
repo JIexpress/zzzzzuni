@@ -344,6 +344,7 @@ add_executable(zrender_test
     tests/test_devconsole_proto.cpp # TASK-B-R9-16（DevConsole 白名单解析/参数/信封转义）
     tests/test_devconsole_auth.cpp # TASK-X-SEC-01（token 常量时间比较/限流窗口/形态校验）
     tests/test_rg_export_path.cpp # TASK-X-SEC-01（rg.export 根白名单/`..`/绝对路径/junction 逃逸）
+    tests/test_planet.cpp # TASK-B-TECH-03（浮点原点重定位/球面重力积分/重定位阈值；共享 tests/planet_math.h）
     # zfgprobe 的 hook/wrap/dll 三个编译单元并入测试目标（TASK-R10-05 B-3/B-7 需要
     # 直接驱动 HookCreateSwapChainForHwnd / WrapShutdown / ZFG_FgShutdown）。
     # 注意：zfg_dxgi_proxy.cpp **有意不并入**——其 ForwardArgs 会把测试进程内的

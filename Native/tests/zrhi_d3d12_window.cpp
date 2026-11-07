@@ -150,6 +150,24 @@
 //   中心屏幕投影，每 10 帧非清屏色）③第 60 帧全帧 readback → Docs/Parity/
 //   assets_gallery.png ④无设备移除 + InfoQueue 0 错误。
 //   通过行：`D3D12 ASSETS GALLERY OK (models=4)`。
+//
+// TASK-B-TECH-03 增补：`--planet` 模式——行星尺度最小切片（浮点原点重定位 +
+//   球面重力 + 球体渲染雏形；Docs/TECH-ROADMAP.md 方向三，无 Unity 依赖）。
+//   恒离屏 640x480（--assets 同策）300 帧自动飞行相机：贴地（0-119，2m 高度
+//   前进 20km，穿越 10km 阈值触发浮点原点重定位）→ 爬升（120-209，至 2 万 km，
+//   61.7km 关键帧看地平线曲率）→ 入轨远观（210-299，2.6 万 km 绕行星慢扫）。
+//   数学内核 tests/planet_math.h（与 test_planet.cpp doctest 共享实现）：
+//   ①相机 double 累计 + 物体 double 绝对坐标 + 渲染偏移 float(objAbs-camAbs)，
+//   相机-原点偏移 >10km 重定位（原点吸附 + 近场地形片重锚）；顶点级抖动消除
+//   以 JitterAudit 数值断言（naive 全 float ≈ULP(100km)=7.8mm vs 重定位后
+//   ≈ULP(10m)/2≈0.5µm）+ 贴地相位 8 近场探针逐帧实况；②半径 6.371e6m 球面
+//   程序化几何三档切换（近场片 ±24km / 远盘 1100km 覆盖真地平线 / 整球 UV），
+//   相位伸缩 near/far（"near/far 相机"路线，对数深度留 zrhi 加法）；③球面重力
+//   a=-μ·r̂/r² velocity Verlet：弹道（1200m/s@60°，积分至撞击）+ 低轨椭圆
+//   （7750m/s 切向）ribbon 线带渲染，数值轨迹近/远地点 vs 活力公式 + 能量守恒
+//   数值断言。探针每 10 帧（地面≠清屏/天顶≈清屏/行星中心≠清屏/角落太空≈清屏）
+//   + 3 关键帧截图 Docs/Parity/planet_ground|climb|orbit.png + InfoQueue 0 错误。
+//   通过行：`D3D12 PLANET OK (origin=RELOCATED@Xm jitter=before/after)`。
 // =============================================================================
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -196,6 +214,7 @@
 #include <vector>
 
 #include "bench_json.h" // TASK-B-R9-10：--lights --json 单行帧耗输出
+#include "planet_math.h" // TASK-B-TECH-03：--planet 浮点原点/球面重力数学内核（与 test_planet 共享）
 #include "zplugin/zplugin.h"
 
 #include <d3d12.h>
@@ -6809,7 +6828,1201 @@ static int RunAssetsGalleryMode()
     return 1;
 }
 
+// =============================================================================
+// ---- TASK-B-TECH-03：--planet 模式（浮点原点重定位 + 球面重力 + 球体渲染雏形）--
+// =============================================================================
+// 恒离屏（--assets 同策）。数学内核 tests/planet_math.h 与 test_planet.cpp
+// doctest 共享同一实现（窗口程序验证的就是单测覆盖的那份代码）。
+// 场景/飞行/校验设计见文件头 TASK-B-TECH-03 块。
+// =============================================================================
+
+namespace zplanetapp {
+
+constexpr uint32_t kPlanetFrames = 300u;
+constexpr uint32_t kPlanetGroundEnd = 120u;  // 帧 [0,120) 贴地
+constexpr uint32_t kPlanetClimbEnd = 210u;   // 帧 [120,210) 爬升；[210,300) 入轨
+constexpr uint32_t kPlanetGroundShotFrame = 40u;
+constexpr uint32_t kPlanetClimbShotFrame = 148u;  // alt ≈ 61.7km（地平线曲率）
+constexpr uint32_t kPlanetOrbitShotFrame = 255u;
+constexpr double kRelocThresholdM = 10000.0;      // 重定位阈值（简报口径 10km）
+constexpr double kFlightAuditM = 100000.0;        // 抖动审计飞行距离（简报 100km）
+constexpr double kNearProbeM = 10.37;             // 审计近场物体距离（m）
+constexpr double kDiskAltMinM = 3000.0;           // 近场片 → 远盘切换（对地高度）
+constexpr double kSphereAltMinM = 1.0e6;          // 远盘 → 整球切换
+constexpr double kEllipseDrawAltMinM = 1.0e5;     // 轨道椭圆线带绘制下限高度
+constexpr double kOrbitCameraDistM = 2.6e7;       // 入轨相机距行星中心
+constexpr float kPlanetClearColor[4] = {0.051f, 0.077f, 0.153f, 1.0f}; // = 着色器 kSkyColor
+
+constexpr uint32_t kPatchDim = 192u;              // 近场地形片 192²（250m 格距）
+constexpr double kPatchExtentM = 24000.0;         // ±24km
+constexpr uint32_t kDiskRings = 160u;             // 远盘极坐标网格
+constexpr uint32_t kDiskSectors = 160u;
+constexpr double kDiskRadiusM = 1.1e6;            // 1100km（覆盖真地平线 889km）
+constexpr uint32_t kSphereStacks = 48u;           // 整球 UV 网格
+constexpr uint32_t kSphereSlices = 64u;
+constexpr uint32_t kRibbonMaxQuads = 640u;        // 线带四边形容量（弹道+椭圆）
+constexpr uint32_t kPlanetCubeCount = 3u;         // 浮点原点演示立方体
+
+// 近场抖动实况探针偏移（贴地相位逐帧采样；模拟贴着相机的近场顶点）
+constexpr double kLiveProbeOffsets[8][3] = {
+    {10.37, 3.2, -7.7}, {-5.1, 1.05, 12.9}, {18.2, -2.4, 4.4}, {-12.6, 0.5, -15.3},
+    {7.7, 5.5, 22.1}, {-20.4, -1.2, 8.8}, {3.3, 2.2, -18.6}, {25.6, -0.8, 1.1},
+};
+
+// b0 常量（160B）——与 Native/shaders/planet.hlsl CBufPerDraw 一一对应
+struct PlanetDrawConstants {
+    float mvp[16];   // clip = mvp·pos（列向量约定，行主序存储）
+    float model[16]; // 渲染空间（相机相对）物体变换
+    float color[4];  // 模式 2 纯色 rgb
+    float params[4]; // x=模式(0地形/1球体/2纯色) y=等高线间距(m) z=雾距离(m,≤0关)
+};
+static_assert(sizeof(PlanetDrawConstants) == 160, "PlanetDrawConstants must be 160 bytes");
+
+// LH lookAt 旋转（相机恒在渲染空间原点；列向量约定、行主序存储——与
+// MatMultiply/MatPerspectiveFovLH 同约定；clip = P·V·pos）
+void PlanetMatLookAtLH(const float fwd[3], const float upHint[3], float* out)
+{
+    float rx = upHint[1] * fwd[2] - upHint[2] * fwd[1];
+    float ry = upHint[2] * fwd[0] - upHint[0] * fwd[2];
+    float rz = upHint[0] * fwd[1] - upHint[1] * fwd[0];
+    const float rLen = std::sqrt(rx * rx + ry * ry + rz * rz);
+    rx /= rLen;
+    ry /= rLen;
+    rz /= rLen;
+    const float ux = fwd[1] * rz - fwd[2] * ry;
+    const float uy = fwd[2] * rx - fwd[0] * rz;
+    const float uz = fwd[0] * ry - fwd[1] * rx;
+    const float m[16] = { rx, ry, rz, 0.0f, ux, uy, uz, 0.0f, fwd[0], fwd[1], fwd[2], 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f };
+    std::memcpy(out, m, sizeof(m));
+}
+
+double PlanetSmoothstep(double edge0, double edge1, double x)
+{
+    const double t = std::min(1.0, std::max(0.0, (x - edge0) / (edge1 - edge0)));
+    return t * t * (3.0 - 2.0 * t);
+}
+
+// 轨迹 ribbon 段构造：相邻采样点 → 相机朝向 billboard 窄四边形（RHI v1 仅
+// TRIANGLELIST；宽度按距离比例 ≈ 恒定像素宽）。返回四边形数；outVerts 为
+// FirstDrawVertex 流（每四边形 4 顶点，索引由调用方静态模式表覆盖）。
+uint32_t PlanetBuildRibbon(const std::vector<zplanet::Vec3d>& path, const double camAbs[3],
+    double farZ, float halfWidthFactor, std::vector<float>& outVerts)
+{
+    outVerts.clear();
+    if (path.size() < 2u) {
+        return 0u;
+    }
+    outVerts.reserve((path.size() - 1u) * 32u);
+    uint32_t quads = 0u;
+    for (size_t i = 0u; i + 1u < path.size(); ++i) {
+        const double rel0[3] = { path[i].x - camAbs[0], path[i].y - camAbs[1],
+            path[i].z - camAbs[2] };
+        const double rel1[3] = { path[i + 1u].x - camAbs[0], path[i + 1u].y - camAbs[1],
+            path[i + 1u].z - camAbs[2] };
+        const double midD[3] = { (rel0[0] + rel1[0]) * 0.5, (rel0[1] + rel1[1]) * 0.5,
+            (rel0[2] + rel1[2]) * 0.5 };
+        const float mid[3] = { static_cast<float>(midD[0]), static_cast<float>(midD[1]),
+            static_cast<float>(midD[2]) };
+        const float midLen = std::sqrt(mid[0] * mid[0] + mid[1] * mid[1] + mid[2] * mid[2]);
+        if (!(midLen > 1.0e-3f) || midLen > static_cast<float>(farZ) * 1.05f) {
+            continue; // 距离退化 / 远平面外
+        }
+        const float view[3] = { mid[0] / midLen, mid[1] / midLen, mid[2] / midLen };
+        float dir[3] = { static_cast<float>(rel1[0] - rel0[0]),
+            static_cast<float>(rel1[1] - rel0[1]), static_cast<float>(rel1[2] - rel0[2]) };
+        const float dirLen = std::sqrt(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
+        if (!(dirLen > 1.0e-6f)) {
+            continue;
+        }
+        dir[0] /= dirLen;
+        dir[1] /= dirLen;
+        dir[2] /= dirLen;
+        // side = dir × view（退化时换垂直参考轴）
+        float side[3] = { dir[1] * view[2] - dir[2] * view[1], dir[2] * view[0] - dir[0] * view[2],
+            dir[0] * view[1] - dir[1] * view[0] };
+        float sideLen = std::sqrt(side[0] * side[0] + side[1] * side[1] + side[2] * side[2]);
+        if (sideLen < 1.0e-4f) {
+            const float altUp[3] = { 0.0f, 1.0f, 0.0f };
+            side[0] = dir[1] * altUp[2] - dir[2] * altUp[1];
+            side[1] = dir[2] * altUp[0] - dir[0] * altUp[2];
+            side[2] = dir[0] * altUp[1] - dir[1] * altUp[0];
+            sideLen = std::sqrt(side[0] * side[0] + side[1] * side[1] + side[2] * side[2]);
+            if (sideLen < 1.0e-6f) {
+                continue;
+            }
+        }
+        const float invSide = 1.0f / sideLen;
+        side[0] *= invSide;
+        side[1] *= invSide;
+        side[2] *= invSide;
+        float halfW = halfWidthFactor * midLen;
+        halfW = std::min(300000.0f, std::max(0.5f, halfW));
+        const float nrm[3] = { -view[0], -view[1], -view[2] }; // 朝相机（光照稳定）
+        float q[4][8];
+        const float* relF[2] = { nullptr, nullptr };
+        const float rel0f[3] = { static_cast<float>(rel0[0]), static_cast<float>(rel0[1]),
+            static_cast<float>(rel0[2]) };
+        const float rel1f[3] = { static_cast<float>(rel1[0]), static_cast<float>(rel1[1]),
+            static_cast<float>(rel1[2]) };
+        relF[0] = rel0f;
+        relF[1] = rel1f;
+        // 四边形顶点序：v0=p0-side, v1=p0+side, v2=p1+side, v3=p1-side（索引 0,1,2/0,2,3）
+        const float sideSign[4] = { -1.0f, 1.0f, 1.0f, -1.0f };
+        for (uint32_t c = 0u; c < 4u; ++c) {
+            const float* base = relF[c >> 1];
+            float* dst = q[c];
+            dst[0] = base[0] + side[0] * halfW * sideSign[c];
+            dst[1] = base[1] + side[1] * halfW * sideSign[c];
+            dst[2] = base[2] + side[2] * halfW * sideSign[c];
+            dst[3] = nrm[0];
+            dst[4] = nrm[1];
+            dst[5] = nrm[2];
+            dst[6] = 0.0f;
+            dst[7] = 0.0f;
+        }
+        outVerts.insert(outVerts.end(), q[0], q[0] + 8u);
+        outVerts.insert(outVerts.end(), q[1], q[1] + 8u);
+        outVerts.insert(outVerts.end(), q[2], q[2] + 8u);
+        outVerts.insert(outVerts.end(), q[3], q[3] + 8u);
+        ++quads;
+        if (quads >= kRibbonMaxQuads) {
+            break;
+        }
+    }
+    return quads;
+}
+
+} // namespace zplanetapp
+
+// --planet 模式主体（返回进程退出码）。恒离屏：照 --assets 先例（无窗口/交换链）。
+static int RunPlanetMode()
+{
+    using namespace zplanetapp;
+    using zplanet::Vec3d;
+    std::printf("zrhi_d3d12_window: --planet mode (TASK-B-TECH-03): floating origin + "
+                "spherical gravity + planet sphere, offscreen %ux%u\n",
+        kWidth, kHeight);
+
+    // ---- 数学前提：抖动审计（重定位前后顶点级量化误差，简报 100km 飞行口径）-----
+    const zplanet::JitterAuditResult audit = zplanet::JitterAudit(kFlightAuditM, 1.0, kNearProbeM);
+    std::printf("zrhi_d3d12_window: --planet jitter audit: flight=%.0fm step=1m near=%.2fm "
+                "naiveMax=%.7fm relocatedMax=%.7fm ulp(100km)=%.7fm\n",
+        kFlightAuditM, kNearProbeM, audit.naiveMaxErrM, audit.relocatedMaxErrM,
+        audit.ulpAtFlightM);
+    const bool auditOk = audit.steps == 100000 && audit.naiveMaxErrM > 0.001
+        && audit.naiveMaxErrM <= audit.ulpAtFlightM + 1e-9 && audit.relocatedMaxErrM < 1e-6
+        && audit.naiveMaxErrM > 100.0 * audit.relocatedMaxErrM;
+
+    // ---- 球面重力：低轨椭圆（渲染 + 数值断言）+ 抛射体弹道（渲染 + 数值断言）----
+    const Vec3d planetCenter = { 0.0, -zplanet::kPlanetRadiusM, 0.0 }; // 切点在原点正下方
+    zplanet::GravityState orb0;
+    orb0.r = { 0.0, zplanet::kPlanetRadiusM + 200000.0, 0.0 }; // 地表上 200km
+    orb0.v = { 0.0, 0.0, 7750.0 };                             // 切向（< 环绕速度 7792）
+    const zplanet::OrbitInfo orbExpect = zplanet::OrbitFromState(orb0, zplanet::kGravityMu);
+    const double orbPeriodS = zplanet::OrbitPeriodS(orbExpect, zplanet::kGravityMu);
+    const zplanet::IntegrateResult orbRes = zplanet::IntegrateGravity(orb0,
+        zplanet::kGravityMu, 0.5, static_cast<int>(orbPeriodS * 1.05 / 0.5) + 1, 0.0, 40,
+        planetCenter);
+    const double orbRpErr = std::fabs(orbRes.rMinM - orbExpect.perigeeM) / orbExpect.perigeeM;
+    const double orbRaErr = std::fabs(orbRes.rMaxM - orbExpect.apogeeM) / orbExpect.apogeeM;
+    const double orbEpsDrift = orbRes.epsDriftMax / std::fabs(orbRes.eps0);
+    std::printf("zrhi_d3d12_window: --planet orbit ellipse: rp=%.1fm ra=%.1fm "
+                "visviva rp=%.1fm ra=%.1fm rpErr=%.2e raErr=%.2e epsDrift=%.2e\n",
+        orbRes.rMinM, orbRes.rMaxM, orbExpect.perigeeM, orbExpect.apogeeM, orbRpErr,
+        orbRaErr, orbEpsDrift);
+    const bool orbOk = orbRes.eps0 < 0.0 && orbEpsDrift < 1e-6 && orbRpErr < 1e-4
+        && orbRaErr < 1e-4 && orbExpect.perigeeM > zplanet::kPlanetRadiusM;
+
+    zplanet::GravityState ball0;
+    {
+        // 发射点：切平面偏移 (t1=9000 前方, t2=1200 右舷 1.2km)——升弧段落在贴地
+        // 视锥内（发射点若取切点原点，近弧段在相机头顶、远弧段被雾吞没）。
+        // 初始锚点 (0,0,0) 的切基与场景 patchBasis 同一（up=+Y, e1=+Z, e2=+X）。
+        const zplanet::TangentBasis originBasis
+            = zplanet::TangentBasisAt({ 0.0, 0.0, 0.0 }, planetCenter);
+        const zplanet::SpherePointResult launchSite = zplanet::SpherePointFromTangent(
+            planetCenter, originBasis, 9000.0, 1200.0);
+        ball0.r = zplanet::VecSub(launchSite.posAbs, planetCenter); // 地表 +0m（球面点）
+        const Vec3d upSite = launchSite.normal;                     // 球面法线 = 当地 up
+        const Vec3d zAxis = { 0.0, 0.0, 1.0 };
+        const Vec3d hDirRaw = zplanet::VecSub(zAxis,
+            zplanet::VecScale(upSite, zplanet::VecDot(zAxis, upSite))); // +Z 投影到切平面
+        const Vec3d hDir = zplanet::VecScale(hDirRaw, 1.0 / zplanet::VecLen(hDirRaw));
+        // 1200m/s @ 仰角 60°（600 水平 + 1039.23 沿当地 up）
+        ball0.v = zplanet::VecAdd(zplanet::VecScale(hDir, 600.0),
+            zplanet::VecScale(upSite, 1039.230484541326));
+    }
+    const zplanet::OrbitInfo ballExpect = zplanet::OrbitFromState(ball0, zplanet::kGravityMu);
+    const zplanet::IntegrateResult ballRes = zplanet::IntegrateGravity(ball0,
+        zplanet::kGravityMu, 0.05, 20000, zplanet::kPlanetRadiusM, 16, planetCenter);
+    const double ballApoErr = std::fabs(ballRes.rMaxM - ballExpect.apogeeM)
+        / ballExpect.apogeeM;
+    std::printf("zrhi_d3d12_window: --planet ballistic: apogee=%.1fm visviva=%.1fm "
+                "err=%.2e flight=%.1fs impacted=%d samples=%zu\n",
+        ballRes.rMaxM, ballExpect.apogeeM, ballApoErr, ballRes.elapsedS,
+        ballRes.impacted ? 1 : 0, ballRes.pathAbs.size());
+    const bool ballOk = ballRes.impacted && ballApoErr < 1e-3
+        && ballRes.rMaxM > zplanet::kPlanetRadiusM + 40000.0
+        && ballRes.rMaxM < zplanet::kPlanetRadiusM + 200000.0;
+
+    // ---- 设备 / 队列 / 命令表 -------------------------------------------------------
+    ZrD3D12Device* device = ZrD3D12CreateDevice();
+    g_activeDevice = device;
+    if (device == nullptr) {
+        std::printf("zrhi_d3d12_window: --planet FAILED to create D3D12 device\n");
+        return 1;
+    }
+    std::printf("zrhi_d3d12_window: --planet device created, debug layer %s\n",
+        device->IsDebugLayerEnabled() ? "ENABLED (InfoQueue active)" : "UNAVAILABLE (degraded)");
+    IZrQueue* queue = device->GetQueue(ZrQueueType::Graphics);
+    ZrCommandList cmdHandle = device->CreateCommandList(ZrQueueType::Graphics);
+    IZrCommandList* cmdList = device->GetCommandList(cmdHandle);
+    ID3D12GraphicsCommandList* nativeCmd = device->D3D12CommandListOf(cmdHandle);
+    if (queue == nullptr || !cmdHandle.IsValid() || cmdList == nullptr || nativeCmd == nullptr) {
+        std::printf("zrhi_d3d12_window: --planet FAILED to create queue/command list\n");
+        ZrD3D12DestroyDevice(device);
+        return 1;
+    }
+
+    // ---- 渲染目标（离屏）+ 深度（--assets 同构）--------------------------------------
+    ZrImageDesc rtDesc {};
+    rtDesc.format = ZrFormat::RGBA8Unorm;
+    rtDesc.width = kWidth;
+    rtDesc.height = kHeight;
+    rtDesc.usage = ZrImageUsage::ColorAttachment | ZrImageUsage::TransferSrc;
+    ZrImage offscreenTarget = device->CreateImage(rtDesc);
+    ZrImageDesc depthDesc {};
+    depthDesc.format = ZrFormat::D32Float;
+    depthDesc.width = kWidth;
+    depthDesc.height = kHeight;
+    depthDesc.usage = ZrImageUsage::DepthStencilAttachment;
+    ZrImage depthImage = device->CreateImage(depthDesc);
+    ZrImageViewDesc dsvViewDesc {};
+    dsvViewDesc.image = depthImage;
+    dsvViewDesc.viewType = ZrImageViewType::Dsv;
+    ZrImageView dsvView = device->CreateImageView(dsvViewDesc);
+    ZrImageViewDesc rtvViewDesc {};
+    rtvViewDesc.image = offscreenTarget;
+    rtvViewDesc.viewType = ZrImageViewType::Rtv;
+    ZrImageView offscreenRtv = device->CreateImageView(rtvViewDesc);
+    if (!offscreenTarget.IsValid() || !offscreenRtv.IsValid() || !depthImage.IsValid()
+        || !dsvView.IsValid()) {
+        std::printf("zrhi_d3d12_window: --planet FAILED to create target/depth views\n");
+        return 1;
+    }
+
+    // ---- 几何：程序化球面（double 建模 → float 相对渲染）-----------------------------
+    const uint32_t kPatchVertCount = kPatchDim * kPatchDim;
+    std::vector<double> patchT1(kPatchDim);
+    std::vector<double> patchT2(kPatchDim);
+    for (uint32_t i = 0; i < kPatchDim; ++i) {
+        patchT1[i] = -kPatchExtentM
+            + 2.0 * kPatchExtentM * static_cast<double>(i) / static_cast<double>(kPatchDim - 1u);
+        patchT2[i] = patchT1[i];
+    }
+    std::vector<double> patchVertAbs(size_t(kPatchVertCount) * 3u);
+    std::vector<double> patchHeight(kPatchVertCount);
+    std::vector<float> patchNormal(size_t(kPatchVertCount) * 3u);
+    Vec3d patchAnchor = { 0.0, 0.0, 0.0 }; // 初始锚点 = 切平面原点正上方球面点
+    zplanet::TangentBasis patchBasis = zplanet::TangentBasisAt(patchAnchor, planetCenter);
+    const double startCam[3] = { 0.0, 2.0, 0.0 }; // 相机起始（贴地 2m）
+    // 重锚（重定位时调用）：锚点吸附到相机正下球面点，全部顶点 double 重算——
+    // 「所有物体 transform 平移回原点附近」的地形片形态。
+    auto reanchorPatch = [&](const double camAbs[3]) {
+        const Vec3d rel = { camAbs[0] - planetCenter.x, camAbs[1] - planetCenter.y,
+            camAbs[2] - planetCenter.z };
+        const double relLen = zplanet::VecLen(rel);
+        patchAnchor = zplanet::VecAdd(planetCenter,
+            zplanet::VecScale(rel, zplanet::kPlanetRadiusM / relLen));
+        patchBasis = zplanet::TangentBasisAt(patchAnchor, planetCenter);
+        for (uint32_t j = 0; j < kPatchDim; ++j) {
+            for (uint32_t i = 0; i < kPatchDim; ++i) {
+                const zplanet::SpherePointResult sp = zplanet::SpherePointFromTangent(
+                    planetCenter, patchBasis, patchT1[i], patchT2[j]);
+                const size_t vi = (size_t(j) * kPatchDim + i) * 3u;
+                patchVertAbs[vi] = sp.posAbs.x;
+                patchVertAbs[vi + 1u] = sp.posAbs.y;
+                patchVertAbs[vi + 2u] = sp.posAbs.z;
+                patchNormal[vi] = static_cast<float>(sp.normal.x);
+                patchNormal[vi + 1u] = static_cast<float>(sp.normal.y);
+                patchNormal[vi + 2u] = static_cast<float>(sp.normal.z);
+                patchHeight[size_t(j) * kPatchDim + i] = sp.heightM;
+            }
+        }
+    };
+    reanchorPatch(startCam);
+
+    // 近场片静态索引（张量网格）
+    std::vector<uint32_t> patchIndices;
+    patchIndices.reserve(size_t(kPatchDim - 1u) * (kPatchDim - 1u) * 6u);
+    for (uint32_t j = 0; j + 1u < kPatchDim; ++j) {
+        for (uint32_t i = 0; i + 1u < kPatchDim; ++i) {
+            const uint32_t v00 = j * kPatchDim + i;
+            const uint32_t v10 = v00 + 1u;
+            const uint32_t v01 = v00 + kPatchDim;
+            const uint32_t v11 = v01 + 1u;
+            patchIndices.push_back(v00);
+            patchIndices.push_back(v10);
+            patchIndices.push_back(v11);
+            patchIndices.push_back(v00);
+            patchIndices.push_back(v11);
+            patchIndices.push_back(v01);
+        }
+    }
+
+    // 远盘（极坐标网格，静态拓扑：顶点 0 = 锚点 + Rings×Sectors 环扇）
+    const uint32_t kDiskVertCount = 1u + kDiskRings * kDiskSectors;
+    std::vector<uint32_t> diskIndices;
+    diskIndices.reserve(size_t(kDiskRings) * kDiskSectors * 6u + size_t(kDiskSectors) * 3u);
+    for (uint32_t s = 0; s < kDiskSectors; ++s) { // 中心扇（环 1 → 锚点）
+        diskIndices.push_back(0u);
+        diskIndices.push_back(1u + s);
+        diskIndices.push_back(1u + (s + 1u) % kDiskSectors);
+    }
+    for (uint32_t k = 1u; k < kDiskRings; ++k) { // 环间四边形
+        for (uint32_t s = 0; s < kDiskSectors; ++s) {
+            const uint32_t a0 = 1u + (k - 1u) * kDiskSectors + s;
+            const uint32_t a1 = 1u + (k - 1u) * kDiskSectors + (s + 1u) % kDiskSectors;
+            const uint32_t b0 = 1u + k * kDiskSectors + s;
+            const uint32_t b1 = 1u + k * kDiskSectors + (s + 1u) % kDiskSectors;
+            diskIndices.push_back(a0);
+            diskIndices.push_back(b0);
+            diskIndices.push_back(b1);
+            diskIndices.push_back(a0);
+            diskIndices.push_back(b1);
+            diskIndices.push_back(a1);
+        }
+    }
+
+    // 整球（静态局部坐标：相对行星中心，float——入轨远观距离下 0.5m 量化不可见；
+    // 平移偏移经 model 矩阵承载 double→float 相对量）
+    std::vector<FirstDrawVertex> sphereVerts(size_t(kSphereStacks + 1u) * (kSphereSlices + 1u));
+    for (uint32_t k = 0; k <= kSphereStacks; ++k) {
+        const double phi = 3.14159265358979323846 * static_cast<double>(k) / kSphereStacks;
+        for (uint32_t s = 0; s <= kSphereSlices; ++s) {
+            const double lambda = 6.28318530717958647692 * static_cast<double>(s) / kSphereSlices;
+            const double dir[3] = { std::sin(phi) * std::cos(lambda), std::cos(phi),
+                std::sin(phi) * std::sin(lambda) };
+            FirstDrawVertex& v = sphereVerts[size_t(k) * (kSphereSlices + 1u) + s];
+            v.pos[0] = static_cast<float>(zplanet::kPlanetRadiusM * dir[0]);
+            v.pos[1] = static_cast<float>(zplanet::kPlanetRadiusM * dir[1]);
+            v.pos[2] = static_cast<float>(zplanet::kPlanetRadiusM * dir[2]);
+            v.normal[0] = static_cast<float>(dir[0]);
+            v.normal[1] = static_cast<float>(dir[1]);
+            v.normal[2] = static_cast<float>(dir[2]);
+            v.uv[0] = 0.0f;
+            v.uv[1] = 0.0f;
+        }
+    }
+    std::vector<uint32_t> sphereIndices;
+    sphereIndices.reserve(size_t(kSphereStacks) * kSphereSlices * 6u);
+    for (uint32_t k = 0; k < kSphereStacks; ++k) {
+        for (uint32_t s = 0; s < kSphereSlices; ++s) {
+            const uint32_t v00 = k * (kSphereSlices + 1u) + s;
+            const uint32_t v10 = v00 + 1u;
+            const uint32_t v01 = v00 + (kSphereSlices + 1u);
+            const uint32_t v11 = v01 + 1u;
+            sphereIndices.push_back(v00);
+            sphereIndices.push_back(v10);
+            sphereIndices.push_back(v11);
+            sphereIndices.push_back(v00);
+            sphereIndices.push_back(v11);
+            sphereIndices.push_back(v01);
+        }
+    }
+
+    // 浮点原点演示立方体（cube.zmesh；贴地相位沿飞行路径的近场物体）
+    std::vector<FirstDrawVertex> cubeVerts;
+    std::vector<uint32_t> cubeIndices;
+    {
+        std::vector<char> meshBytes;
+        if (!ReadWholeFile("Native/tests/data/cube.zmesh", meshBytes)) {
+            std::printf("zrhi_d3d12_window: --planet FAILED to open cube.zmesh\n");
+            return 1;
+        }
+        ZmeshData mesh {};
+        const int parseResult = zmesh_Parse(meshBytes.data(), meshBytes.size(), &mesh);
+        if (parseResult != ZMESH_OK || mesh.stats.hasNormals == 0u) {
+            std::printf("zrhi_d3d12_window: --planet cube.zmesh parse FAILED (error %d)\n",
+                parseResult);
+            return 1;
+        }
+        cubeVerts.resize(mesh.stats.vertexCount);
+        for (uint32_t i = 0; i < mesh.stats.vertexCount; ++i) {
+            std::memcpy(cubeVerts[i].pos, &mesh.positions[i * 3u], sizeof(float) * 3u);
+            std::memcpy(cubeVerts[i].normal, &mesh.normals[i * 3u], sizeof(float) * 3u);
+            std::memcpy(cubeVerts[i].uv, &mesh.uvs[i * 2u], sizeof(float) * 2u);
+        }
+        cubeIndices.resize(mesh.stats.indexCount);
+        std::memcpy(cubeIndices.data(), mesh.indices, sizeof(uint32_t) * mesh.stats.indexCount);
+    }
+    // 立方体绝对坐标（double）：球面地表抬起（×8 缩放后半高 8m）；切平面偏移
+    // (t1=z, t2=x)——初始锚点基 e1=+Z / e2=+X（见 TangentBasisAt）。
+    // 侧偏 60m：贴地飞行时从右舷掠过（重定位跨越它们的可视证据）。
+    const double kCubeTangent[kPlanetCubeCount][2] = { { 7600.0, 60.0 }, { 13600.0, 60.0 },
+        { 19600.0, 60.0 } };
+    double cubeAbs[kPlanetCubeCount][3] = {};
+    for (uint32_t c = 0; c < kPlanetCubeCount; ++c) {
+        const zplanet::SpherePointResult sp = zplanet::SpherePointFromTangent(planetCenter,
+            patchBasis, kCubeTangent[c][0], kCubeTangent[c][1]);
+        cubeAbs[c][0] = sp.posAbs.x;
+        cubeAbs[c][1] = sp.posAbs.y + 8.0; // ×8 缩放后半高 8m（贴地 2m 视角可见标记）
+        cubeAbs[c][2] = sp.posAbs.z;
+    }
+
+    // 线带静态索引（四边形模式表）
+    std::vector<uint32_t> ribbonIndices;
+    ribbonIndices.reserve(size_t(kRibbonMaxQuads) * 6u);
+    for (uint32_t q = 0; q < kRibbonMaxQuads; ++q) {
+        const uint32_t base = q * 4u;
+        ribbonIndices.push_back(base);
+        ribbonIndices.push_back(base + 1u);
+        ribbonIndices.push_back(base + 2u);
+        ribbonIndices.push_back(base);
+        ribbonIndices.push_back(base + 2u);
+        ribbonIndices.push_back(base + 3u);
+    }
+
+    // ---- GPU 缓冲：VB/IB + 常量缓冲（动态几何 hostVisible UPLOAD 持久映射）----------
+    auto makeBuffer = [&](uint64_t size, ZrBufferUsage usage, bool hostVisible,
+                          const void* initData) {
+        ZrBufferDesc desc {};
+        desc.size = size;
+        desc.usage = usage;
+        desc.hostVisible = hostVisible;
+        return device->CreateBuffer(desc, initData);
+    };
+    auto makeDynamicBuffer = [&](uint64_t size, ZrBufferUsage usage, void** outMapped) {
+        ZrBufferDesc desc {};
+        desc.size = size;
+        desc.usage = usage;
+        desc.hostVisible = true;
+        ZrBuffer h = device->CreateBuffer(desc);
+        IZrBuffer* iface = device->GetBuffer(h);
+        *outMapped = (iface != nullptr && h.IsValid()) ? iface->Map() : nullptr;
+        return h;
+    };
+    void* patchVbMapped = nullptr;
+    void* diskVbMapped = nullptr;
+    void* ribbonVbMapped = nullptr;
+    ZrBuffer patchVb = makeDynamicBuffer(uint64_t(kPatchVertCount) * 32u,
+        ZrBufferUsage::Vertex, &patchVbMapped);
+    ZrBuffer patchIb = makeBuffer(uint64_t(patchIndices.size()) * 4u,
+        ZrBufferUsage::Index, false, patchIndices.data());
+    ZrBuffer diskVb = makeDynamicBuffer(uint64_t(kDiskVertCount) * 32u,
+        ZrBufferUsage::Vertex, &diskVbMapped);
+    ZrBuffer diskIb = makeBuffer(uint64_t(diskIndices.size()) * 4u,
+        ZrBufferUsage::Index, false, diskIndices.data());
+    ZrBuffer sphereVb = makeBuffer(uint64_t(sphereVerts.size()) * 32u,
+        ZrBufferUsage::Vertex, false, sphereVerts.data());
+    ZrBuffer sphereIb = makeBuffer(uint64_t(sphereIndices.size()) * 4u,
+        ZrBufferUsage::Index, false, sphereIndices.data());
+    ZrBuffer cubeVb = makeBuffer(uint64_t(cubeVerts.size()) * 32u,
+        ZrBufferUsage::Vertex, false, cubeVerts.data());
+    ZrBuffer cubeIb = makeBuffer(uint64_t(cubeIndices.size()) * 4u,
+        ZrBufferUsage::Index, false, cubeIndices.data());
+    ZrBuffer ribbonVb = makeDynamicBuffer(uint64_t(kRibbonMaxQuads) * 4u * 32u,
+        ZrBufferUsage::Vertex, &ribbonVbMapped);
+    void* ellipseVbMapped = nullptr;
+    ZrBuffer ellipseVb = makeDynamicBuffer(uint64_t(kRibbonMaxQuads) * 4u * 32u,
+        ZrBufferUsage::Vertex, &ellipseVbMapped); // 椭圆带独立 VB（共用线带索引模式表）
+    ZrBuffer ribbonIb = makeBuffer(uint64_t(ribbonIndices.size()) * 4u,
+        ZrBufferUsage::Index, false, ribbonIndices.data());
+    if (!patchVb.IsValid() || !patchIb.IsValid() || !diskVb.IsValid() || !diskIb.IsValid()
+        || !sphereVb.IsValid() || !sphereIb.IsValid() || !cubeVb.IsValid() || !cubeIb.IsValid()
+        || !ribbonVb.IsValid() || !ellipseVb.IsValid() || !ribbonIb.IsValid()
+        || patchVbMapped == nullptr || diskVbMapped == nullptr || ribbonVbMapped == nullptr
+        || ellipseVbMapped == nullptr) {
+        std::printf("zrhi_d3d12_window: --planet FAILED to create VB/IB\n");
+        return 1;
+    }
+
+    // 常量缓冲 ×8（地形片/远盘/球体/3 立方体/弹道带/椭圆带；256B）
+    constexpr uint32_t kPlanetItemCount = 8u;
+    ZrBuffer cb0[kPlanetItemCount] = {};
+    void* cb0Mapped[kPlanetItemCount] = {};
+    for (uint32_t i = 0; i < kPlanetItemCount; ++i) {
+        ZrBufferDesc desc {};
+        desc.size = 256u;
+        desc.usage = ZrBufferUsage::Uniform;
+        desc.hostVisible = true;
+        cb0[i] = device->CreateBuffer(desc);
+        IZrBuffer* iface = device->GetBuffer(cb0[i]);
+        cb0Mapped[i] = (iface != nullptr && cb0[i].IsValid()) ? iface->Map() : nullptr;
+        if (cb0Mapped[i] == nullptr) {
+            std::printf("zrhi_d3d12_window: --planet FAILED to create/map CB %u\n", i);
+            return 1;
+        }
+    }
+    // 槽位：0 地形片 / 1 远盘 / 2 球体 / 3..5 立方体 / 6 弹道带 / 7 椭圆带
+    constexpr uint32_t kCbPatch = 0u;
+    constexpr uint32_t kCbDisk = 1u;
+    constexpr uint32_t kCbSphere = 2u;
+    constexpr uint32_t kCbCubeBase = 3u;
+    constexpr uint32_t kCbArc = 6u;
+    constexpr uint32_t kCbEllipse = 7u;
+
+    // ---- 着色器（运行时 D3DCompile）+ PSO（单 PSO 三模式，rootCbvCount=1）-----------
+    std::vector<char> hlsl;
+    if (!ReadWholeFile("Native/shaders/planet.hlsl", hlsl)) {
+        std::printf("zrhi_d3d12_window: --planet FAILED to open Native/shaders/planet.hlsl\n");
+        return 1;
+    }
+    const ZrShader vs = device->CompileHlsl(ZrShaderStage::Vertex, hlsl.data(), hlsl.size(),
+        "VsMain");
+    const ZrShader ps = device->CompileHlsl(ZrShaderStage::Pixel, hlsl.data(), hlsl.size(),
+        "PsMain");
+    if (!vs.IsValid() || !ps.IsValid()) {
+        std::printf("zrhi_d3d12_window: --planet shader compilation FAILED (see stderr)\n");
+        return 1;
+    }
+    std::printf("zrhi_d3d12_window: --planet shaders compiled (runtime D3DCompile, SM5.0)\n");
+    ZrGraphicsPsoDesc psoDesc {};
+    psoDesc.vertexShader = vs;
+    psoDesc.pixelShader = ps;
+    psoDesc.rtvFormat = ZrFormat::RGBA8Unorm; // 恒离屏（RGBA 序，截图直取）
+    psoDesc.dsvFormat = ZrFormat::D32Float;
+    psoDesc.blend = ZrBlendMode::Opaque;
+    psoDesc.depthTest = true;
+    psoDesc.depthWrite = true;
+    psoDesc.cullMode = ZrCullMode::None; // 球面网格绕序混用（--lights 同策）
+    psoDesc.rootCbvCount = 1u;
+    ZrPipelineState pso = device->CreatePipelineState(psoDesc);
+    if (!pso.IsValid()) {
+        std::printf("zrhi_d3d12_window: --planet FAILED to create graphics PSO\n");
+        return 1;
+    }
+
+    // ---- readback：2 探针槽（值探针/天空探针）+ 全帧（关键帧 PNG 源）-----------------
+    constexpr uint32_t kPlanetRowPitch = (kWidth * 4u + 255u) & ~255u; // 640×4=2560
+    Microsoft::WRL::ComPtr<ID3D12Resource> readbackProbes
+        = MakeReadbackBuffer(device->D3D12Device(), 256u * 2u);
+    Microsoft::WRL::ComPtr<ID3D12Resource> readbackFrame
+        = MakeReadbackBuffer(device->D3D12Device(), uint64_t(kPlanetRowPitch) * kHeight);
+    if (readbackProbes == nullptr || readbackFrame == nullptr) {
+        std::printf("zrhi_d3d12_window: --planet FAILED to create readback buffers\n");
+        return 1;
+    }
+
+    // ---- 浮点原点状态（double 相机累计 + 10km 阈值重定位）---------------------------
+    zplanet::FloatingOrigin origin;
+    origin.thresholdM = kRelocThresholdM;
+    origin.MoveCameraBy(0.0, 2.0, 0.0); // 相机起始 (0,2,0)（double 累计起点）
+    double prevCam[3] = { 0.0, 2.0, 0.0 };
+    double lastFlightRelocM = -1.0; // 10 万 m 飞行段内最后一次重定位距初始原点的距离
+    double liveNaiveMaxM = 0.0;
+    double liveRelocMaxM = 0.0;
+    constexpr float kFovY = 3.14159265f / 3.0f; // 60°
+    const float aspect = static_cast<float>(kWidth) / static_cast<float>(kHeight);
+
+    // ---- 帧循环 ------------------------------------------------------------------------
+    uint32_t readbackChecks = 0u;
+    uint32_t valueProbePasses = 0u;
+    uint32_t skyProbeChecks = 0u;
+    uint32_t skyProbePasses = 0u;
+    bool allOk = true;
+    uint32_t undeclaredUses = 0u;
+    bool pngOk[3] = { false, false, false };
+    constexpr const char* kPlanetPng[3] = { "Docs/Parity/planet_ground.png",
+        "Docs/Parity/planet_climb.png", "Docs/Parity/planet_orbit.png" };
+
+    for (uint32_t frame = 0u; frame < kPlanetFrames; ++frame) {
+        // ---- 相机编排：贴地 → 爬升 → 入轨（double 绝对坐标）--------------------------
+        double camAbs[3] = {};
+        float fwd[3] = {};
+        float upHint[3] = { 0.0f, 1.0f, 0.0f };
+        double nearZ = 1.0;
+        double farZ = 150000.0;
+        if (frame < kPlanetGroundEnd) { // 贴地：2m 高度 +Z 前进 170m/帧
+            camAbs[0] = 0.0;
+            camAbs[1] = 2.0;
+            camAbs[2] = 170.0 * static_cast<double>(frame);
+            // 俯仰 -3°（帧 100 起 ramps 到 -25°，与爬升相位衔接）
+            const double dipDeg = 3.0
+                + 22.0 * static_cast<double>(frame >= 100u ? frame - 100u : 0u) / 19.0;
+            const double dip = dipDeg * 3.14159265358979323846 / 180.0;
+            fwd[0] = 0.0f;
+            fwd[1] = static_cast<float>(-std::sin(dip));
+            fwd[2] = static_cast<float>(std::cos(dip));
+            nearZ = 1.0;
+            farZ = 150000.0;
+        } else if (frame < kPlanetClimbEnd) { // 爬升：alt = 2 + 2e7·s⁵（s∈[0,1]）
+            const double s = static_cast<double>(frame - kPlanetGroundEnd)
+                / static_cast<double>(kPlanetClimbEnd - kPlanetGroundEnd - 1u);
+            const double alt = 2.0 + (2.0e7 - 2.0) * s * s * s * s * s;
+            camAbs[0] = 0.0;
+            camAbs[1] = alt;
+            camAbs[2] = 170.0 * static_cast<double>(frame);
+            // 视线中心保持在地平线下 5°（行星恒占据视野中下部、天顶恒为天空——
+            // 探针高度不变性）；alt > 1.2e7 后混向行星中心（w=1 时正对中心，
+            // 与入轨相位衔接）
+            const double horizonDip = std::acos(std::min(1.0,
+                zplanet::kPlanetRadiusM / (zplanet::kPlanetRadiusM + alt)));
+            double dip = std::max(horizonDip + 5.0 * 3.14159265358979323846 / 180.0,
+                25.0 * 3.14159265358979323846 / 180.0);
+            const double w = PlanetSmoothstep(1.2e7, 2.0e7, alt);
+            dip = (1.0 - w) * dip + w * (3.14159265358979323846 * 0.5);
+            const float fPitch[3] = { 0.0f, static_cast<float>(-std::sin(dip)),
+                static_cast<float>(std::cos(dip)) };
+            const Vec3d toC = { planetCenter.x - camAbs[0], planetCenter.y - camAbs[1],
+                planetCenter.z - camAbs[2] };
+            const double toCLen = zplanet::VecLen(toC);
+            const float fCenter[3] = { static_cast<float>(toC.x / toCLen),
+                static_cast<float>(toC.y / toCLen), static_cast<float>(toC.z / toCLen) };
+            const float blend[3] = { static_cast<float>((1.0 - w) * fPitch[0] + w * fCenter[0]),
+                static_cast<float>((1.0 - w) * fPitch[1] + w * fCenter[1]),
+                static_cast<float>((1.0 - w) * fPitch[2] + w * fCenter[2]) };
+            const float blendLen = std::sqrt(blend[0] * blend[0] + blend[1] * blend[1]
+                + blend[2] * blend[2]);
+            fwd[0] = blend[0] / blendLen;
+            fwd[1] = blend[1] / blendLen;
+            fwd[2] = blend[2] / blendLen;
+            upHint[0] = 0.0f;
+            upHint[1] = (std::fabs(fwd[1]) < 0.9f) ? 1.0f : 0.0f;
+            upHint[2] = (std::fabs(fwd[1]) < 0.9f) ? 0.0f : 1.0f;
+            nearZ = std::min(8.0e6, std::max(1.0, 0.5 * alt));
+            farZ = std::max(150000.0, (toCLen + zplanet::kPlanetRadiusM) * 2.5);
+        } else { // 入轨远观：距行星中心 2.6 万 km 慢扫（15°→55°）
+            const double thetaDeg = 15.0
+                + 40.0 * static_cast<double>(frame - kPlanetClimbEnd)
+                    / static_cast<double>(kPlanetFrames - kPlanetClimbEnd - 1u);
+            const double theta = thetaDeg * 3.14159265358979323846 / 180.0;
+            const double dir[3] = { std::cos(theta), 0.35, std::sin(theta) };
+            const double dirLen = std::sqrt(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
+            camAbs[0] = planetCenter.x + kOrbitCameraDistM * dir[0] / dirLen;
+            camAbs[1] = planetCenter.y + kOrbitCameraDistM * dir[1] / dirLen;
+            camAbs[2] = planetCenter.z + kOrbitCameraDistM * dir[2] / dirLen;
+            const Vec3d toC = { planetCenter.x - camAbs[0], planetCenter.y - camAbs[1],
+                planetCenter.z - camAbs[2] };
+            const double toCLen = zplanet::VecLen(toC);
+            fwd[0] = static_cast<float>(toC.x / toCLen);
+            fwd[1] = static_cast<float>(toC.y / toCLen);
+            fwd[2] = static_cast<float>(toC.z / toCLen);
+            nearZ = 8.0e6;
+            farZ = (toCLen + zplanet::kPlanetRadiusM) * 2.5;
+        }
+        const Vec3d camRelC = { camAbs[0] - planetCenter.x, camAbs[1] - planetCenter.y,
+            camAbs[2] - planetCenter.z };
+        const double altM = zplanet::VecLen(camRelC) - zplanet::kPlanetRadiusM;
+        const bool drawPatch = altM < kDiskAltMinM;
+        const bool drawDisk = altM >= kDiskAltMinM && altM < kSphereAltMinM;
+        const bool drawSphere = altM >= kSphereAltMinM;
+        const bool drawCubes = altM < kDiskAltMinM;
+        const bool drawEllipse = altM >= kEllipseDrawAltMinM;
+
+        // ---- 浮点原点：double 累计 + 阈值重定位（原点吸附相机；近场片随动重锚）--------
+        origin.MoveCameraBy(camAbs[0] - prevCam[0], camAbs[1] - prevCam[1],
+            camAbs[2] - prevCam[2]);
+        if (origin.ShouldRelocateNow()) {
+            const double off = origin.Relocate();
+            const double flightDist = zplanet::VecLen(
+                { camAbs[0], camAbs[1], camAbs[2] });
+            if (flightDist <= kFlightAuditM + 500.0) {
+                lastFlightRelocM = flightDist;
+            }
+            if (drawPatch) {
+                reanchorPatch(camAbs); // 所有地形顶点 transform 平移回原点附近
+            }
+            std::printf("  frame %u: RELOCATE #%d offset=%.1fm flightDist=%.1fm\n", frame + 1u,
+                origin.relocationCount, off, flightDist);
+        }
+        prevCam[0] = camAbs[0];
+        prevCam[1] = camAbs[1];
+        prevCam[2] = camAbs[2];
+
+        // ---- 近场抖动实况探针（贴地相位；naive vs 重定位后逐帧量化误差）----------------
+        if (frame < kPlanetGroundEnd) {
+            for (const double* off : kLiveProbeOffsets) {
+                for (int a = 0; a < 3; ++a) {
+                    const double objA = camAbs[a] + off[a];
+                    const float cf = static_cast<float>(camAbs[a]);
+                    const float of = static_cast<float>(objA);
+                    const double errN = std::fabs(static_cast<double>(of - cf) - off[a]);
+                    const double errR = std::fabs(
+                        static_cast<double>(static_cast<float>(objA - camAbs[a])) - off[a]);
+                    if (errN > liveNaiveMaxM) {
+                        liveNaiveMaxM = errN;
+                    }
+                    if (errR > liveRelocMaxM) {
+                        liveRelocMaxM = errR;
+                    }
+                }
+            }
+        }
+
+        // ---- 矩阵（列向量约定；相机恒在渲染空间原点）----------------------------------
+        float proj[16];
+        MatPerspectiveFovLH(kFovY, aspect, static_cast<float>(nearZ), static_cast<float>(farZ),
+            proj);
+        float view[16];
+        PlanetMatLookAtLH(fwd, upHint, view);
+        float projView[16];
+        MatMultiply(proj, view, projView);
+        const float kIdentity[16] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+            0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
+
+        // 模式参数：雾距离随相位（贴地 150km——保住弹道远弧段可见 / 远盘 400km / 太空关）
+        const float fogDist = drawPatch ? 150000.0f : (drawDisk ? 400000.0f : 0.0f);
+
+        auto fillCb = [&](uint32_t slot, const float* mvp, const float* model, float mode,
+                          float contourM, const float rgb[3]) {
+            PlanetDrawConstants c {};
+            std::memcpy(c.mvp, mvp, sizeof(c.mvp));
+            std::memcpy(c.model, model, sizeof(c.model));
+            c.color[0] = rgb[0];
+            c.color[1] = rgb[1];
+            c.color[2] = rgb[2];
+            c.color[3] = 1.0f;
+            c.params[0] = mode;
+            c.params[1] = contourM;
+            c.params[2] = fogDist;
+            c.params[3] = 0.0f;
+            std::memcpy(cb0Mapped[slot], &c, sizeof(c));
+        };
+        fillCb(kCbPatch, projView, kIdentity, 0.0f, 250.0f, kPlanetClearColor);
+        fillCb(kCbDisk, projView, kIdentity, 0.0f, 10000.0f, kPlanetClearColor);
+        // 球体：model = T(行星中心相对相机)（double→float；入轨距离下量化 ~2m 不可见）
+        float sphereModel[16];
+        MatTranslation(static_cast<float>(planetCenter.x - camAbs[0]),
+            static_cast<float>(planetCenter.y - camAbs[1]),
+            static_cast<float>(planetCenter.z - camAbs[2]), sphereModel);
+        float sphereMvp[16];
+        MatMultiply(projView, sphereModel, sphereMvp);
+        {
+            // 球体雾恒关（fillCb 用全局 fogDist——太空相位本身为 0）
+            PlanetDrawConstants c {};
+            std::memcpy(c.mvp, sphereMvp, sizeof(c.mvp));
+            std::memcpy(c.model, sphereModel, sizeof(c.model));
+            c.params[0] = 1.0f;
+            c.params[1] = 0.0f;
+            c.params[2] = 0.0f;
+            c.params[3] = 0.0f;
+            std::memcpy(cb0Mapped[kCbSphere], &c, sizeof(c));
+        }
+        for (uint32_t c = 0; c < kPlanetCubeCount; ++c) {
+            float cubeT[16];
+            MatTranslation(static_cast<float>(cubeAbs[c][0] - camAbs[0]),
+                static_cast<float>(cubeAbs[c][1] - camAbs[1]),
+                static_cast<float>(cubeAbs[c][2] - camAbs[2]), cubeT);
+            const float cubeScale[16] = { 8.0f, 0.0f, 0.0f, 0.0f, 0.0f, 8.0f, 0.0f, 0.0f,
+                0.0f, 0.0f, 8.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f }; // ×8（16m 标记）
+            float cubeModel[16];
+            MatMultiply(cubeT, cubeScale, cubeModel); // world = T·S·local
+            float cubeMvp[16];
+            MatMultiply(projView, cubeModel, cubeMvp);
+            const float cubeRgb[3] = { c == 0u ? 0.90f : (c == 1u ? 0.30f : 0.25f),
+                c == 0u ? 0.55f : (c == 1u ? 0.85f : 0.75f),
+                c == 0u ? 0.20f : (c == 1u ? 0.95f : 0.90f) };
+            fillCb(kCbCubeBase + c, cubeMvp, cubeModel, 2.0f, 0.0f, cubeRgb);
+        }
+
+        // ---- 动态几何：double 相对化 → float 顶点（浮点原点渲染路径）-------------------
+        if (drawPatch) {
+            FirstDrawVertex* v = static_cast<FirstDrawVertex*>(patchVbMapped);
+            for (uint32_t vi = 0; vi < kPatchVertCount; ++vi) {
+                const double* abs = &patchVertAbs[size_t(vi) * 3u];
+                FirstDrawVertex& out = v[vi];
+                out.pos[0] = static_cast<float>(abs[0] - camAbs[0]);
+                out.pos[1] = static_cast<float>(abs[1] - camAbs[1]);
+                out.pos[2] = static_cast<float>(abs[2] - camAbs[2]);
+                out.normal[0] = patchNormal[size_t(vi) * 3u];
+                out.normal[1] = patchNormal[size_t(vi) * 3u + 1u];
+                out.normal[2] = patchNormal[size_t(vi) * 3u + 2u];
+                out.uv[0] = static_cast<float>(patchHeight[vi]);
+                out.uv[1] = 0.0f;
+            }
+        }
+        if (drawDisk) {
+            // 锚点 = 相机正下球面点（逐帧随动）；顶点 double 建模 → float 相对
+            const Vec3d relC = camRelC;
+            const double relLen = zplanet::VecLen(relC);
+            const Vec3d diskAnchor = zplanet::VecAdd(planetCenter,
+                zplanet::VecScale(relC, zplanet::kPlanetRadiusM / relLen));
+            const zplanet::TangentBasis diskBasis
+                = zplanet::TangentBasisAt(diskAnchor, planetCenter);
+            FirstDrawVertex* v = static_cast<FirstDrawVertex*>(diskVbMapped);
+            for (uint32_t k = 0; k < kDiskRings; ++k) {
+                const double radius = kDiskRadiusM * static_cast<double>(k + 1u)
+                    / static_cast<double>(kDiskRings);
+                for (uint32_t s = 0; s < kDiskSectors; ++s) {
+                    const double ang = 6.28318530717958647692 * static_cast<double>(s)
+                        / static_cast<double>(kDiskSectors);
+                    const zplanet::SpherePointResult sp = zplanet::SpherePointFromTangent(
+                        planetCenter, diskBasis, radius * std::cos(ang),
+                        radius * std::sin(ang));
+                    FirstDrawVertex& out = v[1u + size_t(k) * kDiskSectors + s];
+                    out.pos[0] = static_cast<float>(sp.posAbs.x - camAbs[0]);
+                    out.pos[1] = static_cast<float>(sp.posAbs.y - camAbs[1]);
+                    out.pos[2] = static_cast<float>(sp.posAbs.z - camAbs[2]);
+                    out.normal[0] = static_cast<float>(sp.normal.x);
+                    out.normal[1] = static_cast<float>(sp.normal.y);
+                    out.normal[2] = static_cast<float>(sp.normal.z);
+                    out.uv[0] = static_cast<float>(sp.heightM);
+                    out.uv[1] = 0.0f;
+                }
+            }
+            FirstDrawVertex& center = v[0];
+            center.pos[0] = static_cast<float>(diskAnchor.x - camAbs[0]);
+            center.pos[1] = static_cast<float>(diskAnchor.y - camAbs[1]);
+            center.pos[2] = static_cast<float>(diskAnchor.z - camAbs[2]);
+            center.normal[0] = static_cast<float>(diskBasis.up.x);
+            center.normal[1] = static_cast<float>(diskBasis.up.y);
+            center.normal[2] = static_cast<float>(diskBasis.up.z);
+            center.uv[0] = 0.0f;
+            center.uv[1] = 0.0f;
+        }
+
+        // 线带（弹道恒画；椭圆按高度）：轨迹 double 绝对采样 → 相机相对 float
+        std::vector<float> arcVerts;
+        std::vector<float> ellipseVerts;
+        const uint32_t arcQuads = PlanetBuildRibbon(ballRes.pathAbs, camAbs, farZ, 0.0035f,
+            arcVerts);
+        const uint32_t ellipseQuads = drawEllipse
+            ? PlanetBuildRibbon(orbRes.pathAbs, camAbs, farZ, 0.0025f, ellipseVerts)
+            : 0u;
+        if (!arcVerts.empty()) {
+            std::memcpy(ribbonVbMapped, arcVerts.data(), arcVerts.size() * sizeof(float));
+        }
+        if (!ellipseVerts.empty()) {
+            std::memcpy(ellipseVbMapped, ellipseVerts.data(),
+                ellipseVerts.size() * sizeof(float));
+        }
+        {
+            PlanetDrawConstants c {};
+            std::memcpy(c.mvp, projView, sizeof(c.mvp));
+            std::memcpy(c.model, kIdentity, sizeof(c.model));
+            c.params[0] = 2.0f;
+            c.params[1] = 0.0f;
+            c.params[2] = fogDist;
+            c.params[3] = 0.0f;
+            c.color[0] = 1.0f;
+            c.color[1] = 0.55f;
+            c.color[2] = 0.10f; // 弹道：橙
+            c.color[3] = 1.0f;
+            std::memcpy(cb0Mapped[kCbArc], &c, sizeof(c));
+            c.color[0] = 0.30f;
+            c.color[1] = 0.90f;
+            c.color[2] = 1.0f; // 椭圆：青
+            std::memcpy(cb0Mapped[kCbEllipse], &c, sizeof(c));
+        }
+
+        // ---- RG 帧：Clear → Main（全几何单 pass）→ Readback -----------------------------
+        const bool doReadback = ((frame + 1u) % 10u) == 0u;
+        const int shotIndex = (frame + 1u == kPlanetGroundShotFrame) ? 0
+            : ((frame + 1u == kPlanetClimbShotFrame) ? 1
+                : ((frame + 1u == kPlanetOrbitShotFrame) ? 2 : -1));
+
+        cmdList->Begin();
+        RgGraph graph(ResolveImageDesc);
+        RgHandle backH = graph.Import(RgResourceDesc::ImportImage("backbuffer", offscreenTarget));
+        RgHandle depthH = graph.Import(RgResourceDesc::ImportImage("depth", depthImage));
+
+        graph.AddPass("ClearPass",
+            [&](RgPass& pass) {
+                pass.Write(backH, ZrImageLayout::ColorAttachmentOptimal,
+                    ZrAccessBits::ColorAttachmentWrite,
+                    ZrPipelineStageBits::ColorAttachmentOutput);
+                pass.Write(depthH, ZrImageLayout::DepthStencilAttachmentOptimal,
+                    ZrAccessBits::DepthStencilAttachmentWrite,
+                    ZrPipelineStageBits::LateFragmentTests);
+            },
+            [&](RgContext& ctx) {
+                cmdList->ClearColorImage(ctx.GetImage(backH),
+                    ZrImageLayout::ColorAttachmentOptimal, kPlanetClearColor,
+                    ZrSubresourceRange::All());
+                nativeCmd->ClearDepthStencilView(device->D3D12ViewCpuOf(dsvView),
+                    D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0u, 0u, nullptr);
+            });
+
+        graph.AddPass("PlanetMainPass",
+            [&](RgPass& pass) {
+                pass.Write(backH, ZrImageLayout::ColorAttachmentOptimal,
+                    ZrAccessBits::ColorAttachmentWrite,
+                    ZrPipelineStageBits::ColorAttachmentOutput);
+                pass.Write(depthH, ZrImageLayout::DepthStencilAttachmentOptimal,
+                    ZrAccessBits::DepthStencilAttachmentWrite,
+                    ZrPipelineStageBits::LateFragmentTests);
+            },
+            [&](RgContext&) {
+                cmdList->SetPipelineState(pso);
+                cmdList->SetRenderTarget(offscreenRtv, dsvView);
+                cmdList->SetViewportScissor(kWidth, kHeight);
+                auto drawIndexed = [&](uint32_t indexCount, ZrBuffer vb, ZrBuffer ib,
+                                       ZrBuffer cb) {
+                    ZrBuffer vbs[1] = { vb };
+                    cmdList->SetVertexBuffers(vbs, 1u);
+                    cmdList->SetIndexBuffer(ib);
+                    cmdList->SetGraphicsConstantBuffer(0u, cb);
+                    cmdList->DrawIndexedInstanced(indexCount, 1u, 0u, 0u, 0u);
+                };
+                if (drawPatch) {
+                    drawIndexed(static_cast<uint32_t>(patchIndices.size()), patchVb, patchIb,
+                        cb0[kCbPatch]);
+                }
+                if (drawDisk) {
+                    drawIndexed(static_cast<uint32_t>(diskIndices.size()), diskVb, diskIb,
+                        cb0[kCbDisk]);
+                }
+                if (drawSphere) {
+                    drawIndexed(static_cast<uint32_t>(sphereIndices.size()), sphereVb, sphereIb,
+                        cb0[kCbSphere]);
+                }
+                if (drawCubes) {
+                    for (uint32_t c = 0; c < kPlanetCubeCount; ++c) {
+                        drawIndexed(static_cast<uint32_t>(cubeIndices.size()), cubeVb, cubeIb,
+                            cb0[kCbCubeBase + c]);
+                    }
+                }
+                if (arcQuads > 0u) {
+                    drawIndexed(arcQuads * 6u, ribbonVb, ribbonIb, cb0[kCbArc]);
+                }
+                if (ellipseQuads > 0u) {
+                    // 椭圆带独立 VB + 共享四边形索引模式表（顶点序 0 起）
+                    drawIndexed(ellipseQuads * 6u, ellipseVb, ribbonIb, cb0[kCbEllipse]);
+                }
+            });
+
+        if (doReadback || shotIndex >= 0) { // 关键帧亦须 readback（截图与探针同源）
+            graph.AddPass("ReadbackPass",
+                [&](RgPass& pass) {
+                    pass.Read(backH, ZrImageLayout::TransferSrcOptimal,
+                        ZrAccessBits::TransferRead, ZrPipelineStageBits::Transfer)
+                        .MarkRoot();
+                },
+                [&](RgContext& ctx) {
+                    ID3D12Resource* texture = device->D3D12ResourceOf(ctx.GetImage(backH));
+                    D3D12_TEXTURE_COPY_LOCATION src {};
+                    src.pResource = texture;
+                    src.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+                    src.SubresourceIndex = 0u;
+                    // 探针槽 0：值探针（相位相关坐标，见下方推导）
+                    // 探针槽 1：天空/太空探针（仅爬升/入轨相位）
+                    uint32_t probeX[2] = { 320u, 320u };
+                    uint32_t probeY[2] = { 300u, 80u };
+                    uint32_t probeCount = 1u;
+                    if (altM >= kSphereAltMinM) {
+                        probeX[0] = 320u;
+                        probeY[0] = 240u; // 行星中心
+                        if (frame >= kPlanetClimbEnd) {
+                            probeX[1] = 40u;
+                            probeY[1] = 40u; // 角落太空（入轨行星角半径 14°<半 FOV）
+                            probeCount = 2u;
+                        }
+                    } else if (altM >= kDiskAltMinM) {
+                        probeX[0] = 320u;
+                        probeY[0] = 380u; // 视野下方行星表面（视线中心=地平线下 5°）
+                        probeX[1] = 80u;
+                        probeY[1] = 80u; // 地平线上方 15°、左舷（弹道弧线走中轴附近，避开）
+                        probeCount = (altM >= 30000.0) ? 2u : 1u;
+                    }
+                    for (uint32_t p = 0; p < probeCount; ++p) {
+                        const D3D12_BOX box = { probeX[p], probeY[p], 0u, probeX[p] + 1u,
+                            probeY[p] + 1u, 1u };
+                        D3D12_TEXTURE_COPY_LOCATION dst {};
+                        dst.pResource = readbackProbes.Get();
+                        dst.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+                        dst.PlacedFootprint.Offset = 256ull * p;
+                        dst.PlacedFootprint.Footprint.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+                        dst.PlacedFootprint.Footprint.Width = 1u;
+                        dst.PlacedFootprint.Footprint.Height = 1u;
+                        dst.PlacedFootprint.Footprint.Depth = 1u;
+                        dst.PlacedFootprint.Footprint.RowPitch = 256u;
+                        nativeCmd->CopyTextureRegion(&dst, 0u, 0u, 0u, &src, &box);
+                    }
+                    if (shotIndex >= 0) {
+                        const D3D12_BOX fullBox = { 0u, 0u, 0u, kWidth, kHeight, 1u };
+                        D3D12_TEXTURE_COPY_LOCATION fullDst {};
+                        fullDst.pResource = readbackFrame.Get();
+                        fullDst.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+                        fullDst.PlacedFootprint.Footprint.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+                        fullDst.PlacedFootprint.Footprint.Width = kWidth;
+                        fullDst.PlacedFootprint.Footprint.Height = kHeight;
+                        fullDst.PlacedFootprint.Footprint.Depth = 1u;
+                        fullDst.PlacedFootprint.Footprint.RowPitch = kPlanetRowPitch;
+                        nativeCmd->CopyTextureRegion(&fullDst, 0u, 0u, 0u, &src, &fullBox);
+                    }
+                });
+        }
+
+        if (!graph.Compile()) {
+            std::printf("  frame %u: RG Compile FAILED (error=%u)\n", frame + 1u,
+                static_cast<unsigned>(graph.Error()));
+            allOk = false;
+            cmdList->End();
+            continue;
+        }
+        const RgExecuteStats rgStats = graph.ExecuteAliased(*device, *cmdList);
+        (void)rgStats;
+        undeclaredUses += graph.LastExecuteUndeclaredUses();
+
+        // 帧末手动屏障：深度/离屏图回 COMMON（--assets 同策）
+        ZrImageBarrier depthReset = MakeBarrier(depthImage,
+            ZrImageLayout::DepthStencilAttachmentOptimal, ZrImageLayout::Undefined,
+            ZrAccessBits::DepthStencilAttachmentWrite, ZrPipelineStageBits::LateFragmentTests,
+            ZrAccessBits::None, ZrPipelineStageBits::TopOfPipe);
+        cmdList->ResourceBarrier(&depthReset, 1u, nullptr, 0u);
+        {
+            const ZrImageLayout backLayoutNow = doReadback ? ZrImageLayout::TransferSrcOptimal
+                                                           : ZrImageLayout::ColorAttachmentOptimal;
+            ZrImageBarrier backReset = MakeBarrier(offscreenTarget, backLayoutNow,
+                ZrImageLayout::Undefined, ZrAccessBits::None, ZrPipelineStageBits::TopOfPipe,
+                ZrAccessBits::None, ZrPipelineStageBits::TopOfPipe);
+            cmdList->ResourceBarrier(&backReset, 1u, nullptr, 0u);
+        }
+        cmdList->End();
+        queue->Submit(cmdHandle);
+        device->WaitIdle();
+        graph.FlushRetired(*device);
+
+        // ---- 校验帧：探针判定（readback 节拍帧 + 关键帧——拷贝已保证新鲜）----------------
+        if (doReadback || shotIndex >= 0) {
+            ++readbackChecks;
+            // 当前帧探针坐标（与 ReadbackPass 内推导一致）
+            uint32_t probeX[2] = { 320u, 320u };
+            uint32_t probeY[2] = { 300u, 80u };
+            uint32_t probeCount = 1u;
+            bool skyIsClear[2] = { false, false };
+            if (altM >= kSphereAltMinM) {
+                probeX[0] = 320u;
+                probeY[0] = 240u;
+                if (frame >= kPlanetClimbEnd) {
+                    probeX[1] = 40u;
+                    probeY[1] = 40u;
+                    probeCount = 2u;
+                    skyIsClear[1] = true;
+                }
+            } else if (altM >= kDiskAltMinM) {
+                probeX[0] = 320u;
+                probeY[0] = 380u;
+                probeX[1] = 80u;
+                probeY[1] = 80u;
+                probeCount = (altM >= 30000.0) ? 2u : 1u;
+                skyIsClear[1] = true;
+            }
+            void* mapped = nullptr;
+            const HRESULT hr = readbackProbes->Map(0, nullptr, &mapped);
+            if (FAILED(hr) || mapped == nullptr) {
+                std::printf("  frame %u: probe readback Map FAILED (hr=0x%08lX)\n", frame + 1u,
+                    static_cast<unsigned long>(hr));
+                allOk = false;
+            } else {
+                const int clearR = static_cast<int>(kPlanetClearColor[0] * 255.0f + 0.5f);
+                const int clearG = static_cast<int>(kPlanetClearColor[1] * 255.0f + 0.5f);
+                const int clearB = static_cast<int>(kPlanetClearColor[2] * 255.0f + 0.5f);
+                for (uint32_t p = 0; p < probeCount; ++p) {
+                    const uint8_t* px = static_cast<const uint8_t*>(mapped) + 256u * p;
+                    const int r = static_cast<int>(px[0]);
+                    const int g = static_cast<int>(px[1]);
+                    const int b = static_cast<int>(px[2]);
+                    const bool nearClear = std::abs(r - clearR) <= 2
+                        && std::abs(g - clearG) <= 2 && std::abs(b - clearB) <= 2;
+                    const bool pass = skyIsClear[p] ? nearClear : !nearClear;
+                    if (skyIsClear[p]) {
+                        ++skyProbeChecks;
+                        skyProbePasses += pass ? 1u : 0u;
+                    } else {
+                        valueProbePasses += pass ? 1u : 0u;
+                    }
+                    if (!pass) {
+                        allOk = false;
+                        std::printf("  frame %u probe[%u] (%u,%u) RGB=(%d,%d,%d) -> FAIL "
+                                    "(expect %s)\n",
+                            frame + 1u, p, probeX[p], probeY[p], r, g, b,
+                            skyIsClear[p] ? "clear" : "non-clear");
+                    }
+                }
+                readbackProbes->Unmap(0, nullptr);
+            }
+        }
+
+        // ---- 关键帧：全帧 → PNG -----------------------------------------------------------
+        if (shotIndex >= 0) {
+            void* mapped = nullptr;
+            const HRESULT hr = readbackFrame->Map(0, nullptr, &mapped);
+            if (FAILED(hr) || mapped == nullptr) {
+                std::printf("  frame %u: full-frame Map FAILED (hr=0x%08lX)\n", frame + 1u,
+                    static_cast<unsigned long>(hr));
+                allOk = false;
+            } else {
+                std::filesystem::create_directories("Docs/Parity");
+                pngOk[shotIndex] = WritePng24(kPlanetPng[shotIndex],
+                    static_cast<const uint8_t*>(mapped), kWidth, kHeight, kPlanetRowPitch);
+                std::printf("  frame %u keyframe -> %s (%s)\n", frame + 1u, kPlanetPng[shotIndex],
+                    pngOk[shotIndex] ? "written" : "FAILED");
+                readbackFrame->Unmap(0, nullptr);
+                allOk = allOk && pngOk[shotIndex];
+            }
+        }
+    }
+
+    // ---- 证据行 ------------------------------------------------------------------------
+    std::printf("zrhi_d3d12_window: --planet relocations: count=%d threshold=%.0fm "
+                "lastInFlight=%.1fm maxOriginOffset=%.1fm\n",
+        origin.relocationCount, origin.thresholdM, lastFlightRelocM, origin.maxOriginOffsetM);
+    std::printf("zrhi_d3d12_window: --planet live jitter (ground phase): naiveMax=%.7fm "
+                "relocatedMax=%.7fm\n",
+        liveNaiveMaxM, liveRelocMaxM);
+    const bool liveOk = liveNaiveMaxM > 1e-4 && liveRelocMaxM < 1e-5
+        && liveNaiveMaxM > 50.0 * liveRelocMaxM;
+    const bool relocOk = origin.relocationCount >= 2 && lastFlightRelocM > 0.0;
+    std::printf("zrhi_d3d12_window: --planet frames=%u checks=%u value=%u/%u sky=%u/%u "
+                "png=%d/%d/%d relocs=%d audit=%d live=%d gravity=%d/%d\n",
+        kPlanetFrames, readbackChecks, valueProbePasses, readbackChecks, skyProbePasses,
+        skyProbeChecks, pngOk[0] ? 1 : 0, pngOk[1] ? 1 : 0, pngOk[2] ? 1 : 0,
+        origin.relocationCount, auditOk ? 1 : 0, liveOk ? 1 : 0, orbOk ? 1 : 0,
+        ballOk ? 1 : 0);
+
+    // ---- 清理 ----------------------------------------------------------------------------
+    for (uint32_t i = 0; i < kPlanetItemCount; ++i) {
+        device->Destroy(cb0[i]);
+    }
+    device->Destroy(patchVb);
+    device->Destroy(patchIb);
+    device->Destroy(diskVb);
+    device->Destroy(diskIb);
+    device->Destroy(sphereVb);
+    device->Destroy(sphereIb);
+    device->Destroy(cubeVb);
+    device->Destroy(cubeIb);
+    device->Destroy(ribbonVb);
+    device->Destroy(ellipseVb);
+    device->Destroy(ribbonIb);
+    device->Destroy(pso);
+    device->Destroy(vs);
+    device->Destroy(ps);
+    device->Destroy(offscreenRtv);
+    device->Destroy(dsvView);
+    device->Destroy(depthImage);
+    device->Destroy(offscreenTarget);
+    readbackProbes.Reset();
+    readbackFrame.Reset();
+    device->WaitIdle();
+    device->Destroy(cmdHandle);
+    const uint32_t infoQueueErrors = device->GetDebugErrorCount();
+    const HRESULT removedReason = device->D3D12Device()->GetDeviceRemovedReason();
+    const bool noDeviceRemoval = removedReason == S_OK;
+    ZrD3D12DestroyDevice(device);
+
+    // ---- 判定与通过行 -----------------------------------------------------------------------
+    const bool probesOk = readbackChecks > 0u && valueProbePasses == readbackChecks
+        && skyProbePasses == skyProbeChecks;
+    if (allOk && probesOk && relocOk && auditOk && liveOk && orbOk && ballOk && noDeviceRemoval
+        && undeclaredUses == 0u && infoQueueErrors == 0u) {
+        std::printf("D3D12 PLANET OK (origin=RELOCATED@%.0fm jitter=%.7fm/%.7fm)\n",
+            lastFlightRelocM, audit.naiveMaxErrM, audit.relocatedMaxErrM);
+        return 0;
+    }
+    std::printf("D3D12 PLANET FAILED (allOk=%d probes=%d relocs=%d@%.1fm audit=%d live=%d "
+                "orbit=%d ball=%d removed=%d undeclared=%u errors=%u)\n",
+        allOk ? 1 : 0, probesOk ? 1 : 0, relocOk ? 1 : 0, lastFlightRelocM, auditOk ? 1 : 0,
+        liveOk ? 1 : 0, orbOk ? 1 : 0, ballOk ? 1 : 0, noDeviceRemoval ? 0 : 1, undeclaredUses,
+        infoQueueErrors);
+    return 1;
+}
+
 /// MV 常量（b0 镜像）——zupscaler.h ZrUpscalerMotionVectorConstants 直接复用
+
 /// （单一事实源；motion_vectors.hlsl CBufMotionVectors 与之一一对应）
 using MvPassConstants = zr::ZrUpscalerMotionVectorConstants;
 static_assert(sizeof(MvPassConstants) == 128, "MV constants must be 128 bytes");
@@ -14491,6 +15704,13 @@ int main(int argc, char** argv)
         // + 截图 Docs/Parity/assets_gallery.png）。恒离屏（--parity 同策）。
         if (std::strcmp(argv[i], "--assets") == 0) {
             return RunAssetsGalleryMode();
+        }
+        // TASK-B-TECH-03：--planet —— 行星尺度最小切片（浮点原点重定位 + 球面重力
+        // + 球体渲染雏形）：恒离屏 300 帧自动飞行相机（贴地→爬升→入轨）+ 3 关键帧
+        // 截图 Docs/Parity/planet_*.png + 数值断言（抖动审计/活力公式/能量守恒）。
+        // 通过行 `D3D12 PLANET OK (origin=RELOCATED@Xm jitter=before/after)`。
+        if (std::strcmp(argv[i], "--planet") == 0) {
+            return RunPlanetMode();
         }
         // TASK-B-R9-16：--devconsole —— GPU 工具链运行时入口（方案 §5.7）：
         // 127.0.0.1 白名单控制台（缺省端口 17323）+ hud 统计 + rg.export +
