@@ -161,4 +161,4 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | X-RGDESC-01 | X/DIAG | rg.export 的 Imported 资源导出真实 desc | done(根因=ZrImageDesc默认就是1x1无法判"未填";加hasImageDesc;产品路径三参+诊断路径成员resolver;实测 BGRA8/D32Float 640x480) | — | 09437ef |
 | A-R9-17 | A/URP | URP 变体剥离真实收益（变体数 + 构建时长对照） | done(验收PASS with受限；0收益 7830→7830;21条规则结构性冗余;发现官方开关m_StripUnusedPostProcessingVariants=0) | Docs/Logs/TASK-A-R9-17.md | ea7df8e |
 | A-R9-18 | A/URP | 打开 m_StripUnusedPostProcessingVariants（已落地为 1） | done(验收PASS with受限；变体7830→7096 -9.4%;构建284.9→238.5s -16.3%;包体-175KB;Bloom/FinalPost/Particles未动;画面无可见回归;Android未验) | Docs/Logs/TASK-A-R9-18.md | 待填 |
-| A-R9-16 | A/R9 | URP 变体收敛（12288 变体成本中心） | done(验收 PASS with 受限；按降级出口交付；EditMode 916；14 是规则命中数非变体减少；真实构建收益未验证) | Docs/Logs/TASK-A-R9-16.md | acef951 |
+| A-R9-16 | A/R9 | URP 变体收敛（12288 变体成本中心） | done(superseded by A-R9-17/18)(验收 PASS with 受限；按降级出口交付；EditMode 916；14 是规则命中数非变体减少；真实构建收益未验证) | Docs/Logs/TASK-A-R9-16.md | acef951 |
