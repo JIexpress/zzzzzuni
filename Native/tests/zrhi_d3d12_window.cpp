@@ -1078,7 +1078,7 @@ static int RunFirstDraw(const char* zmeshPath, const char* hlslPath,
 
         // ---- 每帧 RG：Import 后台缓冲+深度（均 Imported）-------------------------------
         cmdList->Begin();
-        RgGraph graph;
+        RgGraph graph(ResolveImageDesc);
         RgHandle backH = graph.Import(RgResourceDesc::ImportImage("backbuffer", backbuffer));
         RgHandle depthH = graph.Import(RgResourceDesc::ImportImage("depth", depthImage));
 
@@ -1802,7 +1802,7 @@ static int RunLightsMode(const char* zmeshPath, const char* hlslPath,
 
         // ---- 每帧 RG：Import 后台缓冲+深度 → ClearPass → LightsDrawPass → readback/Present
         cmdList->Begin();
-        RgGraph graph;
+        RgGraph graph(ResolveImageDesc);
         RgHandle backH = graph.Import(RgResourceDesc::ImportImage("backbuffer", backbuffer));
         RgHandle depthH = graph.Import(RgResourceDesc::ImportImage("depth", depthImage));
 
@@ -2449,7 +2449,7 @@ bool RunShadowsPhase(ZrD3D12Device* device, IZrQueue* queue, ZrCommandList cmdHa
         }
 
         cmdList->Begin();
-        RgGraph graph;
+        RgGraph graph(ResolveImageDesc);
         RgHandle backH = graph.Import(RgResourceDesc::ImportImage("backbuffer", backbuffer));
         RgHandle depthH = graph.Import(RgResourceDesc::ImportImage("depth", depthImage));
         RgHandle shadowH {};
@@ -3702,7 +3702,7 @@ bool RunR5Phase(ZrD3D12Device* device, IZrQueue* queue, ZrCommandList cmdHandle,
 
         // ---- 帧图：Clear → Shadow×4 → Main → Toon → Outline → SSR 四连 → Readback/Present
         cmdList->Begin();
-        RgGraph graph;
+        RgGraph graph(ResolveImageDesc);
         RgHandle backH = graph.Import(RgResourceDesc::ImportImage("backbuffer", backbuffer));
         RgHandle depthH = graph.Import(RgResourceDesc::ImportImage("depth", depthImage));
         // 阴影恒开（--r5 继承 --shadows on 场景）
@@ -4998,7 +4998,7 @@ bool RunParityPhase(ZrD3D12Device* device, IZrQueue* queue, ZrCommandList cmdHan
         const auto frameStart = std::chrono::steady_clock::now();
 
         cmdList->Begin();
-        RgGraph graph;
+        RgGraph graph(ResolveImageDesc);
         RgHandle backH = graph.Import(
             RgResourceDesc::ImportImage("backbuffer", offscreenTarget));
         RgHandle depthH = graph.Import(RgResourceDesc::ImportImage("depth", depthImage));
@@ -6500,7 +6500,7 @@ static int RunAssetsGalleryMode()
         }
 
         cmdList->Begin();
-        RgGraph graph;
+        RgGraph graph(ResolveImageDesc);
         RgHandle backH = graph.Import(RgResourceDesc::ImportImage("backbuffer", offscreenTarget));
         RgHandle depthH = graph.Import(RgResourceDesc::ImportImage("depth", depthImage));
         RgHandle shadowH = graph.Import(RgResourceDesc::ImportImage("shadowMap", shadowImage));
@@ -7081,7 +7081,7 @@ bool RunFsrPhase(ZrD3D12Device* device, IZrQueue* queue, ZrCommandList cmdHandle
         if (tsPool.IsValid()) {
             cmdList->WriteTimestamp(tsPool, frame * 2u); // 帧起点（GPU 时钟）
         }
-        RgGraph graph;
+        RgGraph graph(ResolveImageDesc);
         RgHandle depthH = graph.Import(RgResourceDesc::ImportImage("depth", depthImage));
         RgHandle shadowH = graph.Import(RgResourceDesc::ImportImage("shadowMap", shadowImage));
         RgHandle sceneH = graph.Import(RgResourceDesc::ImportImage("sceneColor", sceneImage));
@@ -8691,7 +8691,7 @@ static int RunFgMode()
         }
 
         cmdList->Begin();
-        RgGraph graph;
+        RgGraph graph(ResolveImageDesc);
         RgHandle depthH = graph.Import(RgResourceDesc::ImportImage("depth", depthImage));
         RgHandle shadowH = graph.Import(RgResourceDesc::ImportImage("shadowMap", shadowImage));
         RgHandle sceneH = graph.Import(RgResourceDesc::ImportImage("sceneColor", sceneImage));
@@ -9412,7 +9412,7 @@ static int RunFirstDrawVulkan(const char* zmeshPath, const char* hlslPath,
         }
 
         cmdList->Begin();
-        RgGraph graph;
+        RgGraph graph(ResolveImageDesc);
         RgHandle backH = graph.Import(RgResourceDesc::ImportImage("backbuffer", backbuffer));
         RgHandle depthH = graph.Import(RgResourceDesc::ImportImage("depth", depthImage));
 
@@ -10047,7 +10047,7 @@ static int RunLightsVulkan(const char* zmeshPath, const char* hlslPath,
 
         // ---- 每帧 RG：ClearPass → LightsDrawPass → ReadbackPass/Present（同 D3D12 结构）
         cmdList->Begin();
-        RgGraph graph;
+        RgGraph graph(ResolveImageDesc);
         RgHandle backH = graph.Import(RgResourceDesc::ImportImage("backbuffer", backbuffer));
         RgHandle depthH = graph.Import(RgResourceDesc::ImportImage("depth", depthImage));
 
@@ -10672,7 +10672,7 @@ bool RunShadowsPhaseVulkan(ZrVulkanDevice* device, IZrQueue* queue, ZrCommandLis
         }
 
         cmdList->Begin();
-        RgGraph graph;
+        RgGraph graph(ResolveImageDesc);
         RgHandle backH = graph.Import(RgResourceDesc::ImportImage("backbuffer", backbuffer));
         RgHandle depthH = graph.Import(RgResourceDesc::ImportImage("depth", depthImage));
         RgHandle shadowH {};
@@ -11835,7 +11835,7 @@ bool RunR5PhaseVulkan(ZrVulkanDevice* device, IZrQueue* queue, ZrCommandList cmd
 
         // ---- 帧图：Clear → Shadow×4 → Main → Toon → Outline → SSR 四连 → Readback/Present
         cmdList->Begin();
-        RgGraph graph;
+        RgGraph graph(ResolveImageDesc);
         RgHandle backH = graph.Import(RgResourceDesc::ImportImage("backbuffer", backbuffer));
         RgHandle depthH = graph.Import(RgResourceDesc::ImportImage("depth", depthImage));
         // 阴影恒开（--r5 继承 --shadows on 场景）
@@ -12866,7 +12866,7 @@ static int RunResizeModeVulkan()
         }
 
         cmdList->Begin();
-        RgGraph graph;
+        RgGraph graph(ResolveImageDesc);
         RgHandle backH = graph.Import(RgResourceDesc::ImportImage("backbuffer", backbuffer));
 
         graph.AddPass("ClearPass",
@@ -13986,7 +13986,7 @@ static int RunDevConsoleMode(int argc, char** argv)
         constexpr float kConsoleClearColor[4] = {0.05f, 0.10f, 0.15f, 1.0f};
         uint32_t frameDrawCalls = 0u; // HUD 的 DrawCall 数据源（命令表插桩计数器）
         cmdList->Begin();
-        RgGraph graph;
+        RgGraph graph(ResolveImageDesc);
         RgHandle backH = graph.Import(RgResourceDesc::ImportImage("backbuffer", backbuffer));
         RgHandle depthH = graph.Import(RgResourceDesc::ImportImage("depth", depthImage));
         graph.AddPass("ClearPass",
@@ -14295,7 +14295,6 @@ int RunPsoCacheBench(uint32_t salt)
 
 int main(int argc, char** argv)
 {
-    RgSetImageDescResolver(&ResolveImageDesc); // rg.export 的 Imported 资源要真实 desc
     bool headless = false;
     // TASK-B-R7-01：--backend vulkan|d3d12|both —— RHI 后端选择（zplugin C ABI 同步
     // 记录；both = 双后端对照模式，仅 --draw 支持）。缺省 d3d12（旧行为不变）。
@@ -14652,7 +14651,7 @@ int main(int argc, char** argv)
 
             D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint {};
             cmdList->Begin();
-            RgGraph graph; // 逐帧图：资源/Pass 每帧重建，退役队列活到帧末冲刷
+            RgGraph graph(ResolveImageDesc); // 逐帧图：资源/Pass 每帧重建，退役队列活到帧末冲刷
             RgExecuteStats stats = RunRenderGraphFrame(graph, device, cmdList, nativeCmd,
                 backbuffer, kClearColors[colorIndex], doReadback, readbackUnorm.Get(),
                 &footprint, timestampPool, frame);

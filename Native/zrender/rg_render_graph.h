@@ -231,7 +231,6 @@ class RgGraph;
 // imageDesc 为空时自动补全——避免在几十个 Import 调用点各贴一遍 desc。
 // 传 nullptr 取消注册。非线程安全（单渲染线程内设置一次即可）。
 using RgImageDescResolver = bool (*)(ZrImage image, ZrImageDesc* out);
-void RgSetImageDescResolver(RgImageDescResolver fn);
 
 class RgContext {
 public:
@@ -303,6 +302,15 @@ struct RgExecuteStats {
 
 class RgGraph {
 public:
+    RgGraph() = default;
+    /// 带 desc 反查器构造（诊断/导出）：Imported 图像未显式给 desc 时，用该回调按句柄补全。
+    /// 存成成员而非全局——全局在静态库/动态库双副本场景下写入与读取不是同一份符号
+    /// （实测 resolver 读到 NULL），成员则随图实例走，不存在跨模块问题。
+    explicit RgGraph(RgImageDescResolver resolver) : m_importDescResolver(resolver) {}
+
+    /// 运行期替换反查器（传 nullptr 取消）
+    void SetImageDescResolver(RgImageDescResolver resolver) { m_importDescResolver = resolver; }
+
     RgHandle CreateTransient(const RgResourceDesc& desc);
     RgHandle Import(const RgResourceDesc& desc); // desc.residency 必须为 Imported
 
@@ -363,6 +371,7 @@ public:
 
 private:
     friend class RgContext; // GetImage/GetBuffer 查 FindResource/PassAt
+    RgImageDescResolver m_importDescResolver = nullptr; // Imported 图像 desc 反查（可空）
     struct ResourceEntry {
         RgResourceDesc desc;
         uint32_t gen = 1;

@@ -289,24 +289,15 @@ RgHandle RgGraph::CreateTransient(const RgResourceDesc& desc)
     return h;
 }
 
-namespace {
-RgImageDescResolver g_importDescResolver = nullptr;
-} // namespace
-
-void RgSetImageDescResolver(RgImageDescResolver fn)
-{
-    g_importDescResolver = fn;
-}
-
 RgHandle RgGraph::Import(const RgResourceDesc& desc)
 {
     RgResourceDesc d = desc;
     d.residency = RgResidency::Imported;
     // Imported 图像没带尺寸/格式时，用宿主注册的反查器补全（诊断/导出需要真实 desc）
     if (d.type == RgResourceType::Image && !d.hasImageDesc &&
-        g_importDescResolver != nullptr) {
+        m_importDescResolver != nullptr) {
         ZrImageDesc resolved {};
-        if (g_importDescResolver(d.importedImage, &resolved)) {
+        if (m_importDescResolver(d.importedImage, &resolved)) {
             d.imageDesc = resolved;
             d.hasImageDesc = true;
         }
