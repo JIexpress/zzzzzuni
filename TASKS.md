@@ -81,7 +81,7 @@
 | R10-06 | A/R10 | 修复审计P2 C#批(A-9相机还原) | done(验收PASS with受限 6/6；EditMode 719) | Docs/Logs/TASK-R10-06.md | fa671ba |
 | R10-07 | B/R10 | 补审计漏项(A-10 split屏障 + B-6 采集泄漏) | done(验收PASS with受限 10/10；native 253/711,537) | Docs/Logs/TASK-R10-07.md | 98d377b |
 
-**统计**：done 106 ／ doing 1（B-UNITY-04）／ todo 0 ／ blocked 0 ／ held 0
+**统计**：done 107 ／ doing 1（B-PSO-01）／ todo 0 ／ blocked 0 ／ held 0
 
 > **2026-10-28 G-64 文档对齐（接管）**：修三处失真 ①R8 六行原被追加在「里程碑对照」标题**下方**导致表格断裂、`B-R8-03` 仍挂 `doing`（实际已 PASS，commit `be2adcf`）——已并入主表并改正状态
 > ②`HANDOFF.md` 表头仍写「R8 推进 3/4、B-R8-02 待派」（实际 47 任务全闭环）③`README.md` 与 HANDOFF 注意事项里的任务数/用例数/`TestReport.txt` 是否入库均过期。
@@ -152,5 +152,6 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | B-UNITY-01 | B/UNITY | ZRender 接入 Unity 第一步：原生接受外部 D3D12 设备 + 最小渲染 ABI | done(验收PASS；导出23→28；清屏回读整帧(13,26,38)；311用例) | Docs/Logs/TASK-B-UNITY-01.md | f1067bd |
 | B-UNITY-02 | B/UNITY | ZRender 接入 Unity 第二步：共享纹理 + 管线接线（方案B，避开backbuffer状态/跨队列） | done(验收PASS with受限；画面已出现在Unity窗口;颜色变异证伪;317用例) | Docs/Logs/TASK-B-UNITY-02.md | 57e14c2 |
 | B-UNITY-03 | B/UNITY | 可玩级第一刀：DrawRenderers（相机矩阵 + Unity 物件搬进 ZRender） | done(验收PASS with受限；位置(693,421)逐像素吻合；mesh只传12次；T-pose/标签为内容侧) | Docs/Logs/TASK-B-UNITY-03.md | 06f61bd |
-| B-UNITY-04 | B/UNITY | 集成稳定性：矩阵/顶点单测 + 纹理重建泄漏 + 帧同步双缓冲 | doing | Docs/Logs/TASK-B-UNITY-04.md | — |
+| B-UNITY-04 | B/UNITY | 集成稳定性：矩阵/顶点单测 + 纹理重建泄漏 + 帧同步双缓冲 | done(验收PASS；9条单测有牙；WaitIdle→双缓冲阻塞0/720;纹理计数恒2) | Docs/Logs/TASK-B-UNITY-04.md | 2d5e954 |
+| B-PSO-01 | B/PSO | PSO 磁盘缓存（ID3D12PipelineLibrary 落盘 + 失效重建 + 兜底） | doing | Docs/Logs/TASK-B-PSO-01.md | — |
 | A-R9-16 | A/R9 | URP 变体收敛（12288 变体成本中心） | done(验收 PASS with 受限；按降级出口交付；EditMode 916；14 是规则命中数非变体减少；真实构建收益未验证) | Docs/Logs/TASK-A-R9-16.md | acef951 |
