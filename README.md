@@ -1,5 +1,12 @@
 # ZFrame / ZRender —— Unity 双轨游戏框架与自研渲染内核
 
+> **想直接玩？** 看 [`Docs/玩家指南.md`](Docs/玩家指南.md)——安装包在 `Build/Installer/`，
+> 操作用 **WASD** 移动、**E** 互动、**Esc** 暂停、**Ctrl+Z** 撤销。
+> 提示：包没签名，Windows 会拦，需要点「更多信息 → 仍要运行」。
+>
+> 下面是给开发者的技术说明。
+
+
 > Unity 2022.3 LTS 上的双轨项目：**Track A（ZFrame）玩法框架** + **Track B（ZRender）自研渲染内核**（C# SRP 壳 + 原生 C++ 核心）。
 > 全程由"主控/施工/验收"三角色治理，**103 个任务闭环**、每任务日志落盘（`Docs/Logs/`）。
 
