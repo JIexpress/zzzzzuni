@@ -334,6 +334,9 @@ struct TargetState {
     ZrImage color[kTargetSlots] {};
     HANDLE sharedHandle[kTargetSlots] = {nullptr, nullptr};
     ZrImage depth[kTargetSlots] {};
+    // 真实 desc 保活：RG 侧 Import 时带过去，否则 rg.export 只能报占位值
+    ZrImageDesc colorDesc {};
+    ZrImageDesc depthDesc {};
     ZrImageView colorRtv[kTargetSlots] {};
     ZrImageView depthDsv[kTargetSlots] {};
     // 帧同步（TASK-B-UNITY-04）：本队列自己的 fence，帧 N 提交后 Signal，
@@ -790,6 +793,7 @@ int CreateTarget(uint32_t width, uint32_t height)
         | ZrImageUsage::Sampled;
     for (uint32_t slot = 0; slot < kTargetSlots; ++slot) {
         void* shared = nullptr;
+        g_target.colorDesc = colorDesc;
         g_target.color[slot] = g_target.device->CreateSharedImage(colorDesc, &shared);
         if (!g_target.color[slot].IsValid() || shared == nullptr) {
             g_target = TargetState {}; // device 包装也已被释放
@@ -804,6 +808,7 @@ int CreateTarget(uint32_t width, uint32_t height)
     depthDesc.height = height;
     depthDesc.usage = ZrImageUsage::DepthStencilAttachment;
     for (uint32_t slot = 0; slot < kTargetSlots; ++slot) {
+        g_target.depthDesc = depthDesc;
         g_target.depth[slot] = g_target.device->CreateImage(depthDesc);
 
         ZrImageViewDesc rtvDesc {};
@@ -1174,8 +1179,10 @@ int RenderFrame(void)
     // ---- 一帧：RG（Import → Clear → CubeDraw → [Readback]）------------------------
     cmdList->Begin();
     RgGraph graph;
-    RgHandle colorH = graph.Import(RgResourceDesc::ImportImage("zr_shared_target", g_target.color[slot]));
-    RgHandle depthH = graph.Import(RgResourceDesc::ImportImage("zr_depth", g_target.depth[slot]));
+    RgHandle colorH = graph.Import(
+        RgResourceDesc::ImportImage("zr_shared_target", g_target.color[slot], g_target.colorDesc));
+    RgHandle depthH = graph.Import(
+        RgResourceDesc::ImportImage("zr_depth", g_target.depth[slot], g_target.depthDesc));
 
     graph.AddPass("ZRTargetClear",
         [&](RgPass& pass) {

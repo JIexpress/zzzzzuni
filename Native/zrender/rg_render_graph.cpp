@@ -8,6 +8,8 @@
 //   3. DSV 写->后续读 的转换输出 split barrier 计划（不进内联批次，执行归下任务）。
 //   4. 别名槽：生命周期区间 [firstUse, lastUse]（编译序）不重叠才可共槽。
 // =============================================================================
+#include <cstdio>
+
 #include "zrender/rg_render_graph.h"
 
 #include <algorithm>
@@ -287,10 +289,28 @@ RgHandle RgGraph::CreateTransient(const RgResourceDesc& desc)
     return h;
 }
 
+namespace {
+RgImageDescResolver g_importDescResolver = nullptr;
+} // namespace
+
+void RgSetImageDescResolver(RgImageDescResolver fn)
+{
+    g_importDescResolver = fn;
+}
+
 RgHandle RgGraph::Import(const RgResourceDesc& desc)
 {
     RgResourceDesc d = desc;
     d.residency = RgResidency::Imported;
+    // Imported 图像没带尺寸/格式时，用宿主注册的反查器补全（诊断/导出需要真实 desc）
+    if (d.type == RgResourceType::Image && !d.hasImageDesc &&
+        g_importDescResolver != nullptr) {
+        ZrImageDesc resolved {};
+        if (g_importDescResolver(d.importedImage, &resolved)) {
+            d.imageDesc = resolved;
+            d.hasImageDesc = true;
+        }
+    }
     ResourceEntry e;
     e.desc = d;
     e.gen = 1;

@@ -1402,6 +1402,19 @@ ZrD3D12ImageObj* ZrD3D12Device::ResolveImage(ZrImage handle) const
     return static_cast<ZrD3D12ImageObj*>(payload);
 }
 
+bool ZrD3D12Device::GetImageDesc(ZrImage image, ZrImageDesc* out) const
+{
+    if (out == nullptr) {
+        return false;
+    }
+    const ZrD3D12ImageObj* obj = ResolveImage(image);
+    if (obj == nullptr) {
+        return false;
+    }
+    *out = obj->desc;
+    return true;
+}
+
 ZrD3D12ViewObj* ZrD3D12Device::ResolveView(ZrImageView handle) const
 {
     void* payload = nullptr;

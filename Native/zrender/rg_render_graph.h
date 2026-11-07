@@ -59,8 +59,11 @@ struct RgResourceDesc {
     const char* name = "rg_res";
     RgResidency residency = RgResidency::Transient;
     RgResourceType type = RgResourceType::Image;
-    ZrImageDesc imageDesc;   // type == Image 时有效
-    ZrBufferDesc bufferDesc; // type == Buffer 时有效
+    ZrImageDesc imageDesc {};   // type == Image 时有效
+    // 是否真的填了 imageDesc。注意不能靠 imageDesc.width==0 判断——ZrImageDesc 自身
+    // 默认就是 RGBA8Unorm 1x1（{ } 零初始化也会得到 1x1），正是历史占位值的来源。
+    bool hasImageDesc = false;
+    ZrBufferDesc bufferDesc {}; // type == Buffer 时有效
     ZrImage importedImage{};   // Imported 图像的设备句柄
     ZrBuffer importedBuffer{}; // Imported 缓冲的设备句柄
 
@@ -71,6 +74,7 @@ struct RgResourceDesc {
         d.residency = RgResidency::Transient;
         d.type = RgResourceType::Image;
         d.imageDesc = desc;
+        d.hasImageDesc = true;
         return d;
     }
     static RgResourceDesc TransientBuffer(const char* name_, const ZrBufferDesc& desc)
@@ -89,6 +93,20 @@ struct RgResourceDesc {
         d.residency = RgResidency::Imported;
         d.type = RgResourceType::Image;
         d.importedImage = deviceImage;
+        d.hasImageDesc = false; // 未填：Import 时用注册的反查器补全
+        return d;
+    }
+    // 带真实尺寸/格式的重载：rg.export / rg.dump 导出 Imported 资源时要有真实 desc，
+    // 否则只能输出占位值（历史问题：depth 显示成 RGBA8Unorm 1×1，真实是 D32Float W×H）。
+    static RgResourceDesc ImportImage(const char* name_, ZrImage deviceImage, const ZrImageDesc& desc)
+    {
+        RgResourceDesc d;
+        d.name = name_;
+        d.residency = RgResidency::Imported;
+        d.type = RgResourceType::Image;
+        d.importedImage = deviceImage;
+        d.imageDesc = desc;
+        d.hasImageDesc = true;
         return d;
     }
     static RgResourceDesc ImportBuffer(const char* name_, ZrBuffer deviceBuffer)
@@ -204,6 +222,16 @@ struct RgLifetime {
 // RgContext —— execute 回调内的句柄解析（未声明访问 -> 无效句柄 + 记错）
 // =============================================================================
 class RgGraph;
+
+// 诊断用：Imported 图像的真实 desc 反查器。
+//
+// 背景：`ImportImage(name, image)` 不携带尺寸/格式，rg.export 只能输出占位值
+// （历史现象：depth 显示成 RGBA8Unorm 1x1，真实是 D32Float W×H）。
+// 宿主注册一次（如 zrhi 侧用 ZrD3D12Device::GetImageDesc），RgGraph::Import 在
+// imageDesc 为空时自动补全——避免在几十个 Import 调用点各贴一遍 desc。
+// 传 nullptr 取消注册。非线程安全（单渲染线程内设置一次即可）。
+using RgImageDescResolver = bool (*)(ZrImage image, ZrImageDesc* out);
+void RgSetImageDescResolver(RgImageDescResolver fn);
 
 class RgContext {
 public:

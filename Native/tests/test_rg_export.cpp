@@ -264,3 +264,56 @@ TEST_CASE("rg-export: uncompiled/failed graph exports skeleton with error code")
     const std::string text = zrender::RgExportText(graph);
     CHECK(text.find("error=3") != std::string::npos);
 }
+
+// =============================================================================
+// Imported 资源必须导出真实 desc（缺口：曾把 depth 报成 RGBA8Unorm 1x1）
+//
+// 背景：RgResourceDesc 的 imageDesc 默认就是 RGBA8Unorm 1x1（ZrImageDesc 自身的
+// 默认值），所以"没填"和"填了个 1x1"无法区分。加 hasImageDesc 显式标记后：
+//   - ImportImage(name, image)             → hasImageDesc=false（靠 resolver 补全）
+//   - ImportImage(name, image, desc)       → hasImageDesc=true（导出真实值）
+// 本用例钉死第二条：导出的 format/width/height 必须等于传入的 desc，而不是默认值。
+// =============================================================================
+TEST_CASE("rg-export: imported image with explicit desc exports real format and size")
+{
+    ZrImageDesc depthDesc;
+    depthDesc.format = ZrFormat::D32Float;
+    depthDesc.width = 640;
+    depthDesc.height = 480;
+
+    RgGraph graph;
+    // 三参重载：显式给真实 desc（Unity target 走的就是这条）
+    const RgHandle depthH = graph.Import(
+        RgResourceDesc::ImportImage("zr_depth", ZrImage {}, depthDesc));
+
+    graph.AddPass("WriteDepth",
+        [&](RgPass& pass) {
+            pass.Write(depthH, ZrImageLayout::DepthStencilAttachmentOptimal,
+                ZrAccessBits::DepthStencilAttachmentWrite, ZrPipelineStageBits::LateFragmentTests);
+        },
+        nullptr);
+    graph.AddPass("Present", [&](RgPass& pass) { pass.Present(depthH).MarkRoot(); }, nullptr);
+    REQUIRE(graph.Compile());
+
+    const std::string json = zrender::RgExportJson(graph);
+    // 真实格式与尺寸必须出现在导出里
+    CHECK(json.find("\"format\":\"D32Float\"") != std::string::npos);
+    CHECK(json.find("\"width\":640") != std::string::npos);
+    CHECK(json.find("\"height\":480") != std::string::npos);
+    // 且不能再出现占位值（1x1 的默认 desc）
+    CHECK(json.find("\"width\":1,") == std::string::npos);
+}
+
+TEST_CASE("rg-export: imported image without desc reports the default placeholder")
+{
+    // 两参重载不携带 desc，也没有注册 resolver 时，应如实报默认值（说明这是"未提供"
+    // 而非"真实就是 1x1"）。这条用例固定现状，避免有人误以为两参重载能导出真实值。
+    RgGraph graph;
+    const RgHandle backH = graph.Import(RgResourceDesc::ImportImage("backbuffer", ZrImage {}));
+    graph.AddPass("Present", [&](RgPass& pass) { pass.Present(backH).MarkRoot(); }, nullptr);
+    REQUIRE(graph.Compile());
+
+    const std::string json = zrender::RgExportJson(graph);
+    CHECK(json.find("\"format\":\"RGBA8Unorm\"") != std::string::npos);
+    CHECK(json.find("\"width\":1,") != std::string::npos);
+}

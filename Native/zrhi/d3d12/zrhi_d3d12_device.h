@@ -221,6 +221,13 @@ public:
     /// 创建设备（失败返回 nullptr）：DEBUG layer 可用则开启并挂 InfoQueue
     static ZrD3D12Device* Create();
 
+    /// 反查图像创建时的 desc（true=成功填充）。
+    ///
+    /// 用途：RG 的 Imported 资源原本只带句柄、不带尺寸/格式，rg.export 只能输出占位值
+    /// （历史现象：depth 显示成 RGBA8Unorm 1x1，真实是 D32Float W×H）。诊断/导出路径
+    /// 用这个方法拿到真实 desc 再交给 RgResourceDesc::ImportImage。
+    bool GetImageDesc(ZrImage image, ZrImageDesc* out) const;
+
     /// TASK-B-UNITY-01：包装**外部创建**的 D3D12 设备（失败返回 nullptr）。
     ///
     /// 与 Create 的差异（其余初始化路径完全共用 InitializeRuntime）：

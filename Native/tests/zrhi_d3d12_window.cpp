@@ -222,6 +222,19 @@
 
 namespace {
 
+// 诊断用：当前活动设备（供 RG 的 Imported 资源反查真实 desc）。
+// 窗口程序每个测试函数各建一个设备，这里只保留"最近创建的那个"——resolver 只在
+// rg.export 这类诊断路径读 desc，不影响渲染。
+ZrD3D12Device* g_activeDevice = nullptr;
+
+bool ResolveImageDesc(ZrImage image, ZrImageDesc* out)
+{
+    if (g_activeDevice == nullptr) {
+        return false;
+    }
+    return g_activeDevice->GetImageDesc(image, out);
+}
+
 constexpr uint32_t kWidth = 640u;
 constexpr uint32_t kHeight = 480u;
 constexpr uint32_t kFrameCount = 60u;
@@ -771,6 +784,7 @@ static int RunFirstDraw(const char* zmeshPath, const char* hlslPath,
 
     // ---- 设备 / 队列 / 命令表 -------------------------------------------------------
     ZrD3D12Device* device = ZrD3D12CreateDevice();
+    g_activeDevice = device;
     if (device == nullptr) {
         std::printf("zrhi_d3d12_window: --draw FAILED to create D3D12 device\n");
         return 1;
@@ -1382,6 +1396,7 @@ static int RunLightsMode(const char* zmeshPath, const char* hlslPath,
 
     // ---- 设备 / 队列 / 命令表 -------------------------------------------------------
     ZrD3D12Device* device = ZrD3D12CreateDevice();
+    g_activeDevice = device;
     if (device == nullptr) {
         std::printf("zrhi_d3d12_window: --lights FAILED to create D3D12 device\n");
         return 1;
@@ -2661,6 +2676,7 @@ static int RunShadowsMode(
 
     // ---- 设备 / 队列 / 命令表 -------------------------------------------------------
     ZrD3D12Device* device = ZrD3D12CreateDevice();
+    g_activeDevice = device;
     if (device == nullptr) {
         std::printf("zrhi_d3d12_window: --shadows FAILED to create D3D12 device\n");
         return 1;
@@ -4032,6 +4048,7 @@ static int RunR5Mode(int (*outPhaseProbes)[3][kR5ProbeCount][3] = nullptr)
 
     // ---- 设备 / 队列 / 命令表 -------------------------------------------------------
     ZrD3D12Device* device = ZrD3D12CreateDevice();
+    g_activeDevice = device;
     if (device == nullptr) {
         std::printf("zrhi_d3d12_window: --r5 FAILED to create D3D12 device\n");
         return 1;
@@ -5218,6 +5235,7 @@ static int RunParityMode()
 
     // ---- 设备 / 队列 / 命令表 -------------------------------------------------------
     ZrD3D12Device* device = ZrD3D12CreateDevice();
+    g_activeDevice = device;
     if (device == nullptr) {
         std::printf("zrhi_d3d12_window: --parity FAILED to create D3D12 device\n");
         return 1;
@@ -5876,6 +5894,7 @@ static int RunAssetsGalleryMode()
 
     // ---- 设备 / 队列 / 命令表 -------------------------------------------------------
     ZrD3D12Device* device = ZrD3D12CreateDevice();
+    g_activeDevice = device;
     if (device == nullptr) {
         std::printf("zrhi_d3d12_window: --assets FAILED to create D3D12 device\n");
         return 1;
@@ -7464,6 +7483,7 @@ static int RunFsrMode(FsrMode mode)
 
     // ---- 设备 / 队列 / 命令表 -------------------------------------------------------
     ZrD3D12Device* device = ZrD3D12CreateDevice();
+    g_activeDevice = device;
     if (device == nullptr) {
         std::printf("zrhi_d3d12_window: --fsr FAILED to create D3D12 device\n");
         return 1;
@@ -8079,6 +8099,7 @@ static int RunFgMode()
 
     // ---- 设备 / 队列 / 命令表 -------------------------------------------------------
     ZrD3D12Device* device = ZrD3D12CreateDevice();
+    g_activeDevice = device;
     if (device == nullptr) {
         std::printf("zrhi_d3d12_window: --fg FAILED to create D3D12 device\n");
         return 1;
@@ -13531,6 +13552,7 @@ static int RunDevConsoleMode(int argc, char** argv)
 
     // ---- 设备 / 队列 / 命令表（--draw 同构）--------------------------------------
     ZrD3D12Device* device = ZrD3D12CreateDevice();
+    g_activeDevice = device;
     if (device == nullptr) {
         std::printf("zrhi_d3d12_window: --devconsole FAILED to create D3D12 device\n");
         return 1;
@@ -14164,6 +14186,7 @@ int RunPsoCacheBench(uint32_t salt)
 {
     std::setvbuf(stdout, nullptr, _IONBF, 0); // 逐行可见（崩溃定位友好）
     ZrD3D12Device* device = ZrD3D12CreateDevice();
+    g_activeDevice = device;
     if (device == nullptr) {
         std::printf("zrhi_d3d12_window: --psocache FAILED to create D3D12 device\n");
         return 1;
@@ -14272,6 +14295,7 @@ int RunPsoCacheBench(uint32_t salt)
 
 int main(int argc, char** argv)
 {
+    RgSetImageDescResolver(&ResolveImageDesc); // rg.export 的 Imported 资源要真实 desc
     bool headless = false;
     // TASK-B-R7-01：--backend vulkan|d3d12|both —— RHI 后端选择（zplugin C ABI 同步
     // 记录；both = 双后端对照模式，仅 --draw 支持）。缺省 d3d12（旧行为不变）。
@@ -14495,6 +14519,7 @@ int main(int argc, char** argv)
 
     // ---- 设备 -------------------------------------------------------------------
     ZrD3D12Device* device = ZrD3D12CreateDevice();
+    g_activeDevice = device;
     if (device == nullptr) {
         std::printf("zrhi_d3d12_window: FAILED to create D3D12 device\n");
         return 1;
