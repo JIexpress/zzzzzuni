@@ -19,6 +19,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ---- L1.5 静态门禁：所有能用脚本判定、不需要 Unity 许可证的问题 ----
+  static:
+    name: Static gates (BOM / meta / large files / asmdef)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run static checks
+        # 检查项：UTF-8 BOM、Assets 下资产缺 .meta、>10MB 二进制（ThirdParty 白名单）、
+        # asmdef 名重复。这些不需要 Unity，是能在云端拦住的最便宜的一层。
+        run: python Tools/ci_static_checks.py
+
   native:
     name: Native (build + doctest)
     runs-on: windows-2022
