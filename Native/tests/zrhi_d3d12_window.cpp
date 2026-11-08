@@ -168,6 +168,29 @@
 //   数值断言。探针每 10 帧（地面≠清屏/天顶≈清屏/行星中心≠清屏/角落太空≈清屏）
 //   + 3 关键帧截图 Docs/Parity/planet_ground|climb|orbit.png + InfoQueue 0 错误。
 //   通过行：`D3D12 PLANET OK (origin=RELOCATED@Xm jitter=before/after)`。
+//
+// TASK-B-TECH-04 增补：`--planet2` 模式——行星尺度第二阶段（cube-sphere chunk
+//   地形 + LOD 两档 + 大气渐变；Docs/TECH-ROADMAP.md 方向三第二阶段，无 Unity
+//   依赖）。恒离屏 640x480 300 帧自动飞行相机：贴地（0-129，对地 600m 沿面内
+//   切向 6km/帧，跨 chunk 边界 + 10km 浮点原点重定位节奏）→ 爬升（130-219，
+//   四次方曲线升至 2 万 km——LOD 全体退档 + 天色渐变蓝转黑）→ 远观（220-299，
+//   2.6371e7 m 慢扫 25°）。数学内核 planet_math.h §④（与 test_planet.cpp
+//   doctest 共享）：①cube-sphere 六面 32×32 chunk（6144 块，chunk 弧长
+//   ≈312.6km）——ChunkVertexIndex/ChunkFaceCoord 规范采样路由使同档相邻
+//   chunk 共享边顶点 double 位形逐位一致（运行期对可见 chunk 实测，seams
+//   计数入通过行）；跨档 T 型连接与面界由裙边（2% chunk 弧长下垂）遮蔽
+//   （选型报告见任务日志）；②顶点高度 = 噪声纯函数（4 octave fBm value
+//   noise，种子 1337，同种子同输入恒同输出）沿球面法线位移 ±2.4km——LOD
+//   切换前后同点高度一致；法线 = 构建期噪声中心差分；③LOD 两档（远 16×16 /
+//   近 64×64）按 chunk 中心-相机距离切换（阈值 900km，迟滞 ±90km，
+//   zplanet::PlanetLodLevel——阈值附近无抖动切换）；④大气天穹（相机中心球，
+//   mode 1）：天顶/地平线两色按海拔对数插值（1km 全强蓝 → 2 万 km 全黑）+
+//   地形距离雾目标色 = 当前地平线色（地平线处无缝）+ 掠射 limb 增亮
+//   （远观行星蓝色镶边）。探针每 10 帧（地形非蓝天 dominant/天蓝 b>r/太空角
+//   黑/行星亮）+ 天色梯度三点采样（贴地→爬升两点 b−r 递减 + 太空角黑）+
+//   远观 limb 扫描 + 3 关键帧截图 Docs/Parity/planet2_ground|midair|far.png
+//   + InfoQueue 0 错误 + 帧耗 300 帧均值（QPC，含 Submit+WaitIdle）。
+//   通过行：`D3D12 PLANET2 OK (chunks=6144 lods=2 seams=0 frame_ms=X)`。
 // =============================================================================
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -8021,6 +8044,1143 @@ static int RunPlanetMode()
     return 1;
 }
 
+// ---- TASK-B-TECH-04：--planet2 模式（cube-sphere chunk 地形 + LOD 两档 + 大气）--
+// =============================================================================
+// 恒离屏（--planet 同策）。数学内核 tests/planet_math.h §④ 与 test_planet.cpp
+// doctest 共享同一实现（chunk 规范采样路由 / 噪声纯函数 / LOD 迟滞）。
+// 场景与校验设计见文件头 TASK-B-TECH-04 块。
+// =============================================================================
+
+namespace zplanet2app {
+
+constexpr uint32_t kP2Frames = 300u;
+constexpr uint32_t kP2GroundEnd = 130u;  // 帧 [0,130) 贴地
+constexpr uint32_t kP2ClimbEnd = 220u;   // 帧 [130,220) 爬升；[220,300) 远观
+constexpr uint32_t kP2GroundShotFrame = 60u;  // (frame+1) 口径——帧 59
+constexpr uint32_t kP2ClimbShotFrame = 161u;  // 帧 160（alt ≈ 258km，两档同框）
+constexpr uint32_t kP2FarShotFrame = 256u;    // 帧 255（θ ≈ 11°）
+constexpr uint32_t kP2Seed = 1337u;           // 地形噪声种子（简报：种子可配）
+
+constexpr int kP2CellsPerEdge = 32;                    // 每面 32×32 chunk
+constexpr int kP2ChunkCount = 6 * kP2CellsPerEdge * kP2CellsPerEdge; // 6144
+constexpr uint32_t kP2ResFar = 16u;                    // 远档 16×16 顶点
+constexpr uint32_t kP2ResNear = 64u;                   // 近档 64×64 顶点
+constexpr double kP2LodNearDistM = 900000.0;           // 近档距离阈值（900km）
+constexpr double kP2LodHystM = 90000.0;                // 迟滞半带宽（±90km）
+constexpr double kP2ChunkArcM = 3.14159265358979323846 / 2.0
+    * zplanet::kPlanetRadiusM / static_cast<double>(kP2CellsPerEdge); // ≈312.6km
+constexpr double kP2SkirtDropM = 0.02 * kP2ChunkArcM;  // 裙边深 = 2% chunk 弧长
+constexpr uint32_t kP2NearVerts = kP2ResNear * kP2ResNear + 4u * kP2ResNear;
+constexpr uint32_t kP2FarVerts = kP2ResFar * kP2ResFar + 4u * kP2ResFar;
+constexpr uint32_t kP2NearIndices = (kP2ResNear - 1u) * (kP2ResNear - 1u) * 6u
+    + 4u * (kP2ResNear - 1u) * 6u;
+constexpr uint32_t kP2FarIndices = (kP2ResFar - 1u) * (kP2ResFar - 1u) * 6u
+    + 4u * (kP2ResFar - 1u) * 6u;
+
+constexpr uint32_t kP2MaxDrawItems = 3200u;  // CB 池上限（可见 chunk 截断保护）
+constexpr double kP2GroundSpeedM = 6000.0;   // 贴地每帧前进（跨 chunk 边界节奏）
+constexpr double kP2GroundVDrift = 0.55;     // 贴地对角漂移（v = 0.55·u，穿二维地形）
+constexpr double kP2GroundAltM = 600.0;      // 贴地对地高度（随地形起伏跟随）
+constexpr double kP2ClimbAltM = 2.0e7;       // 爬升末对地高度（2 万 km——大气黑）
+constexpr double kP2FarSweepDeg = 25.0;      // 远观方位慢扫角
+constexpr double kP2RelocThresholdM = 10000.0; // 浮点原点重定位阈值（沿用 B-TECH-03）
+constexpr double kP2FogGroundM = 150000.0;   // 贴地雾距离
+constexpr double kP2FogClimbM = 500000.0;    // 爬升末雾距离（<1e6m 内插值）
+constexpr double kP2ContourM = 500.0;        // 等高线间距
+constexpr uint32_t kP2DomeStacks = 24u;      // 天穹网格
+constexpr uint32_t kP2DomeSlices = 32u;
+
+constexpr float kP2ClearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+constexpr float kP2ZenithBlue[3] = { 0.16f, 0.36f, 0.78f };  // 贴天天顶
+constexpr float kP2HorizonBlue[3] = { 0.58f, 0.72f, 0.92f }; // 贴天地平线
+constexpr float kP2Space[3] = { 0.004f, 0.006f, 0.012f };    // 2 万 km 天顶/地平线
+
+// b0 常量（208B）——与 Native/shaders/planet2.hlsl CBufPlanet2 一一对应
+struct Planet2DrawConstants {
+    float mvp[16];        // clip = mvp·pos
+    float model[16];      // 渲染空间变换（chunk: T(锚点−相机)；天穹: T·S(穹半径)）
+    float params[4];      // x=模式(0地形/1天穹) y=雾距离 z=海拔因子t w=等高线间距
+    float fogColor[4];    // 当前海拔地平线雾色
+    float zenithColor[4]; // 当前海拔天顶色
+    float horizonColor[4];
+    float upVec[4];       // xyz=渲染空间相机 up（天穹渐变轴）
+};
+static_assert(sizeof(Planet2DrawConstants) == 208, "Planet2DrawConstants must be 208 bytes");
+
+// chunk 静态状态（几何内容按 (builtLod) 缓存；VB 懒建/升容）
+struct Planet2Chunk {
+    int face = 0;
+    int32_t cx = 0;
+    int32_t cy = 0;
+    zplanet::Vec3d centerAbs {}; // chunk 中心球面点（R，不含地形）= 渲染锚点
+    int lod = 0;                 // 期望档（0 远 / 1 近；zplanet::PlanetLodLevel 输出）
+    int builtLod = -1;           // VB 当前内容档（−1 未建）
+    ZrBuffer vb {};              // 顶点缓冲（远档容量起步；进近档升容重建）
+    bool vbNearSized = false;
+    void* mapped = nullptr;
+};
+
+// 共享档位索引模式表（grid + 四缘裙边；每档全 chunk 复用同一 IB）
+std::vector<uint32_t> BuildTierIndices(uint32_t res)
+{
+    std::vector<uint32_t> idx;
+    const uint32_t skirtBase = res * res;
+    idx.reserve((res - 1u) * (res - 1u) * 6u + 4u * (res - 1u) * 6u);
+    for (uint32_t j = 0; j + 1u < res; ++j) {
+        for (uint32_t i = 0; i + 1u < res; ++i) {
+            const uint32_t v00 = j * res + i;
+            const uint32_t v10 = v00 + 1u;
+            const uint32_t v01 = v00 + res;
+            const uint32_t v11 = v01 + 1u;
+            idx.push_back(v00);
+            idx.push_back(v10);
+            idx.push_back(v11);
+            idx.push_back(v00);
+            idx.push_back(v11);
+            idx.push_back(v01);
+        }
+    }
+    // 裙边四缘：e=0 北(j=0) / 1 南(j=res−1) / 2 西(i=0) / 3 东(i=res−1)；
+    // 顶点 k 沿缘序——与 BuildChunkVerts 的裙边发射序一致
+    for (uint32_t e = 0; e < 4u; ++e) {
+        const uint32_t sBase = skirtBase + e * res;
+        for (uint32_t k = 0; k + 1u < res; ++k) {
+            uint32_t g0 = 0u;
+            uint32_t g1 = 0u;
+            if (e == 0u) {
+                g0 = k;
+                g1 = k + 1u;
+            } else if (e == 1u) {
+                g0 = (res - 1u) * res + k;
+                g1 = g0 + 1u;
+            } else if (e == 2u) {
+                g0 = k * res;
+                g1 = g0 + res;
+            } else {
+                g0 = k * res + (res - 1u);
+                g1 = g0 + res;
+            }
+            const uint32_t s0 = sBase + k;
+            const uint32_t s1 = s0 + 1u;
+            idx.push_back(g0);
+            idx.push_back(s0);
+            idx.push_back(s1);
+            idx.push_back(g0);
+            idx.push_back(s1);
+            idx.push_back(g1);
+        }
+    }
+    return idx;
+}
+
+// chunk 顶点构建（double 规范路由 → float 锚点局部）。写入 dst（映射 VB），
+// 返回顶点数（res²+4·res）。网格顶点 = PlanetChunkVertexAtGlobal（位置/高程）
+// + 噪声中心差分地形法线；裙边 = 缘顶点沿 −球面方向下垂 kP2SkirtDropM。
+uint32_t BuildChunkVerts(const Planet2Chunk& ch, int lod, float* dst)
+{
+    const uint32_t res = (lod >= 1) ? kP2ResNear : kP2ResFar;
+    const int32_t stride = static_cast<int32_t>(res) - 1;
+    const int32_t total = kP2CellsPerEdge * stride;
+    const zplanet::Vec3d planetCenter = { 0.0, -zplanet::kPlanetRadiusM, 0.0 };
+    const zplanet::CubeFaceBasis basis = zplanet::CubeFaceBasisOf(ch.face);
+    // 每格弧长（米）：面坐标一格 = 2/total，赤道弧比例 (π/4)·R 每 1 面坐标
+    const double cellArcM = 2.0 / static_cast<double>(total)
+        * (3.14159265358979323846 / 4.0) * zplanet::kPlanetRadiusM;
+    FirstDrawVertex* out = reinterpret_cast<FirstDrawVertex*>(dst);
+    uint32_t n = 0;
+    auto emitVertex = [&](const zplanet::Vec3d& posAbs, const zplanet::Vec3d& normal,
+                          double heightM) {
+        FirstDrawVertex& o = out[n];
+        o.pos[0] = static_cast<float>(posAbs.x - ch.centerAbs.x);
+        o.pos[1] = static_cast<float>(posAbs.y - ch.centerAbs.y);
+        o.pos[2] = static_cast<float>(posAbs.z - ch.centerAbs.z);
+        o.normal[0] = static_cast<float>(normal.x);
+        o.normal[1] = static_cast<float>(normal.y);
+        o.normal[2] = static_cast<float>(normal.z);
+        o.uv[0] = static_cast<float>(heightM);
+        o.uv[1] = 0.0f;
+        ++n;
+    };
+    for (uint32_t j = 0; j < res; ++j) {
+        for (uint32_t i = 0; i < res; ++i) {
+            const int32_t gU = zplanet::ChunkVertexIndex(ch.cx, static_cast<int32_t>(i), stride);
+            const int32_t gV = zplanet::ChunkVertexIndex(ch.cy, static_cast<int32_t>(j), stride);
+            const zplanet::PlanetChunkVertex c
+                = zplanet::PlanetChunkVertexAtGlobal(planetCenter, ch.face, gU, gV, total, kP2Seed);
+            // 地形法线：噪声高度场中心差分（±1 全局索引 = ±1 格；索引越界面界
+            // 仍为纯函数光滑延拓——无分支，确定性不变）
+            const zplanet::PlanetChunkVertex pu = zplanet::PlanetChunkVertexAtGlobal(
+                planetCenter, ch.face, gU + 1, gV, total, kP2Seed);
+            const zplanet::PlanetChunkVertex pd = zplanet::PlanetChunkVertexAtGlobal(
+                planetCenter, ch.face, gU - 1, gV, total, kP2Seed);
+            const zplanet::PlanetChunkVertex pv = zplanet::PlanetChunkVertexAtGlobal(
+                planetCenter, ch.face, gU, gV + 1, total, kP2Seed);
+            const zplanet::PlanetChunkVertex pw = zplanet::PlanetChunkVertexAtGlobal(
+                planetCenter, ch.face, gU, gV - 1, total, kP2Seed);
+            const double sx = (pu.heightM - pd.heightM) / (2.0 * cellArcM);
+            const double sy = (pv.heightM - pw.heightM) / (2.0 * cellArcM);
+            // 面内轴投影到球面切平面（dir 偏离面法线至多 45°，不退化）
+            const double d1 = zplanet::VecDot(basis.t1, c.normal);
+            const double d2 = zplanet::VecDot(basis.t2, c.normal);
+            zplanet::Vec3d t1 = zplanet::VecSub(basis.t1, zplanet::VecScale(c.normal, d1));
+            zplanet::Vec3d t2 = zplanet::VecSub(basis.t2, zplanet::VecScale(c.normal, d2));
+            t1 = zplanet::VecScale(t1, 1.0 / zplanet::VecLen(t1));
+            t2 = zplanet::VecScale(t2, 1.0 / zplanet::VecLen(t2));
+            // n = normalize(dir − t1·∂h/∂t1 − t2·∂h/∂t2)（高度场法线）
+            zplanet::Vec3d nrm = zplanet::VecSub(zplanet::VecSub(c.normal,
+                zplanet::VecScale(t1, sx)), zplanet::VecScale(t2, sy));
+            nrm = zplanet::VecScale(nrm, 1.0 / zplanet::VecLen(nrm));
+            emitVertex(c.posAbs, nrm, c.heightM);
+        }
+    }
+    // 裙边：四缘顶点复制 + 沿 −球面方向下垂（遮蔽跨档 T 型连接与面界缝）。
+    // 缘序与 BuildTierIndices 的索引走线一致：e=0 北(i=k,j=0) / 1 南(i=k,j=res−1)
+    // / 2 西(i=0,j=k) / 3 东(i=res−1,j=k)
+    for (uint32_t e = 0; e < 4u; ++e) {
+        for (uint32_t k = 0; k < res; ++k) {
+            const uint32_t i = (e >= 2u) ? ((e == 2u) ? 0u : (res - 1u)) : k;
+            const uint32_t j = (e >= 2u) ? k : ((e == 0u) ? 0u : (res - 1u));
+            const int32_t gU = zplanet::ChunkVertexIndex(ch.cx, static_cast<int32_t>(i), stride);
+            const int32_t gV = zplanet::ChunkVertexIndex(ch.cy, static_cast<int32_t>(j), stride);
+            const zplanet::PlanetChunkVertex v = zplanet::PlanetChunkVertexAtGlobal(
+                planetCenter, ch.face, gU, gV, total, kP2Seed);
+            const zplanet::Vec3d dropped = zplanet::VecSub(v.posAbs,
+                zplanet::VecScale(v.normal, kP2SkirtDropM));
+            emitVertex(dropped, v.normal, v.heightM);
+        }
+    }
+    return n;
+}
+
+} // namespace zplanet2app
+
+// --planet2 模式主体（返回进程退出码）。恒离屏（--planet 同策）。
+static int RunPlanet2Mode()
+{
+    using namespace zplanet2app;
+    using zplanet::Vec3d;
+    std::printf("zrhi_d3d12_window: --planet2 mode (TASK-B-TECH-04): cube-sphere chunks + "
+                "2-tier LOD + atmosphere, offscreen %ux%u\n",
+        kWidth, kHeight);
+    std::printf("zrhi_d3d12_window: --planet2 chunks=%d (6 faces x %d^2) chunkArc=%.1fkm "
+                "res far=%ux%u near=%ux%u lodNear=%.0fkm hyst=%.0fkm skirt=%.0fm seed=%u\n",
+        kP2ChunkCount, kP2CellsPerEdge, kP2ChunkArcM / 1000.0, kP2ResFar, kP2ResFar,
+        kP2ResNear, kP2ResNear, kP2LodNearDistM / 1000.0, kP2LodHystM / 1000.0,
+        kP2SkirtDropM, kP2Seed);
+
+    const Vec3d planetCenter = { 0.0, -zplanet::kPlanetRadiusM, 0.0 };
+
+    // ---- chunk 静态初始化（中心球面点锚；LOD/几何逐帧惰性）--------------------------
+    std::vector<Planet2Chunk> chunks(static_cast<size_t>(kP2ChunkCount));
+    for (int face = 0; face < 6; ++face) {
+        for (int32_t cy = 0; cy < kP2CellsPerEdge; ++cy) {
+            for (int32_t cx = 0; cx < kP2CellsPerEdge; ++cx) {
+                Planet2Chunk& ch = chunks[static_cast<size_t>(
+                    (face * kP2CellsPerEdge + cy) * kP2CellsPerEdge + cx)];
+                ch.face = face;
+                ch.cx = cx;
+                ch.cy = cy;
+                const double uC = 2.0 * (static_cast<double>(cx) + 0.5)
+                    / static_cast<double>(kP2CellsPerEdge) - 1.0;
+                const double vC = 2.0 * (static_cast<double>(cy) + 0.5)
+                    / static_cast<double>(kP2CellsPerEdge) - 1.0;
+                const Vec3d dir = zplanet::CubeSphereDir(face, uC, vC);
+                ch.centerAbs = VecAdd(planetCenter, VecScale(dir, zplanet::kPlanetRadiusM));
+            }
+        }
+    }
+    auto chunkAt = [&](int face, int32_t cx, int32_t cy) -> Planet2Chunk* {
+        if (face < 0 || face >= 6 || cx < 0 || cx >= kP2CellsPerEdge || cy < 0
+            || cy >= kP2CellsPerEdge) {
+            return nullptr;
+        }
+        return &chunks[static_cast<size_t>((face * kP2CellsPerEdge + cy)
+            * kP2CellsPerEdge + cx)];
+    };
+
+    // ---- 相机路径冻结量（贴地终点 = 爬升起点）----------------------------------------
+    // 贴地路径：沿面 0 对角线飞行（v = kP2GroundVDrift·u）——穿过二维噪声特征，
+    // 山体轮廓可见（纯 v=0 直线沿噪声空间一条低维线，可能全程谷地）
+    const double arcPerU = (3.14159265358979323846 / 4.0) * zplanet::kPlanetRadiusM;
+    const double uGroundEnd = kP2GroundSpeedM * static_cast<double>(kP2GroundEnd - 1u)
+        / arcPerU;
+    const auto groundDir = [&](double u) {
+        return zplanet::CubeSphereDir(0, u, kP2GroundVDrift * u);
+    };
+    const Vec3d dirC = groundDir(uGroundEnd); // 爬升/远观锚方向
+    const double hC = zplanet::PlanetTerrainHeightM(kP2Seed, dirC.x, dirC.y, dirC.z);
+    const Vec3d dirP = groundDir(uGroundEnd + 1.0e-4);
+    const Vec3d dirM = groundDir(uGroundEnd - 1.0e-4);
+    Vec3d tangentC = zplanet::VecSub(dirP, dirM);
+    tangentC = zplanet::VecScale(tangentC, 1.0 / zplanet::VecLen(tangentC));
+
+    // ---- 设备 / 队列 / 命令表 / 渲染目标（--planet 同构）-----------------------------
+    ZrD3D12Device* device = ZrD3D12CreateDevice();
+    g_activeDevice = device;
+    if (device == nullptr) {
+        std::printf("zrhi_d3d12_window: --planet2 FAILED to create D3D12 device\n");
+        return 1;
+    }
+    std::printf("zrhi_d3d12_window: --planet2 device created, debug layer %s\n",
+        device->IsDebugLayerEnabled() ? "ENABLED (InfoQueue active)" : "UNAVAILABLE (degraded)");
+    IZrQueue* queue = device->GetQueue(ZrQueueType::Graphics);
+    ZrCommandList cmdHandle = device->CreateCommandList(ZrQueueType::Graphics);
+    IZrCommandList* cmdList = device->GetCommandList(cmdHandle);
+    ID3D12GraphicsCommandList* nativeCmd = device->D3D12CommandListOf(cmdHandle);
+    if (queue == nullptr || !cmdHandle.IsValid() || cmdList == nullptr || nativeCmd == nullptr) {
+        std::printf("zrhi_d3d12_window: --planet2 FAILED to create queue/command list\n");
+        ZrD3D12DestroyDevice(device);
+        return 1;
+    }
+    ZrImageDesc rtDesc {};
+    rtDesc.format = ZrFormat::RGBA8Unorm;
+    rtDesc.width = kWidth;
+    rtDesc.height = kHeight;
+    rtDesc.usage = ZrImageUsage::ColorAttachment | ZrImageUsage::TransferSrc;
+    ZrImage offscreenTarget = device->CreateImage(rtDesc);
+    ZrImageDesc depthDesc {};
+    depthDesc.format = ZrFormat::D32Float;
+    depthDesc.width = kWidth;
+    depthDesc.height = kHeight;
+    depthDesc.usage = ZrImageUsage::DepthStencilAttachment;
+    ZrImage depthImage = device->CreateImage(depthDesc);
+    ZrImageViewDesc dsvViewDesc {};
+    dsvViewDesc.image = depthImage;
+    dsvViewDesc.viewType = ZrImageViewType::Dsv;
+    ZrImageView dsvView = device->CreateImageView(dsvViewDesc);
+    ZrImageViewDesc rtvViewDesc {};
+    rtvViewDesc.image = offscreenTarget;
+    rtvViewDesc.viewType = ZrImageViewType::Rtv;
+    ZrImageView offscreenRtv = device->CreateImageView(rtvViewDesc);
+    if (!offscreenTarget.IsValid() || !offscreenRtv.IsValid() || !depthImage.IsValid()
+        || !dsvView.IsValid()) {
+        std::printf("zrhi_d3d12_window: --planet2 FAILED to create target/depth views\n");
+        return 1;
+    }
+
+    // ---- 共享档位 IB（远/近）+ 天穹网格 + chunk VB 池（远档容量起步）------------------
+    const std::vector<uint32_t> nearIdx = BuildTierIndices(kP2ResNear);
+    const std::vector<uint32_t> farIdx = BuildTierIndices(kP2ResFar);
+    if (nearIdx.size() != kP2NearIndices || farIdx.size() != kP2FarIndices) {
+        std::printf("zrhi_d3d12_window: --planet2 tier index count mismatch\n");
+        return 1;
+    }
+    auto makeBuffer = [&](uint64_t size, ZrBufferUsage usage, bool hostVisible,
+                          const void* initData) {
+        ZrBufferDesc desc {};
+        desc.size = size;
+        desc.usage = usage;
+        desc.hostVisible = hostVisible;
+        return device->CreateBuffer(desc, initData);
+    };
+    ZrBuffer nearIb = makeBuffer(uint64_t(nearIdx.size()) * 4u, ZrBufferUsage::Index, false,
+        nearIdx.data());
+    ZrBuffer farIb = makeBuffer(uint64_t(farIdx.size()) * 4u, ZrBufferUsage::Index, false,
+        farIdx.data());
+    if (!nearIb.IsValid() || !farIb.IsValid()) {
+        std::printf("zrhi_d3d12_window: --planet2 FAILED to create tier index buffers\n");
+        return 1;
+    }
+    // 天穹：单位球（半径 1；缩放经 model 矩阵承载——逐相位穹半径可变）
+    std::vector<FirstDrawVertex> domeVerts(size_t(kP2DomeStacks + 1u) * (kP2DomeSlices + 1u));
+    for (uint32_t k = 0; k <= kP2DomeStacks; ++k) {
+        const double phi = 3.14159265358979323846 * static_cast<double>(k) / kP2DomeStacks;
+        for (uint32_t s = 0; s <= kP2DomeSlices; ++s) {
+            const double lambda = 6.28318530717958647692 * static_cast<double>(s) / kP2DomeSlices;
+            const double dir[3] = { std::sin(phi) * std::cos(lambda), std::cos(phi),
+                std::sin(phi) * std::sin(lambda) };
+            FirstDrawVertex& v = domeVerts[size_t(k) * (kP2DomeSlices + 1u) + s];
+            v.pos[0] = static_cast<float>(dir[0]);
+            v.pos[1] = static_cast<float>(dir[1]);
+            v.pos[2] = static_cast<float>(dir[2]);
+            v.normal[0] = static_cast<float>(dir[0]);
+            v.normal[1] = static_cast<float>(dir[1]);
+            v.normal[2] = static_cast<float>(dir[2]);
+            v.uv[0] = 0.0f;
+            v.uv[1] = 0.0f;
+        }
+    }
+    std::vector<uint32_t> domeIdx;
+    domeIdx.reserve(size_t(kP2DomeStacks) * kP2DomeSlices * 6u);
+    for (uint32_t k = 0; k < kP2DomeStacks; ++k) {
+        for (uint32_t s = 0; s < kP2DomeSlices; ++s) {
+            const uint32_t v00 = k * (kP2DomeSlices + 1u) + s;
+            const uint32_t v10 = v00 + 1u;
+            const uint32_t v01 = v00 + (kP2DomeSlices + 1u);
+            const uint32_t v11 = v01 + 1u;
+            domeIdx.push_back(v00);
+            domeIdx.push_back(v10);
+            domeIdx.push_back(v11);
+            domeIdx.push_back(v00);
+            domeIdx.push_back(v11);
+            domeIdx.push_back(v01);
+        }
+    }
+    ZrBuffer domeVb = makeBuffer(uint64_t(domeVerts.size()) * 32u, ZrBufferUsage::Vertex,
+        false, domeVerts.data());
+    ZrBuffer domeIb = makeBuffer(uint64_t(domeIdx.size()) * 4u, ZrBufferUsage::Index, false,
+        domeIdx.data());
+    if (!domeVb.IsValid() || !domeIb.IsValid()) {
+        std::printf("zrhi_d3d12_window: --planet2 FAILED to create dome buffers\n");
+        return 1;
+    }
+    // chunk VB 池：全部按远档容量预建（进入近档时升容重建——升容次数入报告）
+    for (Planet2Chunk& ch : chunks) {
+        ZrBufferDesc desc {};
+        desc.size = uint64_t(kP2FarVerts) * 32u;
+        desc.usage = ZrBufferUsage::Vertex;
+        desc.hostVisible = true;
+        ch.vb = device->CreateBuffer(desc);
+        IZrBuffer* iface = device->GetBuffer(ch.vb);
+        ch.mapped = (iface != nullptr && ch.vb.IsValid()) ? iface->Map() : nullptr;
+        if (ch.mapped == nullptr) {
+            std::printf("zrhi_d3d12_window: --planet2 FAILED to create/map chunk VB\n");
+            return 1;
+        }
+    }
+
+    // ---- 常量缓冲池（可见 chunk + 天穹；256B 对齐）------------------------------------
+    std::vector<ZrBuffer> cbPool(kP2MaxDrawItems + 1u);
+    std::vector<void*> cbMapped(kP2MaxDrawItems + 1u);
+    for (size_t i = 0; i < cbPool.size(); ++i) {
+        ZrBufferDesc desc {};
+        desc.size = 256u;
+        desc.usage = ZrBufferUsage::Uniform;
+        desc.hostVisible = true;
+        cbPool[i] = device->CreateBuffer(desc);
+        IZrBuffer* iface = device->GetBuffer(cbPool[i]);
+        cbMapped[i] = (iface != nullptr && cbPool[i].IsValid()) ? iface->Map() : nullptr;
+        if (cbMapped[i] == nullptr) {
+            std::printf("zrhi_d3d12_window: --planet2 FAILED to create/map CB %zu\n", i);
+            return 1;
+        }
+    }
+    constexpr uint32_t kCbDome = kP2MaxDrawItems; // 天穹固定占用末槽
+
+    // ---- 着色器（运行时 D3DCompile）+ PSO（单 PSO 两模式，rootCbvCount=1）--------------
+    std::vector<char> hlsl;
+    if (!ReadWholeFile("Native/shaders/planet2.hlsl", hlsl)) {
+        std::printf("zrhi_d3d12_window: --planet2 FAILED to open Native/shaders/planet2.hlsl\n");
+        return 1;
+    }
+    const ZrShader vs = device->CompileHlsl(ZrShaderStage::Vertex, hlsl.data(), hlsl.size(),
+        "VsMain");
+    const ZrShader ps = device->CompileHlsl(ZrShaderStage::Pixel, hlsl.data(), hlsl.size(),
+        "PsMain");
+    if (!vs.IsValid() || !ps.IsValid()) {
+        std::printf("zrhi_d3d12_window: --planet2 shader compilation FAILED (see stderr)\n");
+        return 1;
+    }
+    std::printf("zrhi_d3d12_window: --planet2 shaders compiled (runtime D3DCompile, SM5.0)\n");
+    ZrGraphicsPsoDesc psoDesc {};
+    psoDesc.vertexShader = vs;
+    psoDesc.pixelShader = ps;
+    psoDesc.rtvFormat = ZrFormat::RGBA8Unorm;
+    psoDesc.dsvFormat = ZrFormat::D32Float;
+    psoDesc.blend = ZrBlendMode::Opaque;
+    psoDesc.depthTest = true;
+    psoDesc.depthWrite = true;
+    psoDesc.cullMode = ZrCullMode::None; // chunk 裙边/天穹绕序混用（--lights 同策）
+    psoDesc.rootCbvCount = 1u;
+    ZrPipelineState pso = device->CreatePipelineState(psoDesc);
+    if (!pso.IsValid()) {
+        std::printf("zrhi_d3d12_window: --planet2 FAILED to create graphics PSO\n");
+        return 1;
+    }
+
+    // ---- readback：2 探针槽 + 全帧（关键帧 PNG / limb 扫描源）--------------------------
+    constexpr uint32_t kP2RowPitch = (kWidth * 4u + 255u) & ~255u;
+    Microsoft::WRL::ComPtr<ID3D12Resource> readbackProbes
+        = MakeReadbackBuffer(device->D3D12Device(), 256u * 2u);
+    Microsoft::WRL::ComPtr<ID3D12Resource> readbackFrame
+        = MakeReadbackBuffer(device->D3D12Device(), uint64_t(kP2RowPitch) * kHeight);
+    if (readbackProbes == nullptr || readbackFrame == nullptr) {
+        std::printf("zrhi_d3d12_window: --planet2 FAILED to create readback buffers\n");
+        return 1;
+    }
+
+    // ---- 浮点原点（沿用 B-TECH-03 纪律：double 累计 + 10km 阈值重定位记账）-------------
+    zplanet::FloatingOrigin origin;
+    origin.thresholdM = kP2RelocThresholdM;
+    double prevCam[3] = { 0.0, 0.0, 0.0 };
+    bool firstCam = true;
+    constexpr float kFovY = 3.14159265f / 3.0f;
+    const float aspect = static_cast<float>(kWidth) / static_cast<float>(kHeight);
+
+    // ---- 帧循环状态 ---------------------------------------------------------------------
+    uint32_t readbackChecks = 0u;
+    uint32_t probePasses = 0u;
+    uint32_t probeChecks = 0u;
+    uint32_t lodSwitches = 0u;       // LOD 档位切换总次数（迟滞后仍应 ≥20）
+    uint32_t vbUpgrades = 0u;        // 远→近档 VB 升容重建次数
+    uint32_t rebuilds = 0u;          // chunk 几何重建总次数
+    uint32_t seamsFails = 0u;        // 运行期共享边逐位核查失败计数（期望 0）
+    uint32_t truncations = 0u;       // 可见 chunk 超 CB 池截断计数（期望 0）
+    double visibleSum = 0.0;
+    uint32_t visibleMax = 0u;
+    double drawSum = 0.0;
+    double frameMsTotal = 0.0;
+    double frameMsMin = 1e30;
+    double frameMsMax = 0.0;
+    double skyBrGround = -1.0;       // 贴地天空 b−r（帧 9 探针）
+    double skyBrClimbFirst = -1.0;   // 爬升首次探针 b−r（帧 139）
+    double skyBrClimbLast = -1.0;    // 爬升末次探针 b−r（帧 219）
+    bool limbOk = false;             // 远观 limb 扫描（蓝色镶边像素证据）
+    bool allOk = true;
+    uint32_t undeclaredUses = 0u;
+    bool pngOk[3] = { false, false, false };
+    constexpr const char* kP2Png[3] = { "Docs/Parity/planet2_ground.png",
+        "Docs/Parity/planet2_midair.png", "Docs/Parity/planet2_far.png" };
+
+    LARGE_INTEGER qpf {};
+    QueryPerformanceFrequency(&qpf);
+    LARGE_INTEGER qpc0 {};
+    LARGE_INTEGER qpc1 {};
+
+    for (uint32_t frame = 0u; frame < kP2Frames; ++frame) {
+        QueryPerformanceCounter(&qpc0);
+
+        // ---- 相机编排（贴地跟随地形 → 爬升 → 远观；double 绝对坐标）--------------------
+        double camAbs[3] = {};
+        float fwd[3] = {};
+        float upWorld[3] = {}; // 渲染空间 up 的世界向量（经 view 旋转入 CB）
+        double nearZ = 10.0;
+        double farZ = 400000.0;
+        double domeR = 340000.0;
+        double fogDist = kP2FogGroundM;
+        if (frame < kP2GroundEnd) {
+            const double arcM = kP2GroundSpeedM * static_cast<double>(frame);
+            const double u = arcM / arcPerU;
+            const Vec3d dir = groundDir(u);
+            const double h = zplanet::PlanetTerrainHeightM(kP2Seed, dir.x, dir.y, dir.z);
+            const Vec3d pos = VecAdd(planetCenter,
+                VecScale(dir, zplanet::kPlanetRadiusM + h + kP2GroundAltM));
+            camAbs[0] = pos.x;
+            camAbs[1] = pos.y;
+            camAbs[2] = pos.z;
+            const Vec3d dirPf = groundDir(u + 1.0e-4);
+            const Vec3d dirMf = groundDir(u - 1.0e-4);
+            Vec3d t = VecSub(dirPf, dirMf);
+            t = VecScale(t, 1.0 / VecLen(t));
+            const double dip = 10.0 * 3.14159265358979323846 / 180.0;
+            Vec3d f = VecSub(VecScale(t, std::cos(dip)), VecScale(dir, std::sin(dip)));
+            f = VecScale(f, 1.0 / VecLen(f));
+            fwd[0] = static_cast<float>(f.x);
+            fwd[1] = static_cast<float>(f.y);
+            fwd[2] = static_cast<float>(f.z);
+            upWorld[0] = static_cast<float>(dir.x);
+            upWorld[1] = static_cast<float>(dir.y);
+            upWorld[2] = static_cast<float>(dir.z);
+            nearZ = 10.0;
+            farZ = 400000.0;
+            domeR = 340000.0;
+            fogDist = kP2FogGroundM;
+        } else if (frame < kP2ClimbEnd) {
+            const double s = static_cast<double>(frame - kP2GroundEnd)
+                / static_cast<double>(kP2ClimbEnd - kP2GroundEnd - 1u);
+            const double alt = 600.0 + (kP2ClimbAltM - 600.0) * s * s * s * s;
+            const Vec3d pos = VecAdd(planetCenter,
+                VecScale(dirC, zplanet::kPlanetRadiusM + hC + alt));
+            camAbs[0] = pos.x;
+            camAbs[1] = pos.y;
+            camAbs[2] = pos.z;
+            const double horizonDip = std::acos(std::min(1.0,
+                zplanet::kPlanetRadiusM / (zplanet::kPlanetRadiusM + alt)));
+            double dip = std::max(horizonDip + 5.0 * 3.14159265358979323846 / 180.0,
+                25.0 * 3.14159265358979323846 / 180.0);
+            // w 封顶 0.999：fwd 与 up(=dirC) 保持非 180°——PlanetMatLookAtLH 的
+            // right = upHint×fwd 在恰 180° 时退化零向量（NaN 视图矩阵，全帧清屏色）
+            const double w = std::min(0.999,
+                zplanetapp::PlanetSmoothstep(1.2e7, 2.0e7, alt));
+            const double fpx = (1.0 - w)
+                    * (tangentC.x * std::cos(dip) - dirC.x * std::sin(dip))
+                + w * (-dirC.x);
+            const double fpy = (1.0 - w)
+                    * (tangentC.y * std::cos(dip) - dirC.y * std::sin(dip))
+                + w * (-dirC.y);
+            const double fpz = (1.0 - w)
+                    * (tangentC.z * std::cos(dip) - dirC.z * std::sin(dip))
+                + w * (-dirC.z);
+            const double fLen = std::sqrt(fpx * fpx + fpy * fpy + fpz * fpz);
+            fwd[0] = static_cast<float>(fpx / fLen);
+            fwd[1] = static_cast<float>(fpy / fLen);
+            fwd[2] = static_cast<float>(fpz / fLen);
+            upWorld[0] = static_cast<float>(dirC.x);
+            upWorld[1] = static_cast<float>(dirC.y);
+            upWorld[2] = static_cast<float>(dirC.z);
+            nearZ = std::min(8.0e6, std::max(10.0, 0.5 * alt));
+            const double toCLen = zplanet::kPlanetRadiusM + hC + alt;
+            farZ = (toCLen + zplanet::kPlanetRadiusM) * 2.5;
+            domeR = 0.85 * farZ;
+            fogDist = (alt < 1.0e6)
+                ? (kP2FogGroundM
+                      + (kP2FogClimbM - kP2FogGroundM) * (alt / 1.0e6))
+                : 0.0;
+        } else {
+            // θ 从 0.5° 起（恰 0° 时 fwd = −up 退化——同上 NaN 视图矩阵）
+            const double thetaDeg = 0.5 + (kP2FarSweepDeg - 0.5)
+                * static_cast<double>(frame - kP2ClimbEnd)
+                / static_cast<double>(kP2Frames - kP2ClimbEnd - 1u);
+            const double theta = thetaDeg * 3.14159265358979323846 / 180.0;
+            const double dist = zplanet::kPlanetRadiusM + kP2ClimbAltM;
+            const double cx = planetCenter.x
+                + dist * (std::cos(theta) * dirC.x + std::sin(theta) * tangentC.x);
+            const double cy = planetCenter.y
+                + dist * (std::cos(theta) * dirC.y + std::sin(theta) * tangentC.y);
+            const double cz = planetCenter.z
+                + dist * (std::cos(theta) * dirC.z + std::sin(theta) * tangentC.z);
+            camAbs[0] = cx;
+            camAbs[1] = cy;
+            camAbs[2] = cz;
+            const double rx = planetCenter.x - cx;
+            const double ry = planetCenter.y - cy;
+            const double rz = planetCenter.z - cz;
+            const double rLen = std::sqrt(rx * rx + ry * ry + rz * rz);
+            fwd[0] = static_cast<float>(rx / rLen);
+            fwd[1] = static_cast<float>(ry / rLen);
+            fwd[2] = static_cast<float>(rz / rLen);
+            upWorld[0] = static_cast<float>(dirC.x);
+            upWorld[1] = static_cast<float>(dirC.y);
+            upWorld[2] = static_cast<float>(dirC.z);
+            nearZ = 8.0e6;
+            farZ = (rLen + zplanet::kPlanetRadiusM) * 2.5;
+            domeR = 0.85 * farZ;
+            fogDist = 0.0;
+        }
+        const Vec3d camRelC = { camAbs[0] - planetCenter.x, camAbs[1] - planetCenter.y,
+            camAbs[2] - planetCenter.z };
+        const double altM = VecLen(camRelC) - zplanet::kPlanetRadiusM;
+
+        // ---- 浮点原点：double 累计 + 阈值重定位（记账沿用 B-TECH-03；chunk 锚点为
+        //      double 绝对坐标——重定位对渲染透明，无顶点重算需求）----------------------
+        if (firstCam) {
+            origin.MoveCameraBy(camAbs[0], camAbs[1], camAbs[2]);
+            firstCam = false;
+        } else {
+            origin.MoveCameraBy(camAbs[0] - prevCam[0], camAbs[1] - prevCam[1],
+                camAbs[2] - prevCam[2]);
+        }
+        if (origin.ShouldRelocateNow()) {
+            const double off = origin.Relocate();
+            if (origin.relocationCount % 25 == 0) { // 逐 25 次采样打印（全程 ~200+ 次）
+                std::printf("  frame %u: RELOCATE #%d offset=%.1fm alt=%.0fm\n", frame + 1u,
+                    origin.relocationCount, off, altM);
+            }
+        }
+        prevCam[0] = camAbs[0];
+        prevCam[1] = camAbs[1];
+        prevCam[2] = camAbs[2];
+
+        // ---- 大气当前色（CPU 按海拔对数插值；着色器只做方向渐变）-------------------------
+        const double altT = std::min(1.0, std::max(0.0,
+            (std::log10(std::max(altM, 0.0) + 1.0) - 3.0)
+                / (std::log10(kP2ClimbAltM) - 3.0)));
+        float zenith[3] = {};
+        float horizon[3] = {};
+        for (int c = 0; c < 3; ++c) {
+            zenith[c] = static_cast<float>(static_cast<double>(kP2ZenithBlue[c])
+                + (static_cast<double>(kP2Space[c]) - static_cast<double>(kP2ZenithBlue[c]))
+                    * altT);
+            horizon[c] = static_cast<float>(static_cast<double>(kP2HorizonBlue[c])
+                + (static_cast<double>(kP2Space[c]) - static_cast<double>(kP2HorizonBlue[c]))
+                    * altT);
+        }
+
+        // ---- 矩阵 + 渲染空间 up ----------------------------------------------------------
+        float proj[16];
+        MatPerspectiveFovLH(kFovY, aspect, static_cast<float>(nearZ), static_cast<float>(farZ),
+            proj);
+        float view[16];
+        zplanetapp::PlanetMatLookAtLH(fwd, upWorld, view);
+        float projView[16];
+        MatMultiply(proj, view, projView);
+        // 渲染空间 up = view 旋转 × 世界 up（行主序旋转：v'_c = Σ_r m[r*4+c]·v_r）
+        float upRender[3];
+        for (int c = 0; c < 3; ++c) {
+            upRender[c] = view[0 * 4 + c] * upWorld[0] + view[1 * 4 + c] * upWorld[1]
+                + view[2 * 4 + c] * upWorld[2];
+        }
+
+        // ---- chunk 档位 + 剔除 + 几何保障（构建期共享边逐位核查）--------------------------
+        const double horizonAng = std::acos(
+            std::min(1.0, zplanet::kPlanetRadiusM / (zplanet::kPlanetRadiusM + altM)));
+        const double chunkAngRad = (3.14159265358979323846 / 2.0 / kP2CellsPerEdge) * 0.5
+            + 0.05; // 半 chunk 角 + 裙边/噪声裕度（≈1.4°+2.9°）
+        const double cosLimit = std::cos(horizonAng + chunkAngRad);
+        const double camNLen = VecLen(camRelC);
+        const Vec3d camN = VecScale(camRelC, 1.0 / camNLen);
+        uint32_t visibleIdx[kP2MaxDrawItems];
+        uint32_t visibleCount = 0u;
+        uint32_t nearNow = 0u;
+        uint32_t farNow = 0u;
+        const int32_t strideNear = static_cast<int32_t>(kP2ResNear) - 1;
+        const int32_t strideFar = static_cast<int32_t>(kP2ResFar) - 1;
+        for (Planet2Chunk& ch : chunks) {
+            const double dx = ch.centerAbs.x - camAbs[0];
+            const double dy = ch.centerAbs.y - camAbs[1];
+            const double dz = ch.centerAbs.z - camAbs[2];
+            const double dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+            const int newLod = zplanet::PlanetLodLevel(ch.lod, dist, kP2LodNearDistM,
+                kP2LodHystM);
+            if (newLod != ch.lod) {
+                ch.lod = newLod;
+                ++lodSwitches;
+            }
+            const Vec3d cN = VecSub(ch.centerAbs, planetCenter);
+            const double cNLen = VecLen(cN);
+            const double cosA = VecDot(VecScale(cN, 1.0 / cNLen), camN);
+            if (cosA < cosLimit) {
+                continue; // 地平线 curvature 剔除（背面/越地平线）
+            }
+            if (visibleCount >= kP2MaxDrawItems) {
+                ++truncations;
+                continue;
+            }
+            (ch.lod >= 1) ? ++nearNow : ++farNow;
+            if (ch.builtLod != ch.lod) { // 可见才重建（构建期缓存；不可见延迟到可见）
+                if (ch.lod >= 1 && !ch.vbNearSized) {
+                    // 远→近：升容重建 VB（近档容量；降回远档复用不缩容）
+                    device->Destroy(ch.vb);
+                    ZrBufferDesc desc {};
+                    desc.size = uint64_t(kP2NearVerts) * 32u;
+                    desc.usage = ZrBufferUsage::Vertex;
+                    desc.hostVisible = true;
+                    ch.vb = device->CreateBuffer(desc);
+                    IZrBuffer* iface = device->GetBuffer(ch.vb);
+                    ch.mapped = (iface != nullptr && ch.vb.IsValid()) ? iface->Map() : nullptr;
+                    ch.vbNearSized = true;
+                    ++vbUpgrades;
+                    if (ch.mapped == nullptr) {
+                        std::printf("zrhi_d3d12_window: --planet2 FAILED chunk VB upgrade\n");
+                        allOk = false;
+                    }
+                }
+                const uint32_t builtVerts = BuildChunkVerts(ch, ch.lod,
+                    static_cast<float*>(ch.mapped));
+                rebuilds += (builtVerts > 0u) ? 1u : 0u;
+                ch.builtLod = ch.lod;
+                // 运行期无缝核查：同档已建邻居共享边 double 位形逐位一致
+                //   东邻 (cx+1,cy)：我方 i=stride 缘 ↔ 邻方 i=0 缘（j/k 同值）
+                //   南邻 (cx,cy+1)：我方 j=stride 缘 ↔ 邻方 j=0 缘（i/k 同值）
+                const int32_t stride = (ch.lod >= 1) ? strideNear : strideFar;
+                const int32_t total = kP2CellsPerEdge * stride;
+                const uint32_t resv = (ch.lod >= 1) ? kP2ResNear : kP2ResFar;
+                const Planet2Chunk* east = chunkAt(ch.face, ch.cx + 1, ch.cy);
+                const Planet2Chunk* south = chunkAt(ch.face, ch.cx, ch.cy + 1);
+                for (uint32_t k = 0; k < resv; ++k) {
+                    if (east != nullptr && east->builtLod == ch.builtLod) {
+                        const int32_t gUa = zplanet::ChunkVertexIndex(ch.cx, stride, stride);
+                        const int32_t gUb = zplanet::ChunkVertexIndex(ch.cx + 1, 0, stride);
+                        const int32_t gV = zplanet::ChunkVertexIndex(ch.cy,
+                            static_cast<int32_t>(k), stride);
+                        const zplanet::PlanetChunkVertex a = zplanet::PlanetChunkVertexAtGlobal(
+                            planetCenter, ch.face, gUa, gV, total, kP2Seed);
+                        const zplanet::PlanetChunkVertex b = zplanet::PlanetChunkVertexAtGlobal(
+                            planetCenter, ch.face, gUb, gV, total, kP2Seed);
+                        if (std::memcmp(&a.posAbs, &b.posAbs, sizeof(a.posAbs)) != 0) {
+                            ++seamsFails;
+                        }
+                    }
+                    if (south != nullptr && south->builtLod == ch.builtLod) {
+                        const int32_t gVa = zplanet::ChunkVertexIndex(ch.cy, stride, stride);
+                        const int32_t gVb = zplanet::ChunkVertexIndex(ch.cy + 1, 0, stride);
+                        const int32_t gU = zplanet::ChunkVertexIndex(ch.cx,
+                            static_cast<int32_t>(k), stride);
+                        const zplanet::PlanetChunkVertex a = zplanet::PlanetChunkVertexAtGlobal(
+                            planetCenter, ch.face, gU, gVa, total, kP2Seed);
+                        const zplanet::PlanetChunkVertex b = zplanet::PlanetChunkVertexAtGlobal(
+                            planetCenter, ch.face, gU, gVb, total, kP2Seed);
+                        if (std::memcmp(&a.posAbs, &b.posAbs, sizeof(a.posAbs)) != 0) {
+                            ++seamsFails;
+                        }
+                    }
+                }
+            }
+            visibleIdx[visibleCount] = static_cast<uint32_t>(&ch - chunks.data());
+            ++visibleCount;
+        }
+
+        // ---- 探针坐标（本帧相位推导；readback 与判定共用）--------------------------------
+        uint32_t probeX[2] = { 320u, 320u };
+        uint32_t probeY[2] = { 300u, 60u };
+        bool probeSky[2] = { false, true };
+        if (frame < kP2GroundEnd) {
+            probeX[0] = 320u; probeY[0] = 300u; probeSky[0] = false; // 地形（−17.5°）
+            probeX[1] = 320u; probeY[1] = 60u;  probeSky[1] = true;  // 天（+14.5°）
+        } else if (frame < kP2ClimbEnd) {
+            // 行星面：310（中心下 8.75°）——全程爬升（含 alt 2e7 末段 disc 半径
+            // 13.96°）恒在行星盘内；380 在 alt>1.5e7 后越出盘外（探针落空）
+            probeX[0] = 320u; probeY[0] = 310u; probeSky[0] = false;
+            probeX[1] = 320u; probeY[1] = 60u;  probeSky[1] = true;  // 天
+        } else {
+            probeX[0] = 320u; probeY[0] = 240u; probeSky[0] = false; // 行星中心（亮）
+            probeX[1] = 40u;  probeY[1] = 40u;  probeSky[1] = true;  // 太空角（黑）
+        }
+
+        const bool doReadback = ((frame + 1u) % 10u) == 0u;
+        const int shotIndex = (frame + 1u == kP2GroundShotFrame) ? 0
+            : ((frame + 1u == kP2ClimbShotFrame) ? 1
+                : ((frame + 1u == kP2FarShotFrame) ? 2 : -1));
+
+        // ---- CB 填充：天穹 + 可见 chunk ---------------------------------------------------
+        const float kIdentity[16] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+            0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
+        const float domeScale[16] = { static_cast<float>(domeR), 0.0f, 0.0f, 0.0f, 0.0f,
+            static_cast<float>(domeR), 0.0f, 0.0f, 0.0f, 0.0f, static_cast<float>(domeR),
+            0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
+        float domeMvp[16];
+        MatMultiply(projView, domeScale, domeMvp);
+        {
+            Planet2DrawConstants c {};
+            std::memcpy(c.mvp, domeMvp, sizeof(c.mvp));
+            std::memcpy(c.model, domeScale, sizeof(c.model));
+            c.params[0] = 1.0f; // 天穹
+            c.params[1] = 0.0f;
+            c.params[2] = static_cast<float>(altT);
+            c.params[3] = 0.0f;
+            c.fogColor[0] = horizon[0]; c.fogColor[1] = horizon[1]; c.fogColor[2] = horizon[2];
+            c.fogColor[3] = 1.0f;
+            c.zenithColor[0] = zenith[0]; c.zenithColor[1] = zenith[1]; c.zenithColor[2] = zenith[2];
+            c.zenithColor[3] = 1.0f;
+            c.horizonColor[0] = horizon[0]; c.horizonColor[1] = horizon[1];
+            c.horizonColor[2] = horizon[2];
+            c.horizonColor[3] = 1.0f;
+            c.upVec[0] = upRender[0]; c.upVec[1] = upRender[1]; c.upVec[2] = upRender[2];
+            c.upVec[3] = 0.0f;
+            std::memcpy(cbMapped[kCbDome], &c, sizeof(c));
+        }
+        for (uint32_t v = 0; v < visibleCount; ++v) {
+            const Planet2Chunk& ch = chunks[visibleIdx[v]];
+            float chunkModel[16];
+            MatTranslation(static_cast<float>(ch.centerAbs.x - camAbs[0]),
+                static_cast<float>(ch.centerAbs.y - camAbs[1]),
+                static_cast<float>(ch.centerAbs.z - camAbs[2]), chunkModel);
+            float chunkMvp[16];
+            MatMultiply(projView, chunkModel, chunkMvp);
+            Planet2DrawConstants c {};
+            std::memcpy(c.mvp, chunkMvp, sizeof(c.mvp));
+            std::memcpy(c.model, chunkModel, sizeof(c.model));
+            c.params[0] = 0.0f; // 地形
+            c.params[1] = static_cast<float>(fogDist);
+            c.params[2] = static_cast<float>(altT);
+            c.params[3] = kP2ContourM;
+            c.fogColor[0] = horizon[0]; c.fogColor[1] = horizon[1]; c.fogColor[2] = horizon[2];
+            c.fogColor[3] = 1.0f;
+            c.zenithColor[0] = zenith[0]; c.zenithColor[1] = zenith[1]; c.zenithColor[2] = zenith[2];
+            c.zenithColor[3] = 1.0f;
+            c.horizonColor[0] = horizon[0]; c.horizonColor[1] = horizon[1];
+            c.horizonColor[2] = horizon[2];
+            c.horizonColor[3] = 1.0f;
+            c.upVec[0] = upRender[0]; c.upVec[1] = upRender[1]; c.upVec[2] = upRender[2];
+            c.upVec[3] = 0.0f;
+            std::memcpy(cbMapped[v], &c, sizeof(c));
+        }
+
+        // ---- RG 帧：Clear → Planet2Main（天穹 + chunk）→ Readback --------------------------
+        cmdList->Begin();
+        RgGraph graph(ResolveImageDesc);
+        RgHandle backH = graph.Import(RgResourceDesc::ImportImage("backbuffer", offscreenTarget));
+        RgHandle depthH = graph.Import(RgResourceDesc::ImportImage("depth", depthImage));
+
+        graph.AddPass("ClearPass",
+            [&](RgPass& pass) {
+                pass.Write(backH, ZrImageLayout::ColorAttachmentOptimal,
+                    ZrAccessBits::ColorAttachmentWrite,
+                    ZrPipelineStageBits::ColorAttachmentOutput);
+                pass.Write(depthH, ZrImageLayout::DepthStencilAttachmentOptimal,
+                    ZrAccessBits::DepthStencilAttachmentWrite,
+                    ZrPipelineStageBits::LateFragmentTests);
+            },
+            [&](RgContext& ctx) {
+                cmdList->ClearColorImage(ctx.GetImage(backH),
+                    ZrImageLayout::ColorAttachmentOptimal, kP2ClearColor,
+                    ZrSubresourceRange::All());
+                nativeCmd->ClearDepthStencilView(device->D3D12ViewCpuOf(dsvView),
+                    D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0u, 0u, nullptr);
+            });
+
+        graph.AddPass("Planet2MainPass",
+            [&](RgPass& pass) {
+                pass.Write(backH, ZrImageLayout::ColorAttachmentOptimal,
+                    ZrAccessBits::ColorAttachmentWrite,
+                    ZrPipelineStageBits::ColorAttachmentOutput);
+                pass.Write(depthH, ZrImageLayout::DepthStencilAttachmentOptimal,
+                    ZrAccessBits::DepthStencilAttachmentWrite,
+                    ZrPipelineStageBits::LateFragmentTests);
+            },
+            [&](RgContext&) {
+                cmdList->SetPipelineState(pso);
+                cmdList->SetRenderTarget(offscreenRtv, dsvView);
+                cmdList->SetViewportScissor(kWidth, kHeight);
+                // 天穹先画（远平面内侧——地形全部更近，深度测试自然覆盖）
+                {
+                    ZrBuffer vbs[1] = { domeVb };
+                    cmdList->SetVertexBuffers(vbs, 1u);
+                    cmdList->SetIndexBuffer(domeIb);
+                    cmdList->SetGraphicsConstantBuffer(0u, cbPool[kCbDome]);
+                    cmdList->DrawIndexedInstanced(static_cast<uint32_t>(domeIdx.size()), 1u,
+                        0u, 0u, 0u);
+                }
+                // chunk：共享档位 IB + 每 chunk VB/CB
+                for (uint32_t v = 0; v < visibleCount; ++v) {
+                    const Planet2Chunk& ch = chunks[visibleIdx[v]];
+                    ZrBuffer vbs[1] = { ch.vb };
+                    cmdList->SetVertexBuffers(vbs, 1u);
+                    cmdList->SetIndexBuffer(ch.lod >= 1 ? nearIb : farIb);
+                    cmdList->SetGraphicsConstantBuffer(0u, cbPool[v]);
+                    cmdList->DrawIndexedInstanced(ch.lod >= 1 ? kP2NearIndices : kP2FarIndices,
+                        1u, 0u, 0u, 0u);
+                }
+            });
+
+        if (doReadback || shotIndex >= 0) {
+            graph.AddPass("ReadbackPass",
+                [&](RgPass& pass) {
+                    pass.Read(backH, ZrImageLayout::TransferSrcOptimal,
+                        ZrAccessBits::TransferRead, ZrPipelineStageBits::Transfer)
+                        .MarkRoot();
+                },
+                [&](RgContext& ctx) {
+                    ID3D12Resource* texture = device->D3D12ResourceOf(ctx.GetImage(backH));
+                    D3D12_TEXTURE_COPY_LOCATION src {};
+                    src.pResource = texture;
+                    src.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+                    src.SubresourceIndex = 0u;
+                    for (uint32_t p = 0; p < 2u; ++p) {
+                        const D3D12_BOX box = { probeX[p], probeY[p], 0u, probeX[p] + 1u,
+                            probeY[p] + 1u, 1u };
+                        D3D12_TEXTURE_COPY_LOCATION dst {};
+                        dst.pResource = readbackProbes.Get();
+                        dst.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+                        dst.PlacedFootprint.Offset = 256ull * p;
+                        dst.PlacedFootprint.Footprint.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+                        dst.PlacedFootprint.Footprint.Width = 1u;
+                        dst.PlacedFootprint.Footprint.Height = 1u;
+                        dst.PlacedFootprint.Footprint.Depth = 1u;
+                        dst.PlacedFootprint.Footprint.RowPitch = 256u;
+                        nativeCmd->CopyTextureRegion(&dst, 0u, 0u, 0u, &src, &box);
+                    }
+                    if (shotIndex >= 0) {
+                        const D3D12_BOX fullBox = { 0u, 0u, 0u, kWidth, kHeight, 1u };
+                        D3D12_TEXTURE_COPY_LOCATION fullDst {};
+                        fullDst.pResource = readbackFrame.Get();
+                        fullDst.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+                        fullDst.PlacedFootprint.Footprint.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+                        fullDst.PlacedFootprint.Footprint.Width = kWidth;
+                        fullDst.PlacedFootprint.Footprint.Height = kHeight;
+                        fullDst.PlacedFootprint.Footprint.Depth = 1u;
+                        fullDst.PlacedFootprint.Footprint.RowPitch = kP2RowPitch;
+                        nativeCmd->CopyTextureRegion(&fullDst, 0u, 0u, 0u, &src, &fullBox);
+                    }
+                });
+        }
+
+        if (!graph.Compile()) {
+            std::printf("  frame %u: RG Compile FAILED (error=%u)\n", frame + 1u,
+                static_cast<unsigned>(graph.Error()));
+            allOk = false;
+            cmdList->End();
+            continue;
+        }
+        const RgExecuteStats rgStats = graph.ExecuteAliased(*device, *cmdList);
+        (void)rgStats;
+        undeclaredUses += graph.LastExecuteUndeclaredUses();
+
+        ZrImageBarrier depthReset = MakeBarrier(depthImage,
+            ZrImageLayout::DepthStencilAttachmentOptimal, ZrImageLayout::Undefined,
+            ZrAccessBits::DepthStencilAttachmentWrite, ZrPipelineStageBits::LateFragmentTests,
+            ZrAccessBits::None, ZrPipelineStageBits::TopOfPipe);
+        cmdList->ResourceBarrier(&depthReset, 1u, nullptr, 0u);
+        {
+            const ZrImageLayout backLayoutNow = doReadback ? ZrImageLayout::TransferSrcOptimal
+                                                           : ZrImageLayout::ColorAttachmentOptimal;
+            ZrImageBarrier backReset = MakeBarrier(offscreenTarget, backLayoutNow,
+                ZrImageLayout::Undefined, ZrAccessBits::None, ZrPipelineStageBits::TopOfPipe,
+                ZrAccessBits::None, ZrPipelineStageBits::TopOfPipe);
+            cmdList->ResourceBarrier(&backReset, 1u, nullptr, 0u);
+        }
+        cmdList->End();
+        queue->Submit(cmdHandle);
+        device->WaitIdle();
+        graph.FlushRetired(*device);
+
+        // ---- 探针判定（readback 节拍帧 + 关键帧）-------------------------------------------
+        if (doReadback || shotIndex >= 0) {
+            ++readbackChecks;
+            void* mapped = nullptr;
+            const HRESULT hr = readbackProbes->Map(0, nullptr, &mapped);
+            if (FAILED(hr) || mapped == nullptr) {
+                std::printf("  frame %u: probe readback Map FAILED (hr=0x%08lX)\n", frame + 1u,
+                    static_cast<unsigned long>(hr));
+                allOk = false;
+            } else {
+                for (uint32_t p = 0; p < 2u; ++p) {
+                    const uint8_t* px = static_cast<const uint8_t*>(mapped) + 256u * p;
+                    const int r = static_cast<int>(px[0]);
+                    const int g = static_cast<int>(px[1]);
+                    const int b = static_cast<int>(px[2]);
+                    const int luma = (r + g + b) / 3;
+                    const bool blueDominant = (b - r) >= 40;
+                    bool pass = false;
+                    if (frame < kP2GroundEnd) {
+                        pass = probeSky[p] ? blueDominant : !blueDominant;
+                        if (probeSky[p] && frame + 1u == 10u) {
+                            skyBrGround = static_cast<double>(b - r);
+                        }
+                    } else if (frame < kP2ClimbEnd) {
+                        if (probeSky[p]) {
+                            // 天色随海拔渐变：低空蓝天（b−r≥40）→ 中段仍偏蓝
+                            // （b−r≥10，渐变中段）→ 高空转黑（luma<40）
+                            pass = (altM < 1.0e6) ? blueDominant
+                                : ((altM < 5.0e6) ? ((b - r) >= 10) : (luma < 40));
+                            const double br = static_cast<double>(b - r);
+                            if (skyBrClimbFirst < 0.0) {
+                                skyBrClimbFirst = br;
+                            }
+                            skyBrClimbLast = br;
+                        } else {
+                            pass = luma > 10; // 行星面（高空雾化的蓝灰地形亦算命中）
+                        }
+                    } else {
+                        pass = probeSky[p] ? (luma < 13) : (luma > 15);
+                    }
+                    ++probeChecks;
+                    probePasses += pass ? 1u : 0u;
+                    if (!pass) {
+                        allOk = false;
+                        std::printf("  frame %u probe[%u] (%u,%u) RGB=(%d,%d,%d) -> FAIL "
+                                    "(expect %s)\n",
+                            frame + 1u, p, probeX[p], probeY[p], r, g, b,
+                            probeSky[p] ? "sky/space" : "terrain/planet");
+                    }
+                }
+                readbackProbes->Unmap(0, nullptr);
+            }
+        }
+
+        // ---- 关键帧：全帧 → PNG（远观帧附加 limb 扫描）--------------------------------------
+        if (shotIndex >= 0) {
+            void* mapped = nullptr;
+            const HRESULT hr = readbackFrame->Map(0, nullptr, &mapped);
+            if (FAILED(hr) || mapped == nullptr) {
+                std::printf("  frame %u: full-frame Map FAILED (hr=0x%08lX)\n", frame + 1u,
+                    static_cast<unsigned long>(hr));
+                allOk = false;
+            } else {
+                std::filesystem::create_directories("Docs/Parity");
+                pngOk[shotIndex] = WritePng24(kP2Png[shotIndex],
+                    static_cast<const uint8_t*>(mapped), kWidth, kHeight, kP2RowPitch);
+                std::printf("  frame %u keyframe -> %s (%s)\n", frame + 1u, kP2Png[shotIndex],
+                    pngOk[shotIndex] ? "written" : "FAILED");
+                allOk = allOk && pngOk[shotIndex];
+                if (shotIndex == 2) {
+                    // limb 扫描：行星轮廓带二维窗口（disc 半径 ≈140px，右缘弧段）
+                    // 取最大蓝通道 vs 太空角蓝——大气镶边像素证据
+                    int maxB = 0;
+                    for (uint32_t y = 190u; y <= 290u; ++y) {
+                        for (uint32_t x = 400u; x <= 500u; ++x) {
+                            const uint8_t* px = static_cast<const uint8_t*>(mapped)
+                                + uint64_t(kP2RowPitch) * y + uint64_t(x) * 4u;
+                            maxB = std::max(maxB, static_cast<int>(px[2]));
+                        }
+                    }
+                    const uint8_t* corner = static_cast<const uint8_t*>(mapped)
+                        + uint64_t(kP2RowPitch) * 40u + uint64_t(40u) * 4u;
+                    limbOk = maxB >= static_cast<int>(corner[2]) + 10;
+                    std::printf("  frame %u limb scan: maxB=%d cornerB=%d -> %s\n", frame + 1u,
+                        maxB, static_cast<int>(corner[2]), limbOk ? "OK" : "FAIL");
+                    allOk = allOk && limbOk;
+                }
+                readbackFrame->Unmap(0, nullptr);
+            }
+        }
+
+        // ---- 帧耗（QPC；含 Submit+WaitIdle——与 B-R9-11 离屏口径同法）----------------------
+        QueryPerformanceCounter(&qpc1);
+        const double frameMs = static_cast<double>(qpc1.QuadPart - qpc0.QuadPart) * 1000.0
+            / static_cast<double>(qpf.QuadPart);
+        frameMsTotal += frameMs;
+        frameMsMin = std::min(frameMsMin, frameMs);
+        frameMsMax = std::max(frameMsMax, frameMs);
+        visibleSum += static_cast<double>(visibleCount);
+        visibleMax = std::max(visibleMax, visibleCount);
+        drawSum += static_cast<double>(visibleCount + 1u);
+        if ((frame + 1u) % 30u == 0u) {
+            std::printf("  frame %u: alt=%.0fm near=%u far=%u visible=%u relocs=%d "
+                        "switches=%u\n",
+                frame + 1u, altM, nearNow, farNow, visibleCount, origin.relocationCount,
+                lodSwitches);
+        }
+    }
+
+    // ---- 证据行 ------------------------------------------------------------------------
+    const double frameMsAvg = frameMsTotal / static_cast<double>(kP2Frames);
+    const double visibleAvg = visibleSum / static_cast<double>(kP2Frames);
+    std::printf("zrhi_d3d12_window: --planet2 relocations: count=%d threshold=%.0fm "
+                "maxOriginOffset=%.1fm\n",
+        origin.relocationCount, origin.thresholdM, origin.maxOriginOffsetM);
+    std::printf("zrhi_d3d12_window: --planet2 lods: switches=%u vbUpgrades=%u rebuilds=%u "
+                "visibleAvg=%.1f visibleMax=%u truncations=%u\n",
+        lodSwitches, vbUpgrades, rebuilds, visibleAvg, visibleMax, truncations);
+    std::printf("zrhi_d3d12_window: --planet2 seams: runtimeBitwiseFails=%u (shared-edge "
+                "double memcmp over visible chunk neighbors)\n",
+        seamsFails);
+    std::printf("zrhi_d3d12_window: --planet2 sky gradient: ground(b-r)=%.0f climbFirst=%.0f "
+                "climbLast=%.0f (b-r, 0-255)\n",
+        skyBrGround, skyBrClimbFirst, skyBrClimbLast);
+    std::printf("zrhi_d3d12_window: --planet2 frames=%u probes=%u/%u png=%d/%d/%d limb=%d "
+                "frame_ms avg=%.3f min=%.3f max=%.3f\n",
+        kP2Frames, probePasses, probeChecks, pngOk[0] ? 1 : 0, pngOk[1] ? 1 : 0,
+        pngOk[2] ? 1 : 0, limbOk ? 1 : 0, frameMsAvg, frameMsMin, frameMsMax);
+
+    // ---- 清理 ----------------------------------------------------------------------------
+    for (Planet2Chunk& ch : chunks) {
+        device->Destroy(ch.vb);
+    }
+    for (ZrBuffer& cb : cbPool) {
+        device->Destroy(cb);
+    }
+    device->Destroy(domeVb);
+    device->Destroy(domeIb);
+    device->Destroy(nearIb);
+    device->Destroy(farIb);
+    device->Destroy(pso);
+    device->Destroy(vs);
+    device->Destroy(ps);
+    device->Destroy(offscreenRtv);
+    device->Destroy(dsvView);
+    device->Destroy(depthImage);
+    device->Destroy(offscreenTarget);
+    readbackProbes.Reset();
+    readbackFrame.Reset();
+    device->WaitIdle();
+    device->Destroy(cmdHandle);
+    const uint32_t infoQueueErrors = device->GetDebugErrorCount();
+    const HRESULT removedReason = device->D3D12Device()->GetDeviceRemovedReason();
+    const bool noDeviceRemoval = removedReason == S_OK;
+    ZrD3D12DestroyDevice(device);
+
+    // ---- 判定与通过行 -----------------------------------------------------------------------
+    const bool probesOk = readbackChecks > 0u && probePasses == probeChecks;
+    const bool gradientOk = skyBrGround >= 100.0 && skyBrClimbFirst >= 40.0
+        && skyBrClimbLast <= 20.0 && (skyBrClimbFirst - skyBrClimbLast) >= 40.0;
+    const bool relocOk = origin.relocationCount >= 2;
+    const bool lodOk = lodSwitches >= 20u && truncations == 0u;
+    if (allOk && probesOk && gradientOk && relocOk && lodOk && seamsFails == 0u
+        && noDeviceRemoval && undeclaredUses == 0u && infoQueueErrors == 0u) {
+        std::printf("D3D12 PLANET2 OK (chunks=%d lods=2 seams=%u frame_ms=%.3f)\n",
+            kP2ChunkCount, seamsFails, frameMsAvg);
+        return 0;
+    }
+    std::printf("D3D12 PLANET2 FAILED (allOk=%d probes=%u/%u gradient=%.0f>%.0f>%.0f "
+                "relocs=%d lod=%u trunc=%u seams=%u limb=%d removed=%d undeclared=%u "
+                "errors=%u)\n",
+        allOk ? 1 : 0, probePasses, probeChecks, skyBrGround, skyBrClimbFirst,
+        skyBrClimbLast, origin.relocationCount, lodSwitches, truncations, seamsFails,
+        limbOk ? 1 : 0, noDeviceRemoval ? 0 : 1, undeclaredUses, infoQueueErrors);
+    return 1;
+}
+
 /// MV 常量（b0 镜像）——zupscaler.h ZrUpscalerMotionVectorConstants 直接复用
 
 /// （单一事实源；motion_vectors.hlsl CBufMotionVectors 与之一一对应）
@@ -15711,6 +16871,14 @@ int main(int argc, char** argv)
         // 通过行 `D3D12 PLANET OK (origin=RELOCATED@Xm jitter=before/after)`。
         if (std::strcmp(argv[i], "--planet") == 0) {
             return RunPlanetMode();
+        }
+        // TASK-B-TECH-04：--planet2 —— 行星尺度第二阶段（cube-sphere chunk 地形
+        // + LOD 两档迟滞 + 大气天穹渐变）：恒离屏 300 帧自动飞行相机（贴地跟随
+        // 地形→爬升 2 万 km→远观慢扫）+ 3 关键帧截图 Docs/Parity/planet2_*.png
+        // + 探针/天色梯度/limb 扫描 + 运行期共享边逐位核查。
+        // 通过行 `D3D12 PLANET2 OK (chunks=6144 lods=2 seams=0 frame_ms=X)`。
+        if (std::strcmp(argv[i], "--planet2") == 0) {
+            return RunPlanet2Mode();
         }
         // TASK-B-R9-16：--devconsole —— GPU 工具链运行时入口（方案 §5.7）：
         // 127.0.0.1 白名单控制台（缺省端口 17323）+ hud 统计 + rg.export +

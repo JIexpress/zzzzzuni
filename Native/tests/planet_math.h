@@ -381,4 +381,207 @@ inline SpherePointResult SpherePointFromTangent(const Vec3d& planetCenterAbs,
     return out;
 }
 
+// =============================================================================
+// ④ cube-sphere chunk 地形（TASK-B-TECH-04 增量——上文①②③语义零改动）
+//
+// 四块能力（--planet2 模式与 test_planet.cpp doctest 共享同一实现）：
+//   ① cube-sphere 映射：立方体六面 grid → 标准化立方体映射（面内点归一化）贴球，
+//      避免极点挤压；六面基右手系（t1×t2=n），面棱两侧 u/v 精确对应（±1 端点
+//      恰为小整数运算——跨面共享棱顶点方向逐位一致，见 CubeSphereDir 注）。
+//   ② 高度噪声纯函数：整数格点哈希（种子混入）→ value noise（quintic fade）→
+//      4 octave fBm。同种子同输入恒同输出（确定性），不同种子输出不同（可配）。
+//      顶点高度 = f(单位球方向)——与 chunk/LOD/采样路由完全解耦：同点无论由
+//      哪个 chunk 哪一档计算，同方向位形必得同高度（LOD 切换前后同点高度一致
+//      的数学基础）。
+//   ③ chunk 顶点规范采样：面内 chunk 格 (cx,cy) 的 res×res 顶点网格以全局索引
+//      g = cx·stride + i（stride = res−1，chunk 间共享边顶点）表达；面坐标
+//      u = 2g/total − 1（total = 面内 chunk 数·stride）。相邻 chunk 的共享边
+//      由同一整数 g 表达 → 同一 double 表达式 → u/v 逐位一致 → 球面点/高度/
+//      绝对坐标逐位一致（同档无缝的构造性保证；跨档 T 型连接由渲染侧裙边
+//      遮蔽——选型见任务日志）。
+//   ④ LOD 两档迟滞选择：dist < nearDist − hyst 进入近档（高分）；dist >
+//      nearDist + hyst 退回远档（低分）；迟滞带内保持原档位（阈值附近无抖动
+//      切换）。纯函数，状态仅 prevLod。
+// =============================================================================
+
+// ---- 地形噪声常量 ---------------------------------------------------------------
+constexpr uint32_t kTerrainNoiseOctaves = 4u;  // fBm 层数（幅值逐半衰减）
+constexpr double kTerrainBaseWavelengthM = 36000.0; // 基频地形主波长（36km）
+constexpr double kTerrainMaxAmpM = 2400.0;     // 地形起伏幅值上界（±2.4km）
+
+// ---- uint32 混合哈希（PCG 风格 avalanche；确定性纯函数）--------------------------
+inline uint32_t PlanetHashU32(uint32_t x)
+{
+    x ^= x >> 16;
+    x *= 0x7feb352du;
+    x ^= x >> 15;
+    x *= 0x846ca68bu;
+    x ^= x >> 16;
+    return x;
+}
+
+// 三维整数格点 → [0,1) 标量。种子混入首级；坐标逐级级联（负坐标按补码回绕——
+// 确定性不受影响：同格点恒同输出）。
+inline double PlanetLatticeValue(int32_t ix, int32_t iy, int32_t iz, uint32_t seed)
+{
+    uint32_t h = PlanetHashU32(seed ^ 0x9e3779b9u);
+    h = PlanetHashU32(h ^ (0x85ebca6bu + static_cast<uint32_t>(ix)));
+    h = PlanetHashU32(h ^ (0xc2b2ae35u + static_cast<uint32_t>(iy)));
+    h = PlanetHashU32(h ^ (0x27d4eb2fu + static_cast<uint32_t>(iz)));
+    return static_cast<double>(h) * (1.0 / 4294967296.0);
+}
+
+// 3D value noise（quintic fade 三线性插值），输出 [0,1]。
+inline double PlanetValueNoise(double x, double y, double z, uint32_t seed)
+{
+    const double fx = std::floor(x);
+    const double fy = std::floor(y);
+    const double fz = std::floor(z);
+    const int32_t ix = static_cast<int32_t>(fx);
+    const int32_t iy = static_cast<int32_t>(fy);
+    const int32_t iz = static_cast<int32_t>(fz);
+    const double tx = x - fx;
+    const double ty = y - fy;
+    const double tz = z - fz;
+    const double ux = tx * tx * tx * (tx * (tx * 6.0 - 15.0) + 10.0);
+    const double uy = ty * ty * ty * (ty * (ty * 6.0 - 15.0) + 10.0);
+    const double uz = tz * tz * tz * (tz * (tz * 6.0 - 15.0) + 10.0);
+    const double v000 = PlanetLatticeValue(ix, iy, iz, seed);
+    const double v100 = PlanetLatticeValue(ix + 1, iy, iz, seed);
+    const double v010 = PlanetLatticeValue(ix, iy + 1, iz, seed);
+    const double v110 = PlanetLatticeValue(ix + 1, iy + 1, iz, seed);
+    const double v001 = PlanetLatticeValue(ix, iy, iz + 1, seed);
+    const double v101 = PlanetLatticeValue(ix + 1, iy, iz + 1, seed);
+    const double v011 = PlanetLatticeValue(ix, iy + 1, iz + 1, seed);
+    const double v111 = PlanetLatticeValue(ix + 1, iy + 1, iz + 1, seed);
+    const double z00 = v000 + (v100 - v000) * ux;
+    const double z10 = v010 + (v110 - v010) * ux;
+    const double z01 = v001 + (v101 - v001) * ux;
+    const double z11 = v011 + (v111 - v011) * ux;
+    const double y0 = z00 + (z10 - z00) * uy;
+    const double y1 = z01 + (z11 - z01) * uy;
+    return y0 + (y1 - y0) * uz;
+}
+
+// 地形高度纯函数：输入单位球方向（调用方保证 |d|≈1），输出高程 m ∈
+// [−kTerrainMaxAmpM, +kTerrainMaxAmpM]。4 octave fBm（输入偏移避开原点对称性）。
+// 基频换算：方向分量 1 ≈ 弧长 R（行星半径）——噪声格胞 1 对应地表
+// kTerrainBaseWavelengthM 米，故 baseFreq = R / 波长（≈177/半径）。
+// 确定性契约：同 (seed, dx, dy, dz) 位形 → 同输出位形（doctest 逐位断言）。
+inline double PlanetTerrainHeightM(uint32_t seed, double dx, double dy, double dz)
+{
+    double sum = 0.0;
+    double amp = 1.0;
+    double norm = 0.0;
+    const double baseFreq = kPlanetRadiusM / kTerrainBaseWavelengthM;
+    double freq = baseFreq;
+    for (uint32_t o = 0; o < kTerrainNoiseOctaves; ++o) {
+        const double n = PlanetValueNoise(dx * freq + 11.3, dy * freq + 7.7,
+            dz * freq + 3.1, seed + o * 1013904223u);
+        sum += amp * (n - 0.5);
+        norm += amp;
+        amp *= 0.5;
+        freq *= 2.0;
+    }
+    return (sum / norm) * 2.0 * kTerrainMaxAmpM;
+}
+
+// ---- cube-sphere 六面基 -----------------------------------------------------------
+// 面序：0=+Z 1=+X 2=−Z 3=−X 4=+Y 5=−Y。t1 = u 方向、t2 = v 方向，右手系
+// （t1×t2 = n）。侧四面共享 t2=+Y 使相邻侧面在共享棱上 v 同轴（棱对应简单）；
+// 上下面 t2 沿 ∓Z 使与四个侧面的棱对应为 v ↔ ∓1 端点（小整数运算，逐位一致）。
+struct CubeFaceBasis {
+    Vec3d n;  // 面法线（单位）
+    Vec3d t1; // u 方向（单位）
+    Vec3d t2; // v 方向（单位）
+};
+
+inline CubeFaceBasis CubeFaceBasisOf(int faceId)
+{
+    CubeFaceBasis b;
+    switch (faceId) {
+    case 0:  b.n = { 0.0, 0.0, 1.0 };  b.t1 = { 1.0, 0.0, 0.0 };  b.t2 = { 0.0, 1.0, 0.0 }; break;
+    case 1:  b.n = { 1.0, 0.0, 0.0 };  b.t1 = { 0.0, 0.0, -1.0 }; b.t2 = { 0.0, 1.0, 0.0 }; break;
+    case 2:  b.n = { 0.0, 0.0, -1.0 }; b.t1 = { -1.0, 0.0, 0.0 }; b.t2 = { 0.0, 1.0, 0.0 }; break;
+    case 3:  b.n = { -1.0, 0.0, 0.0 }; b.t1 = { 0.0, 0.0, 1.0 };  b.t2 = { 0.0, 1.0, 0.0 }; break;
+    case 4:  b.n = { 0.0, 1.0, 0.0 };  b.t1 = { 1.0, 0.0, 0.0 };  b.t2 = { 0.0, 0.0, -1.0 }; break;
+    default: b.n = { 0.0, -1.0, 0.0 }; b.t1 = { 1.0, 0.0, 0.0 };  b.t2 = { 0.0, 0.0, 1.0 }; break;
+    }
+    return b;
+}
+
+// 标准化立方体映射：面坐标 (u,v ∈ [−1,1]) → 单位球方向。
+// p = n + u·t1 + v·t2（立方体面上的点）→ p/|p|。
+// 跨面棱逐位一致性：共享棱两侧 (u,v) 均恰为 ±1 端点，p 的分量全为小整数
+// 加乘（±1·±1 等），IEEE754 下两侧算得逐位相同的有理分量 → 归一化后逐位相同。
+inline Vec3d CubeSphereDir(int faceId, double u, double v)
+{
+    const CubeFaceBasis b = CubeFaceBasisOf(faceId);
+    const Vec3d p = VecAdd(VecAdd(b.n, VecScale(b.t1, u)), VecScale(b.t2, v));
+    return VecScale(p, 1.0 / VecLen(p));
+}
+
+// ---- chunk 顶点规范采样 -------------------------------------------------------------
+// chunk (cx,cy)（面内 chunk 格坐标，0..cellsPerEdge−1）res×res 顶点网格的
+// 全局顶点索引：g = cx·stride + i（stride = res−1；chunk 间共享边顶点复用）。
+// 相邻 chunk 共享边：A 的 i=stride 与 B(cx+1) 的 i=0 同为 g=(cx+1)·stride——
+// 同一整数 → 同一 double 表达式 → 面坐标逐位一致（无缝的构造性基础）。
+inline int32_t ChunkVertexIndex(int32_t c, int32_t i, int32_t stride)
+{
+    return c * stride + i;
+}
+
+// 全局顶点索引 → 面坐标（规范 double 表达式；g/total 均为精确整数 double，
+// 商为正确舍入结果——跨档共享端点（(cx+1)/cellsPerEdge 同有理数）亦逐位一致）。
+inline double ChunkFaceCoord(int32_t g, int32_t total)
+{
+    return 2.0 * static_cast<double>(g) / static_cast<double>(total) - 1.0;
+}
+
+// chunk 顶点完整语义：球面方向 + 噪声高程 + 绝对坐标（行星中心系，double）。
+// pos = center + dir·(R + h)——位移沿球面法线（渲染光照法线 = dir）。
+struct PlanetChunkVertex {
+    Vec3d posAbs;  // 绝对坐标（含地形位移）
+    Vec3d normal;  // 球面法线（= 归一化方向；未含地形坡度）
+    double heightM; // 噪声高程 m
+};
+
+inline PlanetChunkVertex PlanetChunkVertexAt(const Vec3d& planetCenter, int faceId,
+    double u, double v, uint32_t seed)
+{
+    PlanetChunkVertex out;
+    out.normal = CubeSphereDir(faceId, u, v);
+    out.heightM = PlanetTerrainHeightM(seed, out.normal.x, out.normal.y, out.normal.z);
+    out.posAbs = VecAdd(planetCenter, VecScale(out.normal, kPlanetRadiusM + out.heightM));
+    return out;
+}
+
+// 规范路由（chunk 网格顶点）：全局索引 → 面坐标 → 顶点。app 与 doctest 均经
+// 此函数，保证「共享边逐位一致」断言的就是渲染走的同一条路径。
+inline PlanetChunkVertex PlanetChunkVertexAtGlobal(const Vec3d& planetCenter,
+    int faceId, int32_t gU, int32_t gV, int32_t total, uint32_t seed)
+{
+    return PlanetChunkVertexAt(planetCenter, faceId, ChunkFaceCoord(gU, total),
+        ChunkFaceCoord(gV, total), seed);
+}
+
+// ---- LOD 两档迟滞选择 ---------------------------------------------------------------
+// 返回 1=近档（高分 64×64）/ 0=远档（低分 16×16）。迟滞：进近档需严格
+// dist < nearDist − hyst；退远档需严格 dist > nearDist + hyst；带内保持原档。
+// 边界语义（doctest 锁定）：dist 恰等于 nearDist ∓ hyst 时均不切换（严格不等式）。
+inline int PlanetLodLevel(int prevLod, double distM, double nearDistM, double hystM)
+{
+    if (prevLod >= 1) {
+        return (distM > nearDistM + hystM) ? 0 : 1;
+    }
+    return (distM < nearDistM - hystM) ? 1 : 0;
+}
+
+// 球面地平线距离（对地高度 altM）：√((R+alt)² − R²)（精确式，含 alt² 项）。
+inline double PlanetHorizonDistM(double altM)
+{
+    const double r = kPlanetRadiusM + altM;
+    return std::sqrt(r * r - kPlanetRadiusM * kPlanetRadiusM);
+}
+
 } // namespace zplanet
