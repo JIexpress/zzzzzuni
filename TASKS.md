@@ -166,6 +166,6 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | A-TECH-02 | A/TECH | 模块化装配系统最小切片 | done(验收PASS with受限4项) | Docs/Logs/TASK-A-TECH-02.md | a44e7af |
 | B-TECH-03 | B/TECH | 行星尺度:浮点原点+球面重力切片 | done(验收PASS;Python独立复算) | Docs/Logs/TASK-B-TECH-03.md | da5bc78 |
 | A-TECH-04 | A/TECH | 效用AI二阶:个性权重+GOAP原型 | done(验收PASS;960+65用例) | Docs/Logs/TASK-A-TECH-04.md | 81c3cbe |
-| A-TECH-05 | A/TECH | 装配二阶:装配图+序列化+零件扩展 | doing | Docs/Logs/TASK-A-TECH-05.md | |
-| B-TECH-04 | B/TECH | 球面地形chunk+LOD+大气渐变 | doing | Docs/Logs/TASK-B-TECH-04.md | |
+| A-TECH-05 | A/TECH | 装配二阶:装配图+序列化+零件扩展 | done(验收PASS;变异复红) | Docs/Logs/TASK-A-TECH-05.md | a8af2f5 |
+| B-TECH-04 | B/TECH | 球面地形chunk+LOD+大气渐变 | done(验收PASS;6144chunk seams=0) | Docs/Logs/TASK-B-TECH-04.md | b27804e |
 | A-ANIM-01 | A/ANIM | 人形骨骼动画:AI驱动的状态机+IK(用户需求) | done(验收PASS;含A-TECH-04并行产物) | Docs/Logs/TASK-A-ANIM-01.md | 81c3cbe |
