@@ -46,6 +46,24 @@ namespace Game.Domain.AI.Utility
 
             /// <summary>bool — true while the device is broken and repair is pending.</summary>
             public const string DeviceBroken = "npc.deviceBroken";
+
+            /// <summary>
+            /// float 0..1 — current fear (TASK-A-AI-01 attitude layer; pumped
+            /// by <see cref="NpcUtilityAgent"/> from its memory aggregation).
+            /// </summary>
+            public const string Fear = "npc.fear";
+
+            /// <summary>float 0..1 — current anger (TASK-A-AI-01 attitude layer).</summary>
+            public const string Anger = "npc.anger";
+
+            /// <summary>float 0..1 — current trust (TASK-A-AI-01 attitude layer).</summary>
+            public const string Trust = "npc.trust";
+
+            /// <summary>
+            /// float — metres to the pumped threat source; ABSENT means no
+            /// threat is perceived (TASK-A-AI-01).
+            /// </summary>
+            public const string ThreatDistance = "npc.threatDistance";
         }
 
         private readonly Dictionary<string, object> _values = new Dictionary<string, object>(StringComparer.Ordinal);
@@ -103,6 +121,12 @@ namespace Game.Domain.AI.Utility
         public bool HasDrop()
         {
             return Has(Keys.DropDistance);
+        }
+
+        /// <summary>True when <see cref="Keys.ThreatDistance"/> is present (a threat is perceived; TASK-A-AI-01).</summary>
+        public bool HasThreat()
+        {
+            return Has(Keys.ThreatDistance);
         }
 
         /// <summary>Removes a key. Returns true when it existed.</summary>

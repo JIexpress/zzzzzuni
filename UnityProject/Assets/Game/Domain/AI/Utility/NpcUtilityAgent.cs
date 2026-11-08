@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Game.Domain.AI.Memory;
 using ZFrame.Gameplay;
 using ZFrame.Gameplay.AI;
 
@@ -45,6 +46,37 @@ namespace Game.Domain.AI.Utility
     /// it patrols again — the same brain, changed only by world state.
     /// Five NPCs fed the identical state stream but different CFG personality
     /// rows produce pairwise-different action sequences (divergence proof).
+    ///
+    /// TASK-A-AI-01 additions (attitude layer — 个性×态度=行为):
+    /// - <b>Episodic memory</b>: every agent owns a rolling
+    ///   <see cref="NpcMemory"/> (capacity 32, oldest evicted) and a per-NPC
+    ///   <see cref="NpcAttitudeProfile"/> derived FROM the injected
+    ///   <see cref="NPCPersonalityDef"/> row (brave ⇒ low fear gain / high
+    ///   anger gain — 同源联动; null row = neutral profile). Episodes are
+    ///   written through <see cref="NoteAttackedBy"/>,
+    ///   <see cref="NoteSawDeath"/>, <see cref="NoteGiftedFrom"/> and
+    ///   <see cref="NotePlayerNear"/> (the受伤/触发源 hooks; the
+    ///   <c>Game.Domain.AI.Memory.NpcMemoryFeed</c> bridges the existing
+    ///   <c>EnemyAttackRequested</c>/<c>ItemPickedUp</c> events).
+    /// - <b>Attitude aggregation</b>: each tick re-derives
+    ///   <see cref="NpcAttitude"/> (Fear/Anger/Trust) from memory with the
+    ///   pure half-life decay in <see cref="NpcAttitudeMath"/> and pumps it
+    ///   into the world snapshot — so with no new episodes the attitude
+    ///   RECEDES and behaviour returns to baseline (调制可逆).
+    /// - <b>Attitude-modulated actions</b>: two new candidates —
+    ///   <see cref="FleeActionName"/> (逃跑类) and
+    ///   <see cref="CounterattackActionName"/> (攻击类) — whose desire
+    ///   functions apply the pure modulation formulas
+    ///   (<see cref="NpcAttitudeMath.FleeDesire"/> amplifies by fear,
+    ///   <see cref="NpcAttitudeMath.CounterDesire"/> scales with anger and is
+    ///   suppressed by fear); the existing Follow desire gains the
+    ///   <see cref="NpcAttitudeMath.FollowTrustGain"/> trust boost
+    ///   (trust 0 ⇒ ×1). With an empty memory all modulations are exactly
+    ///   identity/0, so the pre-attitude behaviour is bit-identical
+    ///   (A-TECH-01/04 compatibility). The SAME episode thus produces
+    ///   DIFFERENT reactions: a fearful NPC flees while a brave one
+    ///   counterattacks (same event, different response — the
+    ///   personality×attitude core evidence).
     /// </summary>
     public sealed class NpcUtilityAgent
     {
@@ -62,6 +94,12 @@ namespace Game.Domain.AI.Utility
 
         /// <summary>Demo candidate names (assertion anchors) — the GOAP-driven duty.</summary>
         public const string RepairActionName = "Repair";
+
+        /// <summary>Attitude-modulated candidate (TASK-A-AI-01): run away from the threat (逃跑类).</summary>
+        public const string FleeActionName = "Flee";
+
+        /// <summary>Attitude-modulated candidate (TASK-A-AI-01): move against the threat (攻击类).</summary>
+        public const string CounterattackActionName = "Counterattack";
 
         /// <summary>Planner chain step names (assertion anchors for the two-step evidence).</summary>
         public const string GoapTakeToolActionName = "TakeTool";
@@ -135,6 +173,21 @@ namespace Game.Domain.AI.Utility
 
             /// <summary>Distance at which a chain target (toolbox/device) counts as reached.</summary>
             public float RepairArriveRadius { get; set; } = 0.5f;
+
+            /// <summary>
+            /// Threat proximity is full at or below this distance (TASK-A-AI-01
+            /// flee/counterattack desire gating).
+            /// </summary>
+            public float ThreatDesireInner { get; set; } = 1.5f;
+
+            /// <summary>Threat proximity is zero at or beyond this distance.</summary>
+            public float ThreatDesireOuter { get; set; } = 8f;
+
+            /// <summary>Move speed while fleeing from the threat.</summary>
+            public float FleeSpeed { get; set; } = 2.4f;
+
+            /// <summary>Move speed while closing on the threat to counterattack.</summary>
+            public float CounterSpeed { get; set; } = 1.8f;
         }
 
         /// <summary>
@@ -171,12 +224,16 @@ namespace Game.Domain.AI.Utility
         private readonly List<Vec2> _waypoints;
         private readonly GoapAction _goapTakeTool;
         private readonly GoapAction _goapRepairDevice;
+        private readonly NpcMemory _memory = new NpcMemory();
+        private readonly NpcAttitudeProfile _attitudeProfile;
         private Vec2 _position;
         private Vec2 _restPoint;
         private Vec2 _playerPosition;
         private Vec2? _dropTarget;
         private Vec2? _toolboxPosition;
         private Vec2? _deviceTarget;
+        private Vec2? _threatSource;
+        private NpcAttitude _attitude = NpcAttitude.Neutral;
         private bool _deviceBroken;
         private bool _hasTool;
         private GoapPlan _chain;
@@ -250,6 +307,10 @@ namespace Game.Domain.AI.Utility
             _brain.Add(new UtilityAction(FollowActionName, ScoreFollow, ExecuteFollow, 0f, UtilityTraits.Social));
             _brain.Add(new UtilityAction(PatrolActionName, ScorePatrol, ExecutePatrol, 0f, UtilityTraits.Bravery));
             _brain.Add(new UtilityAction(RepairActionName, ScoreRepair, ExecuteRepair)); // neutral duty — no trait
+            // TASK-A-AI-01 态度调制候选：无威胁/无态度时欲望恰为 0，旧行为逐位兼容。
+            _brain.Add(new UtilityAction(FleeActionName, ScoreFlee, ExecuteFlee)); // 逃跑类 — fear-modulated
+            _brain.Add(new UtilityAction(CounterattackActionName, ScoreCounterattack, ExecuteCounterattack)); // 攻击类 — anger-driven, fear-suppressed
+            _attitudeProfile = NpcAttitudeProfile.ForPersonality(personalityDef);
         }
 
         /// <summary>Raised when the chosen action CHANGES (View recolours on this, tests record sequences).</summary>
@@ -300,6 +361,15 @@ namespace Game.Domain.AI.Utility
         /// <summary>The repair chain the planner produced (null before the first Repair win; TASK-A-TECH-04 evidence).</summary>
         public GoapPlan ActiveChain => _chain;
 
+        /// <summary>Episodic memory (rolling, capacity 32; TASK-A-AI-01).</summary>
+        public NpcMemory Memory => _memory;
+
+        /// <summary>The per-NPC attitude aggregation coefficients (derived from the CFG personality row; TASK-A-AI-01).</summary>
+        public NpcAttitudeProfile AttitudeProfile => _attitudeProfile;
+
+        /// <summary>Attitude re-derived on the last tick (Neutral before the first tick; TASK-A-AI-01).</summary>
+        public NpcAttitude Attitude => _attitude;
+
         /// <summary>Index of the chain step currently being executed.</summary>
         public int ChainIndex => _chainIndex;
 
@@ -348,6 +418,46 @@ namespace Game.Domain.AI.Utility
             _fatigue = Math.Max(0f, Math.Min(_tuning.FatigueCeiling, fatigue));
         }
 
+        /// <summary>
+        /// Pumps the perceived threat source (e.g. the last attacker's
+        /// position), or null when nothing threatening is perceived
+        /// (TASK-A-AI-01). The flee/counterattack desires are zero without a
+        /// threat regardless of attitude — emotion needs a stimulus.
+        /// </summary>
+        public void SetThreatSource(Vec2? threatPosition)
+        {
+            _threatSource = threatPosition;
+        }
+
+        /// <summary>
+        /// Memory write: violence received from <paramref name="source"/> (the
+        /// 受伤 hook — the owner calls this when the player or another actor
+        /// lands a hit on THIS NPC). Stamped at the current agent clock and
+        /// aggregated into Fear+Anger per <see cref="NpcAttitudeProfile"/>.
+        /// </summary>
+        public void NoteAttackedBy(EntityRef source, float valence = -1f)
+        {
+            _memory.Add(new MemoryEntry(MemoryEventType.AttackedBy, valence, _clock, source));
+        }
+
+        /// <summary>Memory write: violence witnessed near the NPC (Fear rises).</summary>
+        public void NoteSawDeath(EntityRef source, float valence = -0.8f)
+        {
+            _memory.Add(new MemoryEntry(MemoryEventType.SawDeath, valence, _clock, source));
+        }
+
+        /// <summary>Memory write: benefit received from <paramref name="source"/> (Trust rises).</summary>
+        public void NoteGiftedFrom(EntityRef source, float valence = 1f)
+        {
+            _memory.Add(new MemoryEntry(MemoryEventType.GiftedFrom, valence, _clock, source));
+        }
+
+        /// <summary>Memory write: friendly presence perceived near the NPC (Trust rises slightly — 信任微增).</summary>
+        public void NotePlayerNear(EntityRef source, float valence = 1f)
+        {
+            _memory.Add(new MemoryEntry(MemoryEventType.PlayerNear, valence, _clock, source));
+        }
+
         /// <summary>Overrides the carried-item count (>= 0) — pumps the diminishing-desire state for tests.</summary>
         public void SetInventory(int count)
         {
@@ -370,6 +480,9 @@ namespace Game.Domain.AI.Utility
             _clock += deltaTime;
             _lastDeltaSeconds = deltaTime;
             _fatigue = Math.Min(_tuning.FatigueCeiling, _fatigue + (_tuning.FatiguePerSecond * deltaTime));
+
+            // TASK-A-AI-01：态度每拍从记忆重推（半衰期纯函数）——无新事件时随时间回落（调制可逆）。
+            _attitude = NpcAttitudeMath.Evaluate(_memory, _attitudeProfile, _clock);
 
             PumpState();
             string chosen = _brain.Tick(_state, _clock);
@@ -415,6 +528,19 @@ namespace Game.Domain.AI.Utility
             }
 
             _state.Set(NPCWorldState.Keys.DeviceBroken, _deviceBroken);
+
+            // TASK-A-AI-01：态度与威胁感知泵入世界快照（欲望函数只读快照，保持纯度）。
+            _state.Set(NPCWorldState.Keys.Fear, _attitude.Fear);
+            _state.Set(NPCWorldState.Keys.Anger, _attitude.Anger);
+            _state.Set(NPCWorldState.Keys.Trust, _attitude.Trust);
+            if (_threatSource is Vec2 threat)
+            {
+                _state.Set(NPCWorldState.Keys.ThreatDistance, Vec2.Distance(_position, threat));
+            }
+            else
+            {
+                _state.Remove(NPCWorldState.Keys.ThreatDistance);
+            }
         }
 
         // ---- pure desire curves (state in — desire out, nothing mutated) ----
@@ -440,8 +566,11 @@ namespace Game.Domain.AI.Utility
         private float ScoreFollow(NPCWorldState state)
         {
             float distance = state.GetFloat(NPCWorldState.Keys.PlayerDistance, 0f);
+            // TASK-A-AI-01 态度调制触点：信任增益跟随（trust 0 ⇒ ×1，旧行为逐位兼容）。
+            float trust = state.GetFloat(NPCWorldState.Keys.Trust, 0f);
             return _tuning.FollowDesirePeak
                    * UtilityCurves.Ramp(distance, _tuning.FollowDesireInner, _tuning.FollowDesireOuter)
+                   * NpcAttitudeMath.FollowTrustGain(trust)
                    * _personality.Follow;
         }
 
@@ -467,6 +596,47 @@ namespace Game.Domain.AI.Utility
             }
 
             return _tuning.RepairDesireBase;
+        }
+
+        // ---- TASK-A-AI-01 态度调制触点（欲望函数处）---------------------------------
+        // 调制公式本体是纯函数（NpcAttitudeMath.FleeDesire / CounterDesire，
+        // EditMode 手算断言）；这里只是把泵入快照的态度/威胁距离接到公式上。
+
+        /// <summary>
+        /// 逃跑类欲望（态度调制触点）：无威胁感知 ⇒ 0；否则
+        /// <c>NpcAttitudeMath.FleeDesire(fear, proximity)</c> —— 恐惧本身门控并
+        /// 增益逃跑（fear 0 ⇒ 0，fear 1 ⇒ ×3）。
+        /// </summary>
+        private float ScoreFlee(NPCWorldState state)
+        {
+            if (!state.HasThreat())
+            {
+                return 0f;
+            }
+
+            float fear = state.GetFloat(NPCWorldState.Keys.Fear, 0f);
+            float distance = state.GetFloat(NPCWorldState.Keys.ThreatDistance, 0f);
+            float proximity = UtilityCurves.Fall(distance, _tuning.ThreatDesireInner, _tuning.ThreatDesireOuter);
+            return NpcAttitudeMath.FleeDesire(fear, proximity);
+        }
+
+        /// <summary>
+        /// 攻击类欲望（态度调制触点）：无威胁感知 ⇒ 0；否则
+        /// <c>NpcAttitudeMath.CounterDesire(anger, fear, proximity)</c> ——
+        /// 愤怒门控并增益、恐惧乘抑制（scared NPC bites its tongue）。
+        /// </summary>
+        private float ScoreCounterattack(NPCWorldState state)
+        {
+            if (!state.HasThreat())
+            {
+                return 0f;
+            }
+
+            float anger = state.GetFloat(NPCWorldState.Keys.Anger, 0f);
+            float fear = state.GetFloat(NPCWorldState.Keys.Fear, 0f);
+            float distance = state.GetFloat(NPCWorldState.Keys.ThreatDistance, 0f);
+            float proximity = UtilityCurves.Fall(distance, _tuning.ThreatDesireInner, _tuning.ThreatDesireOuter);
+            return NpcAttitudeMath.CounterDesire(anger, fear, proximity);
         }
 
         // ---- execute delegates (the only place the NPC's world changes) ----
@@ -505,6 +675,30 @@ namespace Game.Domain.AI.Utility
         private void ExecuteFollow()
         {
             _position = Vec2.MoveTowards(_position, _playerPosition, _tuning.FollowSpeed * _lastDeltaSeconds);
+        }
+
+        /// <summary>Flees one step straight AWAY from the threat (TASK-A-AI-01).</summary>
+        private void ExecuteFlee()
+        {
+            if (!(_threatSource is Vec2 threat))
+            {
+                return; // 威胁感知丢失：本拍空转（门控下欲望已归零，不会走到这里）
+            }
+
+            Vec2 away = _position - threat;
+            Vec2 escapeTarget = _position + (away.Normalized * 10f);
+            _position = Vec2.MoveTowards(_position, escapeTarget, _tuning.FleeSpeed * _lastDeltaSeconds);
+        }
+
+        /// <summary>Closes one step ONTO the threat (counterattack approach; TASK-A-AI-01).</summary>
+        private void ExecuteCounterattack()
+        {
+            if (!(_threatSource is Vec2 threat))
+            {
+                return; // 威胁感知丢失：本拍空转
+            }
+
+            _position = Vec2.MoveTowards(_position, threat, _tuning.CounterSpeed * _lastDeltaSeconds);
         }
 
         private void ExecutePatrol()

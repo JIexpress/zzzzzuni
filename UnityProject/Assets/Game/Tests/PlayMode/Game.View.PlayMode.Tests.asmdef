@@ -5,7 +5,9 @@
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
         "ZFrame.Core",
+        "ZFrame.Gameplay",
         "ZFrame.View",
+        "Game.Domain",
         "Game.View",
         "ZFrame.Render.Bindings"
     ],

@@ -228,7 +228,8 @@ namespace Game.Domain.Tests
             Assert.Throws<ArgumentException>(() => new NpcUtilityAgent(
                 string.Empty, Vec2.Zero, RestPoint, new Vec2[0]));
             var brainMissing = new NpcUtilityAgent("npc-x", Vec2.Zero, RestPoint, new Vec2[0]);
-            Assert.AreEqual(5, brainMissing.Brain.ActionCount, "默认候选集必须装配 5 个行动（A-TECH-04 起 +Repair）");
+            // TASK-A-AI-01：默认候选集 +Flee/+Counterattack（态度调制候选，无态度时恒 0 分）→ 5+2=7。
+            Assert.AreEqual(7, brainMissing.Brain.ActionCount, "默认候选集必须装配 7 个行动（A-TECH-04 起 +Repair，A-AI-01 起 +态度两候选）");
         }
     }
 }
