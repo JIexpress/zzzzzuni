@@ -4,6 +4,8 @@
 
 | 日期 | 任务 | 结果 | commit |
 |---|---|---|---|
+| 2026-11-04 | A-CI-02 CI Vulkan 补齐 | done：施工→验收 PASS（云端首轮 SUCCESS 349/349、独立 curl 核对 run）——CI 全绿 | 963c63a |
+| 2026-11-04 | A-AND-08 DataKernel 玩法规模化 | done：施工→验收 PASS（989+74 用例、P/Invoke 2003→10/帧、A/B 三样本复核）——DataKernel 最后承诺兑现 | da27f8b |
 | 2026-11-04 | B-TECH-04 球面地形+大气 | done：施工→验收 PASS（6144chunk seams=0 逐位、LOD 迟滞、三海拔截图、7.9ms 帧耗）——行星地表雏形 | b27804e |
 | 2026-11-04 | A-TECH-05 装配图+序列化 | done：施工→验收 PASS（983+71 用例、变异复红、包络判据独立复核物理正确） | a8af2f5 |
 | 2026-11-04 | A-R9-14 音频打磨包 | done：两次接手→续建完成（中性验证 873/873 后收尾）；SFX+BGM 接线 AudioService | (工作树) |
