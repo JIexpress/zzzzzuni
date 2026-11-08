@@ -169,3 +169,4 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | A-TECH-05 | A/TECH | 装配二阶:装配图+序列化+零件扩展 | done(验收PASS;变异复红) | Docs/Logs/TASK-A-TECH-05.md | a8af2f5 |
 | B-TECH-04 | B/TECH | 球面地形chunk+LOD+大气渐变 | done(验收PASS;6144chunk seams=0) | Docs/Logs/TASK-B-TECH-04.md | b27804e |
 | A-ANIM-01 | A/ANIM | 人形骨骼动画:AI驱动的状态机+IK(用户需求) | done(验收PASS;含A-TECH-04并行产物) | Docs/Logs/TASK-A-ANIM-01.md | 81c3cbe |
+| A-AI-02 | A/AI | AI 队友协作(GOAP社交协调层) | doing | Docs/Logs/TASK-A-AI-02.md | |
