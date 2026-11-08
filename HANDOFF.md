@@ -6,11 +6,12 @@
 
 **快照时间**: 2026-11-09 凌晨（**WorkBuddy 主控接棒，全量盘点后校准**）｜**刷新者**: 主控（WorkBuddy，银橙AI 会话）｜**仓库**: `C:\Users\1\Desktop\zcode\GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni
 
-## ⚡ 最新（2026-11-09 04:40，接管盘点 + 数字校准）
+## ⚡ 最新（2026-11-09 05:40，接管盘点 + A-ANIM-02 闭环）
 
-- **看板真实口径**：**132 行全 done / 0 doing / 0 todo**（旧文档写 130 是 11-04 的快照；A-AI-01/A-AND-09/A-AI-02/A-AND-10 早已闭环，**不要再派**）。
-- **测试真家底（本轮实测）**：原生 **349 用例 / 778,723 断言全绿**（我自己跑的 `zrender_test.exe`）；EditMode **1099** + PlayMode **85**（01:53 五段报告 ALL PASS）；合计 **1533 用例**。架构校验 **26 asmdef / 0 违规**。
-- **git 现场**：HEAD `be3091d`，工作区干净，**领先 origin/main 18 个提交未推**（A-AND-10 触屏包、A-AI-02、A-AND-09、A-AI-01、G-136~G-140 治理与交接手册）。
+- **看板真实口径**：**133 行全 done / 0 doing / 0 todo**（旧文档写 130 是 11-04 的快照；A-AI-01/A-AND-09/A-AI-02/A-AND-10 早已闭环，**不要再派**）。
+- **测试真家底（实测）**：原生 **349 用例 / 778,723 断言全绿**（`zrender_test.exe`）；EditMode **1102** + PlayMode **88**（A-ANIM-02 验收 XML 实计）；合计 **1539 用例**。架构校验 **26 asmdef / 0 违规**。
+- **A-ANIM-02 动画扩展第一刀（d938565）**：跳跃从「只触发动画」变成真垂直位移——纯函数弧线（v0=√2gh、T=2v0/g、峰值 0.7500m、落地差 0.0000）、`Grounded` 由真值驱动、控制器补 Idle→Jump 与 Jump→Run（6 过渡）、空中二次请求被拒。两处变异复红后 sha256 还原。
+- **git 现场**：HEAD `d938565`，工作区干净，**领先 origin/main 20 个提交未推**（A-AND-10 触屏包、A-AI-02、A-AND-09、A-AI-01、G-136~G-140 治理与交接手册）。
 - **文档漂移已修（G-141）**：README 的 103 任务/916/48/311/25 asmdef、TASKS 行内统计 114、A-R9-18 空 commit、ROADMAP 方向四 doing/todo 全部对齐实测值。
 - **盘点新发现（文档此前未记录，见下「渲染体检」）**：色彩空间是 **Gamma** 而 URP+HDR+Bloom 按线性工作；Medium/High 开 HDR 但全工程无 Tonemapping override；`Art/Textures` **0 张位图**、动画 0、预制体 5。
 
@@ -18,8 +19,8 @@
 
 | 项 | 值 |
 |---|---|
-| 任务看板 | **132 done / 0 doing / 0 todo**（TASKS.md） |
-| 测试家底 | 原生 **349 / 778,723 断言** + EditMode **1099** + PlayMode **85** ≈ **1533 用例**；三校验器 exit 0 |
+| 任务看板 | **133 done / 0 doing / 0 todo**（TASKS.md） |
+| 测试家底 | 原生 **349 / 778,723 断言** + EditMode **1102** + PlayMode **88** ≈ **1539 用例**；三校验器 exit 0 |
 | 代码规模 | C# 530 文件 / 86,755 行；C++ 175 文件 / 77,106 行（生产 27k + 测试 34k） |
 | 可交付物 | `Build/Windows64`（81.8MB Mono 包）、`Build/Installer/ZFrame-Setup-0.1.0.32.exe`（24MB）、`Build/Android/ZFrame.apk`（IL2CPP，minSdk 22，Vulkan→GLES3） |
 | 管线 | Unity 2022.3.62f3c1 + **URP 14.0.11**（活跃）；ZRender 自研管线为可切换的第二管线（D3D12 门控） |
@@ -58,11 +59,12 @@
 | # | 事项 | 现状 | 代价 |
 |---|---|---|---|
 | 1 | 渲染三缺陷裁决（Gamma / Tonemapping / 三档后处理） | 已定位，未改 | 小，但动画面，需用户点头 |
-| 2 | SRP Batcher 与 DrawCall 可测化（A/B 测量，替代 Frame Debugger 目测） | 只有开关，无数字 | 中，PlayMode 用例可自证 |
-| 3 | 内容管线起步（贴图/材质/动画） | 0 贴图 0 动画 | 大，决定「像不像游戏」 |
-| 4 | 游戏本体（星球探索 + 装配生存） | 技术全备，无设计 | 大 |
-| 5 | Windows IL2CPP 正式包 | 当前 Mono | 小，一条命令 + 验证 |
-| 6 | 推 18 个提交 / token 轮换 | 待用户确认 | 极小 |
+| 2 | 动画扩展续（脚步 IK → 程序化层） | 跳跃已闭环；IK 只有 look-at | 中，PlayMode 可自证 |
+| 3 | SRP Batcher 与 DrawCall 可测化（A/B 测量，替代 Frame Debugger 目测） | 只有开关，无数字 | 中，PlayMode 用例可自证 |
+| 4 | 内容管线起步（贴图/材质/动画） | 0 贴图 0 动画 | 大，决定「像不像游戏」 |
+| 5 | 游戏本体（星球探索 + 装配生存） | 用户构思中，勿抢跑 | 大 |
+| 6 | Windows IL2CPP 正式包 | 当前 Mono | 小，一条命令 + 验证 |
+| 7 | 推 20 个提交 / token 轮换 | 待用户确认 | 极小 |
 
 ## 环境纪律速查（每条真实踩过，详见交接档案 §3）
 
@@ -76,7 +78,7 @@
 
 ## 待办备忘
 
-- **18 个提交未推**（推远程前必须用户确认，AGENTS.md 铁律）；CI token 轮换仍成立（用户给的令牌与仓内凭据逐字节相同，非新令牌）
+- **20 个提交未推**（推远程前必须用户确认，AGENTS.md 铁律）；CI token 轮换仍成立（用户给的令牌与仓内凭据逐字节相同，非新令牌）
 - `Tools/android_support_installer.exe` 456MB 已在 .gitignore（未入库），可删本地副本
 - 仓库 515MB：FSR 两个 DLL 占 65MB、`Docs/Parity` PNG 约 20MB——ADR-004 允许，但 clone 成本高
 - `TestPanelView` 仍随包（技术债 §5）；`run_tests.ps1` BOM 可顺手清

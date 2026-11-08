@@ -80,8 +80,9 @@
 | R10-05 | B/R10 | 修复审计P2原生批(8条) | done(验收PASS with受限 8/8；251用例/711,498断言；三处越界追认条件成立) | Docs/Logs/TASK-R10-05.md | 06a3660 |
 | R10-06 | A/R10 | 修复审计P2 C#批(A-9相机还原) | done(验收PASS with受限 6/6；EditMode 719) | Docs/Logs/TASK-R10-06.md | fa671ba |
 | R10-07 | B/R10 | 补审计漏项(A-10 split屏障 + B-6 采集泄漏) | done(验收PASS with受限 10/10；native 253/711,537) | Docs/Logs/TASK-R10-07.md | 98d377b |
+| A-ANIM-02 | A/ANIM | 动画扩展一：跳跃接真实垂直位移（Grounded 真值 + 控制器 Idle→Jump/Jump→Run） | done(验收PASS；纯函数弧线峰值0.7500/落地差0.0000；1102+88用例；变异双复红) | Docs/Logs/TASK-A-ANIM-02.md | d938565 |
 
-**统计**：done 132 ／ doing 0 ／ todo 0 ／ blocked 0 ／ held 0（2026-11-09 G-141 校准，逐行 awk 复核）
+**统计**：done 133 ／ doing 0 ／ todo 0 ／ blocked 0 ／ held 0（2026-11-09 G-142 校准，逐行 awk 复核）
 
 > **2026-10-28 G-64 文档对齐（接管）**：修三处失真 ①R8 六行原被追加在「里程碑对照」标题**下方**导致表格断裂、`B-R8-03` 仍挂 `doing`（实际已 PASS，commit `be2adcf`）——已并入主表并改正状态
 > ②`HANDOFF.md` 表头仍写「R8 推进 3/4、B-R8-02 待派」（实际 47 任务全闭环）③`README.md` 与 HANDOFF 注意事项里的任务数/用例数/`TestReport.txt` 是否入库均过期。
