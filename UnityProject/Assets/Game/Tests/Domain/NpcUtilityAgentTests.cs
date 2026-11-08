@@ -228,7 +228,7 @@ namespace Game.Domain.Tests
             Assert.Throws<ArgumentException>(() => new NpcUtilityAgent(
                 string.Empty, Vec2.Zero, RestPoint, new Vec2[0]));
             var brainMissing = new NpcUtilityAgent("npc-x", Vec2.Zero, RestPoint, new Vec2[0]);
-            Assert.AreEqual(4, brainMissing.Brain.ActionCount, "默认候选集必须装配 4 个行动");
+            Assert.AreEqual(5, brainMissing.Brain.ActionCount, "默认候选集必须装配 5 个行动（A-TECH-04 起 +Repair）");
         }
     }
 }

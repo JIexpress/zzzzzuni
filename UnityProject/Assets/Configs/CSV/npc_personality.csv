@@ -1,0 +1,6 @@
+Id,FatigueWeight,SocialWeight,CuriosityWeight,BraveryWeight
+balanced,1.0,1.0,1.0,1.0
+sociable,0.5,2.0,0.5,0.5
+curious,0.5,0.5,2.0,0.5
+brave,0.5,0.5,0.5,2.0
+lethargic,2.0,0.5,0.5,0.5

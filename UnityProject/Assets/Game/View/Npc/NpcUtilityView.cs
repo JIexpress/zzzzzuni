@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Game.Domain.AI.Utility;
 using UnityEngine;
 using ZFrame.Gameplay;
+using ZFrame.Gameplay.AI;
 
 namespace Game.View.Npc
 {
@@ -47,20 +48,34 @@ namespace Game.View.Npc
         [SerializeField] private Vector3 _restPoint = new Vector3(-6f, 0f, -4f);
         [SerializeField] private Vector3[] _waypoints = new Vector3[0];
         [SerializeField] private Transform[] _drops = new Transform[0];
+        [SerializeField] private Transform _toolbox;
+        [SerializeField] private Transform _device;
         [SerializeField] private float _startFatigue = 0f;
         [SerializeField] private float _fatiguePerSecond = 0.02f;
         [SerializeField] private NpcBias _bias = NpcBias.Balanced;
+        [SerializeField] private NpcPersonalityTable _personalityTable;
+        [SerializeField] private string _personalityId = "";
         [SerializeField] private Renderer _renderer;
         [SerializeField] private TextMesh _stateLabel;
 
         private NpcUtilityAgent _agent;
         private readonly List<string> _selectionHistory = new List<string>();
+        private GoapPlan _lastChainPlan;
 
         /// <summary>The Domain brain (built on demand; null before first use).</summary>
         public NpcUtilityAgent Agent => _agent;
 
         /// <summary>Stable identity the label shows.</summary>
         public string NpcId => _npcId;
+
+        /// <summary>CFG personality row id this view is wired to (empty = legacy bias path).</summary>
+        public string PersonalityId => _personalityId;
+
+        /// <summary>The personality row resolved from the CFG table (null = none/unknown id).</summary>
+        public NPCPersonalityDef PersonalityDef { get; private set; }
+
+        /// <summary>The last repair chain the planner produced for this NPC (TASK-A-TECH-04 evidence; null before planning).</summary>
+        public GoapPlan LastChainPlan => _lastChainPlan;
 
         /// <summary>Action the View is currently displaying.</summary>
         public string DisplayedAction { get; private set; } = UtilityBrain.IdleActionName;
@@ -105,16 +120,20 @@ namespace Game.View.Npc
                 route.Add(new Vec2(_waypoints[i].x, _waypoints[i].z));
             }
 
+            PersonalityDef = _personalityTable != null ? _personalityTable.FindRow(_personalityId) : null;
             _agent = new NpcUtilityAgent(
                 _npcId,
                 new Vec2(transform.position.x, transform.position.z),
                 new Vec2(_restPoint.x, _restPoint.z),
                 route,
                 tuning,
-                PersonalityFor(_bias));
+                PersonalityFor(_bias),
+                PersonalityDef);
             _agent.SetFatigue(_startFatigue);
             _agent.ActionChosen += OnActionChosen;
             _agent.DropCollected += OnDropCollected;
+            _agent.ChainPlanned += OnChainPlanned;
+            _agent.DeviceRepaired += OnDeviceRepaired;
 
             if (_renderer == null)
             {
@@ -144,6 +163,8 @@ namespace Game.View.Npc
             {
                 _agent.ActionChosen -= OnActionChosen;
                 _agent.DropCollected -= OnDropCollected;
+                _agent.ChainPlanned -= OnChainPlanned;
+                _agent.DeviceRepaired -= OnDeviceRepaired;
             }
         }
 
@@ -173,6 +194,14 @@ namespace Game.View.Npc
             }
 
             _agent.SetDropTarget(nearest != null ? new Vec2(nearest.position.x, nearest.position.z) : (Vec2?)null);
+
+            // TASK-A-TECH-04 GOAP 传感器：工具箱恒定可用；损坏装置只在激活（未修复）时被感知。
+            // 全局"已修复"事实 = 装置对象的激活状态——任何人修复后 Owner 反激活装置，
+            // 所有 NPC 下一拍泵到的就是 broken=false，无需视图间耦合。
+            _agent.SetToolboxPosition(_toolbox != null ? new Vec2(_toolbox.position.x, _toolbox.position.z) : (Vec2?)null);
+            bool devicePerceived = _device != null && _device.gameObject.activeInHierarchy;
+            _agent.SetDeviceTarget(devicePerceived ? new Vec2(_device.position.x, _device.position.z) : (Vec2?)null);
+            _agent.SetDeviceBroken(devicePerceived);
         }
 
         private void ApplyTransform()
@@ -204,6 +233,20 @@ namespace Game.View.Npc
                     drop.gameObject.SetActive(false);
                     return;
                 }
+            }
+        }
+
+        private void OnChainPlanned(GoapPlan plan)
+        {
+            _lastChainPlan = plan;
+        }
+
+        private void OnDeviceRepaired(Vec2 position)
+        {
+            if (_device != null)
+            {
+                // 全局修复事实落盘：反激活装置 → 全体 NPC 下一拍 PumpWorld 泵到 broken=false。
+                _device.gameObject.SetActive(false);
             }
         }
 
@@ -241,6 +284,7 @@ namespace Game.View.Npc
                 case NpcUtilityAgent.PickupActionName: return new Color(0.95f, 0.55f, 0.1f);
                 case NpcUtilityAgent.FollowActionName: return new Color(0.2f, 0.85f, 0.9f);
                 case NpcUtilityAgent.PatrolActionName: return new Color(0.95f, 0.8f, 0.2f);
+                case NpcUtilityAgent.RepairActionName: return new Color(0.9f, 0.25f, 0.2f);
                 default: return new Color(0.55f, 0.6f, 0.7f);
             }
         }

@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 401ecf89156d62042b73cb51d6f90e47, type: 3}
+  m_Name: CFG_NpcPersonality
+  m_EditorClassIdentifier: 
+  _rows:
+  - <Id>k__BackingField: balanced
+    <FatigueWeight>k__BackingField: 1
+    <SocialWeight>k__BackingField: 1
+    <CuriosityWeight>k__BackingField: 1
+    <BraveryWeight>k__BackingField: 1
+  - <Id>k__BackingField: sociable
+    <FatigueWeight>k__BackingField: 0.5
+    <SocialWeight>k__BackingField: 2
+    <CuriosityWeight>k__BackingField: 0.5
+    <BraveryWeight>k__BackingField: 0.5
+  - <Id>k__BackingField: curious
+    <FatigueWeight>k__BackingField: 0.5
+    <SocialWeight>k__BackingField: 0.5
+    <CuriosityWeight>k__BackingField: 2
+    <BraveryWeight>k__BackingField: 0.5
+  - <Id>k__BackingField: brave
+    <FatigueWeight>k__BackingField: 0.5
+    <SocialWeight>k__BackingField: 0.5
+    <CuriosityWeight>k__BackingField: 0.5
+    <BraveryWeight>k__BackingField: 2
+  - <Id>k__BackingField: lethargic
+    <FatigueWeight>k__BackingField: 2
+    <SocialWeight>k__BackingField: 0.5
+    <CuriosityWeight>k__BackingField: 0.5
+    <BraveryWeight>k__BackingField: 0.5

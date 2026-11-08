@@ -3,6 +3,7 @@
     "rootNamespace": "Game.Domain.Tests",
     "references": [
         "ZFrame.Core",
+        "ZFrame.Data",
         "ZFrame.Gameplay",
         "Game.Domain"
     ],

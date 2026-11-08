@@ -34,6 +34,18 @@ namespace Game.Domain.AI.Utility
 
             /// <summary>int — items already carried (used for diminishing pickup desire).</summary>
             public const string InventoryCount = "npc.inventoryCount";
+
+            /// <summary>
+            /// float — metres to the repair toolbox (tool source); ABSENT means
+            /// no toolbox perceived (TASK-A-TECH-04 GOAP slice).
+            /// </summary>
+            public const string ToolboxDistance = "npc.toolboxDistance";
+
+            /// <summary>float — metres to the broken device (repair target); ABSENT means none perceived.</summary>
+            public const string DeviceDistance = "npc.deviceDistance";
+
+            /// <summary>bool — true while the device is broken and repair is pending.</summary>
+            public const string DeviceBroken = "npc.deviceBroken";
         }
 
         private readonly Dictionary<string, object> _values = new Dictionary<string, object>(StringComparer.Ordinal);

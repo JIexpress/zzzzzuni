@@ -1,6 +1,7 @@
 #if UNITY_EDITOR
 using System.Collections.Generic;
 using System.IO;
+using Game.Domain.AI.Utility;
 using Game.View.Npc;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -10,12 +11,14 @@ namespace Game.View.Editor
 {
     /// <summary>
     /// One-shot generator for the utility-AI slice scene
-    /// <c>Assets/Scenes/SCN_Utility.unity</c> (TASK-A-TECH-01): ground, a
-    /// static player, a rest point, three drops, four waypoint markers and
-    /// THREE utility NPCs that all spawn at the SAME point (0, 1, 0) with
-    /// different serialized start states — A tired+restful (fatigue 0.95),
-    /// B a collector, C a wayfarer — so the same brain code produces three
-    /// different behaviour paths purely from ranking its own options.
+    /// <c>Assets/Scenes/SCN_Utility.unity</c> (TASK-A-TECH-01/04): ground, a
+    /// static player, a rest point, three drops, four waypoint markers, a
+    /// TOOLBOX (tool source for the GOAP repair chain) and a BROKEN DEVICE
+    /// (repair target), plus FIVE utility NPCs that all spawn at the SAME
+    /// point (0, 1, 0) with the SAME start state — they differ ONLY by their
+    /// CFG_NpcPersonality row (balanced / sociable / curious / brave /
+    /// lethargic), so identical worlds plus identical brains still produce
+    /// pairwise-different behaviour purely from the personality weights.
     /// Idempotent by the GameSceneSetup convention: the scene is rebuilt from
     /// scratch on every run, so the committed artifact always matches this
     /// script. Build settings keep [SCN_Boot, SCN_Empty, SCN_Game] in front
@@ -24,7 +27,8 @@ namespace Game.View.Editor
     /// Run via menu (ZFrame/Setup/Generate SCN_Utility) or batch:
     ///   -executeMethod Game.View.Editor.UtilitySceneSetup.SetupFromCommandLine
     /// Editor-only by the #if UNITY_EDITOR guard (same pattern as
-    /// GameSceneSetup).
+    /// GameSceneSetup). Requires Assets/Configs/CFG_NpcPersonality.asset
+    /// (generate first via NpcPersonalityConfigSetup).
     /// </summary>
     public static class UtilitySceneSetup
     {
@@ -33,10 +37,13 @@ namespace Game.View.Editor
         private const string BootScenePath = ScenesDir + "/SCN_Boot.unity";
         private const string EmptyScenePath = ScenesDir + "/SCN_Empty.unity";
         private const string GameScenePath = ScenesDir + "/SCN_Game.unity";
+        private const string PersonalityTablePath = "Assets/Configs/CFG_NpcPersonality.asset";
 
         private static readonly Vector3 SpawnPoint = new Vector3(0f, 1f, 0f);
         private static readonly Vector3 RestPoint = new Vector3(-6f, 0.2f, -4f);
         private static readonly Vector3 PlayerPosition = new Vector3(7f, 1f, 4.5f);
+        private static readonly Vector3 ToolboxPosition = new Vector3(-3f, 0.35f, 3f);
+        private static readonly Vector3 DevicePosition = new Vector3(4f, 0.3f, -3f);
         private static readonly Vector3[] Waypoints =
         {
             new Vector3(6f, 0f, -6f),
@@ -51,14 +58,33 @@ namespace Game.View.Editor
             new Vector3(3.5f, 0.25f, 2.5f),
         };
 
+        /// <summary>The five demo personalities — same order as CFG_NpcPersonality (assertion anchors).</summary>
+        private static readonly string[] PersonalityIds =
+        {
+            "balanced",
+            "sociable",
+            "curious",
+            "brave",
+            "lethargic",
+        };
+
         /// <summary>Rebuilds SCN_Utility and pins the build-settings order.</summary>
         [MenuItem("ZFrame/Setup/Generate SCN_Utility")]
         public static void Setup()
         {
+            NpcPersonalityTable personalityTable =
+                AssetDatabase.LoadAssetAtPath<NpcPersonalityTable>(PersonalityTablePath);
+            if (personalityTable == null)
+            {
+                throw new System.InvalidOperationException(
+                    $"[UtilitySceneSetup] {PersonalityTablePath} missing — run "
+                    + "Game.View.Editor.NpcPersonalityConfigSetup.SetupFromCommandLine first.");
+            }
+
             Directory.CreateDirectory(ScenesDir);
 
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-            BuildContent();
+            BuildContent(personalityTable);
             EditorSceneManager.SaveScene(scene, UtilityScenePath);
             ApplyBuildSettings();
             AssetDatabase.SaveAssets();
@@ -74,16 +100,18 @@ namespace Game.View.Editor
             EditorApplication.Exit(0);
         }
 
-        private static void BuildContent()
+        private static void BuildContent(NpcPersonalityTable personalityTable)
         {
             BuildCamera();
             BuildLight();
             BuildGround();
             Transform player = BuildPlayer();
             BuildRestPoint();
+            Transform toolbox = BuildToolbox();
+            Transform device = BuildBrokenDevice();
             Transform[] drops = BuildDrops();
             BuildWaypointMarkers();
-            BuildNpcs(player, drops);
+            BuildNpcs(personalityTable, player, toolbox, device, drops);
         }
 
         private static void BuildCamera()
@@ -133,6 +161,27 @@ namespace Game.View.Editor
             rest.transform.localScale = new Vector3(1.6f, 0.4f, 1.6f);
         }
 
+        private static Transform BuildToolbox()
+        {
+            // GOAP 修理链第一步的目标：取工具（TASK-A-TECH-04）。
+            GameObject toolbox = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            toolbox.name = "Toolbox";
+            toolbox.transform.position = ToolboxPosition;
+            toolbox.transform.localScale = new Vector3(0.7f, 0.7f, 0.7f);
+            return toolbox.transform;
+        }
+
+        private static Transform BuildBrokenDevice()
+        {
+            // GOAP 修理链第二步的目标：损坏装置（修复它 = 全局事实翻转）。
+            GameObject device = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            device.name = "BrokenDevice";
+            device.transform.position = DevicePosition;
+            device.transform.localScale = new Vector3(0.8f, 0.8f, 0.8f);
+            device.GetComponent<Renderer>().material.color = new Color(0.85f, 0.2f, 0.15f);
+            return device.transform;
+        }
+
         private static Transform[] BuildDrops()
         {
             var root = new GameObject("UtilityDrops");
@@ -163,25 +212,37 @@ namespace Game.View.Editor
             }
         }
 
-        private static void BuildNpcs(Transform player, Transform[] drops)
+        private static void BuildNpcs(
+            NpcPersonalityTable personalityTable,
+            Transform player,
+            Transform toolbox,
+            Transform device,
+            Transform[] drops)
         {
             var root = new GameObject("UtilityNPCs");
-            BuildNpc(root.transform, "NPC_A", NpcUtilityView.NpcBias.Restful, 0.95f, player, drops);
-            BuildNpc(root.transform, "NPC_B", NpcUtilityView.NpcBias.Collector, 0f, player, drops);
-            BuildNpc(root.transform, "NPC_C", NpcUtilityView.NpcBias.Wayfarer, 0f, player, drops);
+            // 五个 NPC：同起点、同起始状态、同世界——唯一差异是 CFG_NpcPersonality 行。
+            for (int i = 0; i < PersonalityIds.Length; i++)
+            {
+                char suffix = (char)('A' + i);
+                BuildNpc(root.transform, $"NPC_{suffix}", PersonalityIds[i], personalityTable, 0f,
+                    player, toolbox, device, drops);
+            }
         }
 
         private static void BuildNpc(
             Transform parent,
             string npcId,
-            NpcUtilityView.NpcBias bias,
+            string personalityId,
+            NpcPersonalityTable personalityTable,
             float startFatigue,
             Transform player,
+            Transform toolbox,
+            Transform device,
             Transform[] drops)
         {
             GameObject npc = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             npc.name = npcId;
-            npc.transform.position = SpawnPoint; // the SAME start point for all three
+            npc.transform.position = SpawnPoint; // the SAME start point for all five
             npc.transform.localScale = new Vector3(0.9f, 0.95f, 0.9f);
             npc.transform.SetParent(parent, false);
 
@@ -194,9 +255,13 @@ namespace Game.View.Editor
             SetVector3(view, "_restPoint", RestPoint);
             SetVector3Array(view, "_waypoints", Waypoints);
             SetTransformArray(view, "_drops", drops);
+            SetReference(view, "_toolbox", toolbox);
+            SetReference(view, "_device", device);
             SetFloat(view, "_startFatigue", startFatigue);
             SetFloat(view, "_fatiguePerSecond", 0.02f);
-            SetEnum(view, "_bias", (int)bias);
+            SetEnum(view, "_bias", (int)NpcUtilityView.NpcBias.Balanced);
+            SetReference(view, "_personalityTable", personalityTable);
+            SetString(view, "_personalityId", personalityId);
             SetReference(view, "_renderer", npc.GetComponent<Renderer>());
         }
 

@@ -31,7 +31,18 @@ namespace Game.Domain.AI.Utility
         /// <param name="score">Pure function: world state → score (any float; the brain compares raw values).</param>
         /// <param name="execute">Effect of winning one tick (mutates the owning agent, fires events...).</param>
         /// <param name="cooldownSeconds">Minimum seconds between two executions; 0 = may win every tick.</param>
-        public UtilityAction(string name, Func<NPCWorldState, float> score, Action execute, float cooldownSeconds = 0f)
+        /// <param name="personalityTrait">
+        /// Optional trait tag (<see cref="UtilityTraits"/>) selecting which
+        /// personality weight modulates this action's score; null = neutral
+        /// (duty, weight 1.0). Unknown traits throw — a typo would silently
+        /// neutralize the personality otherwise.
+        /// </param>
+        public UtilityAction(
+            string name,
+            Func<NPCWorldState, float> score,
+            Action execute,
+            float cooldownSeconds = 0f,
+            string personalityTrait = null)
         {
             if (string.IsNullOrEmpty(name))
             {
@@ -46,8 +57,16 @@ namespace Game.Domain.AI.Utility
                 throw new ArgumentOutOfRangeException(nameof(cooldownSeconds), "UtilityAction: cooldown must be >= 0.");
             }
 
+            if (personalityTrait != null && !UtilityTraits.IsKnown(personalityTrait))
+            {
+                throw new ArgumentException(
+                    $"UtilityAction: unknown personality trait '{personalityTrait}' (see UtilityTraits).",
+                    nameof(personalityTrait));
+            }
+
             Name = name;
             CooldownSeconds = cooldownSeconds;
+            PersonalityTrait = personalityTrait;
         }
 
         /// <summary>Stable identity (rankings, logs, assertions).</summary>
@@ -55,6 +74,12 @@ namespace Game.Domain.AI.Utility
 
         /// <summary>Minimum seconds between two executions (0 = no cooldown).</summary>
         public float CooldownSeconds { get; }
+
+        /// <summary>
+        /// Trait tag selecting the personality weight (null = neutral,
+        /// weight 1.0 — the brain multiplies neutral actions by 1).
+        /// </summary>
+        public string PersonalityTrait { get; }
 
         /// <summary>
         /// Scores the action against <paramref name="state"/>. Pure by contract:

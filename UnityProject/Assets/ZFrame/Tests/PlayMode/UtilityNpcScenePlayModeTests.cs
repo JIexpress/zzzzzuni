@@ -1,27 +1,39 @@
-// UtilityNpcScenePlayModeTests.cs —— TASK-A-TECH-01：效用 AI 切片的场景级证据。
-// SCN_Utility 里三个 NPC 同一出生点 (0,1,0)、同一大脑代码、同一世界，仅序列化的
-// 起始状态不同（A 疲劳+恋休息 / B 恋捡取 / C 恋巡逻）。断言三件事：
-// ① 行为分化：三种互不相同的当前行为（Rest / Pickup / Patrol）；
-// ② 同起点不同行为路径：两两平面距离 > 2m（可证伪：不分化即红）；
-// ③ 时间维度自主性：NPC_A 在休息点恢复后自行切换到捡取（历史序列断言）。
-// 截图按 A-R9-15 口径：离屏探针相机 + RenderTexture + ReadPixels + PNG 落
-// Docs/Parity/（仅图片证据，不做像素差分断言）。
+// UtilityNpcScenePlayModeTests.cs —— TASK-A-TECH-04：效用 AI 第二阶段的场景级证据。
+// SCN_Utility 里五个 NPC 同一出生点 (0,1,0)、同一大脑代码、同一世界、同一起始状态，
+// 唯一差异是 CFG_NpcPersonality 表的个性权重行（balanced/sociable/curious/brave/lethargic）。
+// 断言四件事：
+// ① 行为分化：同状态 600 拍逐拍序列两两不同（个性权重分化，可证伪：不分化即红）；
+// ② GOAP 两步链：单步修理不可行（无工具）→ 规划器产出 [TakeTool → RepairDevice]，
+//    NPC 真实走完 工具箱 → 损坏装置 的空间顺序，装置反激活（全局修复事实回流）；
+// ③ 权重门控：同一疲劳泵入后，五个 NPC 按各自权重选出不同行为（手算锚点）；
+// ④ 截图按 A-R9-15 口径：离屏探针相机 + RenderTexture + ReadPixels + PNG 落
+//    Docs/Parity/utility_personality_*.png（仅图片证据，不做像素差分断言）。
 
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Game.View.Npc;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
+using ZFrame.Gameplay.AI;
 
 namespace ZFrame.PlayMode.Tests
 {
-    /// <summary>SCN_Utility 三个效用 NPC 的分化 + 分路 + 时间自主性 + 截图证据。</summary>
+    /// <summary>SCN_Utility 五个性 NPC 的分化 + GOAP 两步链 + 权重门控 + 截图证据。</summary>
     public sealed class UtilityNpcScenePlayModeTests
     {
         private const string SceneName = "SCN_Utility";
+        private static readonly string[] ExpectedNpcIds =
+        {
+            "npc-a", "npc-b", "npc-c", "npc-d", "npc-e",
+        };
+        private static readonly string[] ExpectedPersonalityIds =
+        {
+            "balanced", "sociable", "curious", "brave", "lethargic",
+        };
 
         private readonly List<NpcUtilityView> _views = new List<NpcUtilityView>();
 
@@ -37,51 +49,163 @@ namespace ZFrame.PlayMode.Tests
             _views.Clear();
         }
 
+        // ---- ① 个性分化：同起点同状态同世界，600 拍两两不同 ----
+
         [UnityTest]
-        public IEnumerator SameStart_ThreeNpcs_DivergeIntoDistinctBehaviorsAndPaths()
+        public IEnumerator SameStart_FivePersonalityNpcs_PairwiseDivergentSequences()
         {
             yield return LoadSceneAndCollectViews();
-            Assert.AreEqual(3, _views.Count, "SCN_Utility 必须携带三个效用 NPC");
             AssertSameStart();
             foreach (NpcUtilityView view in _views)
             {
+                Assert.AreEqual(ExpectedPersonalityIds[IdIndex(view.NpcId)], view.PersonalityDef.Id,
+                    $"{view.NpcId} 必须绑定 CFG_NpcPersonality 行（配置驱动，非代码硬编码）");
                 view.ManualDrive = true; // 确定性驱动：屏蔽真实帧率的 Update
             }
 
-            // 驱动 2.5s 模拟时间（25 × 0.1s）。
-            for (int i = 0; i < 25; i++)
+            // 按身份落位而非 FindObjectsOfType 顺序（后者不保证 npc-a 在前）。
+            var sequences = new List<string>[ExpectedNpcIds.Length];
+            foreach (NpcUtilityView view in _views)
+            {
+                sequences[IdIndex(view.NpcId)] = new List<string>();
+            }
+
+            // 60s 模拟时间（600 × 0.1s）：手算分化窗口最晚的一对在 ~220 拍岔开（见施工报告 2.5）。
+            for (int tick = 0; tick < 600; tick++)
             {
                 foreach (NpcUtilityView view in _views)
                 {
-                    view.Step(0.1f);
+                    sequences[IdIndex(view.NpcId)].Add(view.Step(0.1f));
                 }
 
-                if (i % 5 == 0)
+                if (tick % 25 == 0)
                 {
                     yield return null;
                 }
             }
 
-            NpcUtilityView a = ById("npc-a");
-            NpcUtilityView b = ById("npc-b");
-            NpcUtilityView c = ById("npc-c");
-            Assert.AreEqual("Rest", a.Agent.CurrentAction, "疲劳 0.95 + 恋休息 → 去休息");
-            Assert.AreEqual("Pickup", b.Agent.CurrentAction, "看见掉落物 + 恋捡取 → 去捡");
-            Assert.AreEqual("Patrol", c.Agent.CurrentAction, "恋巡逻 → 走路点环线");
-            Assert.AreEqual(3, new HashSet<string>
+            // 首拍锚点（手算）：balanced/brave/lethargic → Repair（中立职责 0.9），
+            // sociable → Follow（0.7×2=1.4），curious → Pickup（0.85×2=1.7）。
+            Assert.AreEqual("Repair", sequences[0][0], "balanced：修理 0.9 压过捡取 0.85");
+            Assert.AreEqual("Follow", sequences[1][0], "sociable：社交 2.0 → 跟随登顶");
+            Assert.AreEqual("Pickup", sequences[2][0], "curious：好奇 2.0 → 捡取登顶");
+            Assert.AreEqual("Repair", sequences[3][0], "brave：修理职责 0.9 先行，修复后转巡逻");
+            Assert.AreEqual("Repair", sequences[4][0], "lethargic：修理职责 0.9 先行，后续休息接管");
+
+            for (int i = 0; i < ExpectedNpcIds.Length; i++)
             {
-                a.Agent.CurrentAction,
-                b.Agent.CurrentAction,
-                c.Agent.CurrentAction,
-            }.Count, "同起点同世界，三种行为必须互不相同（分化证据）");
+                for (int j = i + 1; j < ExpectedNpcIds.Length; j++)
+                {
+                    Assert.IsFalse(sequences[i].SequenceEqual(sequences[j]),
+                        $"同状态同世界，{ExpectedNpcIds[i]} 与 {ExpectedNpcIds[j]} 的 600 拍行为序列必须两两不同");
+                }
+            }
 
-            AssertPairwiseSeparation(a, b, c, 2f, "同起点不同行为路径：2.5s 后两两距离必须 > 2m");
-
-            yield return CaptureScreenshot("utility_tech01_divergence.png");
+            yield return CaptureScreenshot("utility_personality_divergence.png");
         }
 
+        // ---- ② GOAP 两步链：单步不可行 → [取工具 → 修理] → 空间顺序实证 ----
+
         [UnityTest]
-        public IEnumerator TiredNpc_Rests_ThenSwitchesOnItsOwn_WhenRecovered()
+        public IEnumerator GoapRepairChain_TwoSteps_PlannedAndExecutedInScene()
+        {
+            yield return LoadSceneAndCollectViews();
+            GameObject device = GameObject.Find("BrokenDevice");
+            Assert.IsNotNull(device, "场景必须携带损坏装置");
+            GameObject toolbox = GameObject.Find("Toolbox");
+            Assert.IsNotNull(toolbox, "场景必须携带工具箱");
+
+            var plans = new Dictionary<string, GoapPlan>();
+            var repairers = new List<string>();
+            foreach (NpcUtilityView view in _views)
+            {
+                NpcUtilityView captured = view;
+                view.Agent.ChainPlanned += p => plans[captured.NpcId] = p;
+                view.Agent.DeviceRepaired += _ =>
+                {
+                    if (!repairers.Contains(captured.NpcId))
+                    {
+                        repairers.Add(captured.NpcId);
+                    }
+                };
+
+                // 防御：万一接管前的真实帧已触发过首拍规划（链条在途、不再发事件），
+                // 这里把链条显式清零重挂——订阅生效后由受控驱动真实重规划，事件必被捕获。
+                view.Agent.SetDeviceBroken(false);
+                view.Agent.SetDeviceBroken(true);
+            }
+
+            var trajectories = new Dictionary<string, List<Vector3>>();
+            foreach (NpcUtilityView view in _views)
+            {
+                trajectories[view.NpcId] = new List<Vector3> { view.transform.position };
+            }
+
+            bool midChainCaptured = false;
+            for (int tick = 0; tick < 400; tick++)
+            {
+                foreach (NpcUtilityView view in _views)
+                {
+                    view.Step(0.1f);
+                    trajectories[view.NpcId].Add(view.transform.position);
+                }
+
+                if (!midChainCaptured && _views.Exists(v => v.Agent.HasTool))
+                {
+                    // 恰在"已取工具、正走向装置"的链中段取证。
+                    yield return CaptureScreenshot("utility_personality_goap_chain.png");
+                    midChainCaptured = true;
+                }
+
+                if (!device.activeInHierarchy)
+                {
+                    break;
+                }
+
+                if (tick % 25 == 0)
+                {
+                    yield return null;
+                }
+            }
+
+            Assert.IsFalse(device.activeInHierarchy, "400 拍内装置必须被两步链修复（反激活 = 全局修复事实）");
+            Assert.IsNotEmpty(repairers, "必须有 NPC 触发 DeviceRepaired");
+            Assert.IsNotEmpty(plans, "至少一个 NPC 必须产出规划");
+            Assert.IsTrue(repairers.TrueForAll(id => plans.ContainsKey(id)),
+                "每个修复者都必须先规划后执行（谁调谁：Utility 选意图 → GOAP 规划 → 链执行）");
+
+            foreach (KeyValuePair<string, GoapPlan> entry in plans)
+            {
+                Assert.AreEqual(2, entry.Value.StepCount, "单步不可行（无工具）→ 每份计划必须恰好两步");
+                Assert.AreEqual("TakeTool -> RepairDevice", entry.Value.Format(),
+                    "规划器必须产出 [取工具 → 修理] 两步链");
+            }
+
+            // 空间顺序：每个修复者的轨迹都必须先到工具箱、再到装置。
+            foreach (string repairerId in repairers)
+            {
+                AssertFirstToolboxThenDevice(trajectories[repairerId], toolbox.transform.position,
+                    device.transform.position, repairerId);
+            }
+        }
+
+        /// <summary>轨迹断言：先进入工具箱半径、后进入装置半径（两步链的空间顺序证据）。
+        /// 用水平(XZ)距离——NPC transform 的 Y 恒为出生高度 1，而工具箱/装置贴地
+        /// (Y=0.35/0.3)，3D 距离永远含 ≥0.42 的 Y 分量，会恒红。</summary>
+        private static void AssertFirstToolboxThenDevice(List<Vector3> path, Vector3 toolbox, Vector3 device,
+            string repairerId)
+        {
+            int toolboxTick = path.FindIndex(p => HorizontalDistance(p, toolbox) <= 0.6f);
+            int deviceTick = path.FindIndex(p => HorizontalDistance(p, device) <= 0.6f);
+            Assert.GreaterOrEqual(toolboxTick, 0, $"{repairerId} 轨迹必须到过工具箱");
+            Assert.GreaterOrEqual(deviceTick, 0, $"{repairerId} 轨迹必须到过装置");
+            Assert.Less(toolboxTick, deviceTick, $"{repairerId} 必须先取工具后修理（两步链顺序）");
+        }
+
+        // ---- ③ 权重门控：同一疲劳状态泵入 → 五个 NPC 各自不同选择（手算锚点）----
+
+        [UnityTest]
+        public IEnumerator FatiguePump_SameStateFiveDifferentChoices_ByWeights()
         {
             yield return LoadSceneAndCollectViews();
             foreach (NpcUtilityView view in _views)
@@ -89,63 +213,66 @@ namespace ZFrame.PlayMode.Tests
                 view.ManualDrive = true;
             }
 
-            NpcUtilityView a = ById("npc-a");
-            Assert.AreEqual("Rest", a.Agent.Tick(0.1f), "起点疲劳 0.95：第一拍即选休息");
-            Assert.AreEqual("Rest", a.SelectionHistory[0], "历史序列必须以 Rest 开头");
-
-            float fatigueAtSwitch = -1f;
-            string switchedTo = null;
-            for (int i = 0; i < 150; i++) // 15s：走回休息点(~4.8s) + 恢复(~1.7s) 远在窗口内
+            for (int i = 0; i < 10; i++) // 1s 预跑：全员仍在出生点附近，装置仍损坏
             {
                 foreach (NpcUtilityView view in _views)
                 {
                     view.Step(0.1f);
                 }
-
-                if (fatigueAtSwitch < 0f && !string.Equals(a.Agent.CurrentAction, "Rest", System.StringComparison.Ordinal))
-                {
-                    fatigueAtSwitch = a.Agent.Fatigue;
-                    switchedTo = a.Agent.CurrentAction;
-                }
-
-                if (i % 10 == 0)
-                {
-                    yield return null;
-                }
             }
 
-            Assert.GreaterOrEqual(fatigueAtSwitch, 0f, "15s 内必须自行切换行为（无人改动任何权重/状态泵）");
-            // 手算切换点：NPC_A 恋休息 1.6 倍，休息欲望 = 1.6·Ramp(f, 0.35, 0.9)；玩家远端跟随欲望封顶 0.7。
-            // 休息欲望跌破 0.7 ⇔ f = 0.35 + 0.55·(0.7/1.6) ≈ 0.591 —— 这是曲线设计决定的切换机制点
-            // （疲劳 ≥0.9 时休息欲望饱和 1.6，任何其他行动都无法竞争，故切换必然发生在恢复途中）。
-            // 上限 0.65 = 手算点 + 余量，同时仍证明净恢复 ≥0.30（起点 0.95 饱和到 1.0）——
-            // 若切换发生在饱和期（恢复失效/权重回归），断言必红。原简报版 0.5 阈值错锁了机制点（见施工报告 2.3-1）。
-            Assert.Less(fatigueAtSwitch, 0.65f, "切换时的疲劳必须已恢复到跟随接管点（≈0.59）附近——证明切换由恢复驱动而非饱和期被顶替");
-            Assert.IsFalse(string.IsNullOrEmpty(switchedTo)
-                           || string.Equals(switchedTo, "Rest", System.StringComparison.Ordinal),
-                "切换后的必须是真实的非休息行为（此刻掉落物可能已被 NPC_B 捡完，故不锁死具体名字）");
-            Assert.AreEqual("Rest", a.SelectionHistory[0], "历史序列开头必须是 Rest");
-            Assert.GreaterOrEqual(a.SelectionHistory.Count, 2, "历史序列必须记录到切换");
+            // 同一状态泵入：疲劳 0.9 → Rest 欲望 = Ramp(0.9, 0.35, 0.9)=1.0 × 各自 fatigueWeight。
+            foreach (NpcUtilityView view in _views)
+            {
+                view.Agent.SetFatigue(0.9f);
+            }
 
-            yield return CaptureScreenshot("utility_tech01_switch.png");
+            var choices = new Dictionary<string, string>();
+            foreach (NpcUtilityView view in _views)
+            {
+                choices[view.NpcId] = view.Step(0.1f);
+            }
+
+            // 手算（施工报告 2.6）：疲劳 0.9 时 Rest=1×w_f、Repair=0.9、
+            // sociable 的 Follow=0.7×0.695×2≈0.97、curious 的 Pickup=1.7、brave 的 Patrol=0.06。
+            Assert.AreEqual("Rest", choices["npc-a"], "balanced（疲劳 1.0）：Rest 1.0 > Repair 0.9");
+            Assert.AreEqual("Follow", choices["npc-b"], "sociable（疲劳 0.5）：Follow ≈0.97 > Rest 0.5");
+            Assert.AreEqual("Pickup", choices["npc-c"], "curious（疲劳 0.5）：Pickup 1.7 > Rest 0.5");
+            Assert.AreEqual("Repair", choices["npc-d"], "brave（疲劳 0.5）：Repair 0.9 > Rest 0.5 > Patrol 0.06");
+            Assert.AreEqual("Rest", choices["npc-e"], "lethargic（疲劳 2.0）：Rest 2.0 登顶");
+            Assert.AreEqual(4, new HashSet<string>(choices.Values).Count, "同一状态五个选择必须落到四种行为（权重门控分化）");
         }
 
         // ---- helpers -------------------------------------------------------
+
+        private static int IdIndex(string npcId)
+        {
+            return System.Array.IndexOf(ExpectedNpcIds, npcId);
+        }
 
         private IEnumerator LoadSceneAndCollectViews()
         {
             yield return SceneManager.LoadSceneAsync(SceneName);
             Assert.AreEqual(SceneName, SceneManager.GetActiveScene().name, $"{SceneName} did not activate");
-            yield return null;
-            yield return null;
 
+            // 场景激活后立刻接管：抢在下一次 MonoBehaviour.Update 之前置 ManualDrive，
+            // 不让任何真实帧先跑（真实帧里 Repair 首拍就会规划，ChainPlanned 事件会丢）。
+            CollectAndTakeOver();
+            yield return null;
+            yield return null;
+            CollectAndTakeOver(); // 幂等复收：防个别视图晚一帧激活
+        }
+
+        private void CollectAndTakeOver()
+        {
             NpcUtilityView[] found = Object.FindObjectsOfType<NpcUtilityView>();
-            Assert.AreEqual(3, found.Length, "场景必须恰好三个 NpcUtilityView");
+            Assert.AreEqual(5, found.Length, "场景必须恰好五个 NpcUtilityView（TASK-A-TECH-04 五个性演示）");
+            _views.Clear();
             _views.AddRange(found);
             foreach (NpcUtilityView view in _views)
             {
                 view.EnsureAgent(); // 幂等；PlayMode 下 Awake 已建，兜底
-                view.ManualDrive = true; // 尽早接管，最多放过一个真实帧的位移
+                view.ManualDrive = true; // 确定性接管
             }
         }
 
@@ -166,23 +293,6 @@ namespace ZFrame.PlayMode.Tests
                     Assert.Less(distance, 0.5f, $"接管前 {_views[i].NpcId}/{_views[j].NpcId} 仍是同一起点");
                 }
             }
-        }
-
-        private NpcUtilityView ById(string npcId)
-        {
-            NpcUtilityView match = _views.Find(v => string.Equals(v.NpcId, npcId, System.StringComparison.Ordinal));
-            Assert.NotNull(match, $"场景必须包含 id 为 {npcId} 的 NPC");
-            return match;
-        }
-
-        private static void AssertPairwiseSeparation(NpcUtilityView a, NpcUtilityView b, NpcUtilityView c, float minMeters, string message)
-        {
-            float ab = HorizontalDistance(a.transform.position, b.transform.position);
-            float bc = HorizontalDistance(b.transform.position, c.transform.position);
-            float ac = HorizontalDistance(a.transform.position, c.transform.position);
-            Assert.Greater(ab, minMeters, $"{message} (A-B={ab:0.00}m)");
-            Assert.Greater(bc, minMeters, $"{message} (B-C={bc:0.00}m)");
-            Assert.Greater(ac, minMeters, $"{message} (A-C={ac:0.00}m)");
         }
 
         private static float HorizontalDistance(Vector3 p, Vector3 q)
