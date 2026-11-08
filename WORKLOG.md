@@ -4,6 +4,8 @@
 
 | 日期 | 任务 | 结果 | commit |
 |---|---|---|---|
+| 2026-11-04 | A-AND-09 人群四档LOD管线 | done：施工→验收 PASS（80/80 用例、硬上限变异复红、kernel 单源实证） | 04e965a |
+| 2026-11-04 | A-AI-01 记忆与态度 | done：施工→验收 PASS（1031 用例、同事件异反应锚点、调制公式独立复算） | 079d89c |
 | 2026-11-04 | A-CI-02 CI Vulkan 补齐 | done：施工→验收 PASS（云端首轮 SUCCESS 349/349、独立 curl 核对 run）——CI 全绿 | 963c63a |
 | 2026-11-04 | A-AND-08 DataKernel 玩法规模化 | done：施工→验收 PASS（989+74 用例、P/Invoke 2003→10/帧、A/B 三样本复核）——DataKernel 最后承诺兑现 | da27f8b |
 | 2026-11-04 | B-TECH-04 球面地形+大气 | done：施工→验收 PASS（6144chunk seams=0 逐位、LOD 迟滞、三海拔截图、7.9ms 帧耗）——行星地表雏形 | b27804e |
