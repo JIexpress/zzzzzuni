@@ -141,10 +141,10 @@ namespace ZFrame.Debug.Tests
             Assert.AreEqual(4, view.RowCount);
 
             view.SelectPage("controls");
-            Assert.AreEqual(8, view.RowCount, "操作页：移动四向 + 交互 + 暂停 = 6 个键位行，手柄说明行，全部恢复默认（A-M3-04）");
+            Assert.AreEqual(12, view.RowCount, "操作页：移动四向 + 交互 + 暂停 = 6 个键位行，A-AND-10 触屏四行（死区/拖拽半径/灵敏度/固定摇杆），手柄说明行，全部恢复默认");
 
             view.SelectPage("gameplay");
-            Assert.AreEqual(3, view.RowCount);
+            Assert.AreEqual(4, view.RowCount);
 
             view.SelectPage("accessibility");
             Assert.AreEqual(3, view.RowCount);
@@ -219,7 +219,7 @@ namespace ZFrame.Debug.Tests
             Assert.IsTrue(_model.Get<bool>("gameplay.subtitles"), "撤销更改 rolls back to the open-time snapshot");
             Assert.IsFalse(_model.IsDirty);
             Assert.AreEqual(1, _ui.StackCount, "撤销更改 keeps the panel open");
-            Assert.AreEqual(3, view.RowCount, "rows are refreshed against the restored values");
+            Assert.AreEqual(4, view.RowCount, "rows are refreshed against the restored values (gameplay 页含 A-AND-10 震动反馈)");
         }
 
         [Test]

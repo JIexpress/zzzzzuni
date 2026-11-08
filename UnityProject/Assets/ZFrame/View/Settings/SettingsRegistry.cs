@@ -25,9 +25,13 @@ namespace ZFrame.View
     ///   渲染比例 is a STORED placeholder.
     /// - 音频: four bus sliders apply through <c>Services.Get&lt;IAudioService&gt;()</c>.
     /// - 操作: 移动四向（上/左/下/右，各绑 WASD 复合轴的一个部件）+ 交互 + 暂停的真实键位
-    ///   重绑定（TASK-A-M3-03 机制 / A-M3-04 四向拆分），末尾一行只读说明（手柄摇杆保持默认）
-    ///   + 全部恢复默认；值不落 settings.json — override 由 RebindService 写入 input_bindings.json。
-    /// - 游戏性: stored only — consumers (subtitle/tutorial systems) come later.
+    ///   重绑定（TASK-A-M3-03 机制 / A-M3-04 四向拆分），触屏打磨四行（TASK-A-AND-10：
+    ///   死区/拖拽半径/灵敏度倍率 Slider + 固定摇杆开关，经 TouchControlSettingOptions
+    ///   即时生效），末尾一行只读说明（手柄摇杆保持默认）+ 全部恢复默认；
+    ///   键位值不落 settings.json — override 由 RebindService 写入 input_bindings.json，
+    ///   触屏行值照常落 settings.json。
+    /// - 游戏性: 字幕/教程 stored only — consumers (subtitle/tutorial systems)
+    ///   come later; 震动反馈 is LIVE since TASK-A-AND-10 (TouchHaptics.Enabled).
     /// - 无障碍: UI 缩放 applies to the UIRoot layer CanvasScalers live;
     ///   色盲模式 stored only (R6 post-processing); 屏幕震动强度 stored only.
     /// </summary>
@@ -247,11 +251,14 @@ namespace ZFrame.View
         private const string MoveRightPath = "<Keyboard>/d";
 
         /// <summary>
-        /// 操作 tab (TASK-A-M3-03, extended by TASK-A-M3-04): 移动 is a 2DVector
-        /// composite, so it gets ONE ROW PER DIRECTION (上/左/下/右) — each row
-        /// rebinds exactly one WASD part — plus 交互 / 暂停 (single-binding
-        /// actions, primary binding), a read-only 手柄 note and the map-wide
-        /// 全部恢复默认 row.
+        /// 操作 tab (TASK-A-M3-03, extended by TASK-A-M3-04, touch rows by
+        /// TASK-A-AND-10): 移动 is a 2DVector composite, so it gets ONE ROW PER
+        /// DIRECTION (上/左/下/右) — each row rebinds exactly one WASD part —
+        /// plus 交互 / 暂停 (single-binding actions, primary binding), the
+        /// touch-polish rows (三条倍率 Slider + 固定摇杆开关，值由
+        /// <see cref="TouchControlSettingOptions"/> 单源管理，浮动摇杆/参数化在
+        /// <see cref="TouchControlsView"/> 上即时生效), a read-only 手柄 note
+        /// and the map-wide 全部恢复默认 row.
         ///
         /// The four binding indices are RESOLVED FROM THE ASSET BY PATH
         /// (<see cref="RebindService.FindBindingIndexByPath"/>): the composite's
@@ -276,6 +283,35 @@ namespace ZFrame.View
                     MoveDirectionRow(controls, "Right", "移动·右", MoveRightPath),
                     SettingDefinition.Binding("controls.bind.Interact", "交互", "Player/Interact"),
                     SettingDefinition.Binding("controls.bind.Pause", "暂停", "Player/Pause"),
+                    // TASK-A-AND-10 触屏打磨四行：死区/拖拽半径/灵敏度 0.5~2.0 倍率
+                    // + 固定摇杆开关（false=浮动，默认）。倍率经
+                    // TouchControlSettingOptions.Apply* 即时生效并通知活动 overlay。
+                    SettingDefinition.Slider(
+                        TouchControlSettingOptions.DeadZoneSettingId,
+                        "触屏·死区半径",
+                        TouchControlSettingOptions.DefaultMultiplier,
+                        TouchControlSettingOptions.MinMultiplier,
+                        TouchControlSettingOptions.MaxMultiplier,
+                        apply: value => TouchControlSettingOptions.ApplyDeadZone((float)value)),
+                    SettingDefinition.Slider(
+                        TouchControlSettingOptions.DragRadiusSettingId,
+                        "触屏·拖拽半径",
+                        TouchControlSettingOptions.DefaultMultiplier,
+                        TouchControlSettingOptions.MinMultiplier,
+                        TouchControlSettingOptions.MaxMultiplier,
+                        apply: value => TouchControlSettingOptions.ApplyDragRadius((float)value)),
+                    SettingDefinition.Slider(
+                        TouchControlSettingOptions.SensitivitySettingId,
+                        "触屏·灵敏度",
+                        TouchControlSettingOptions.DefaultMultiplier,
+                        TouchControlSettingOptions.MinMultiplier,
+                        TouchControlSettingOptions.MaxMultiplier,
+                        apply: value => TouchControlSettingOptions.ApplySensitivity((float)value)),
+                    SettingDefinition.Toggle(
+                        TouchControlSettingOptions.FixedStickSettingId,
+                        "触屏·固定摇杆",
+                        TouchControlSettingOptions.DefaultFixedStick,
+                        apply: value => TouchControlSettingOptions.ApplyFixedStick((bool)value)),
                     // 页面底部：如实披露不支持的部分（手柄 leftStick 保持资产默认）。
                     SettingDefinition.Note(
                         "controls.note.Gamepad",
@@ -310,9 +346,12 @@ namespace ZFrame.View
         // ---- 游戏性 ---------------------------------------------------------
 
         /// <summary>
-        /// 游戏性 tab: values persist but NO consumer applies them yet —
+        /// 游戏性 tab: 字幕/教程 rows persist but NO consumer applies them yet —
         /// consumers (字幕系统 / 教程引导系统) hook in during M4/M5 slices; the
         /// apply callbacks are deliberately null until then.
+        /// TASK-A-AND-10 adds 震动反馈 — the one LIVE row of this tab: its apply
+        /// writes <see cref="TouchHaptics.Enabled"/> through
+        /// <see cref="TouchControlSettingOptions.ApplyHaptics"/> (交互键轻震的开关).
         /// </summary>
         private static SettingsPage BuildGameplayPage()
         {
@@ -324,6 +363,13 @@ namespace ZFrame.View
                 SettingDefinition.EnumSetting("gameplay.subtitleSize", "字幕大小", 1, new[] { "小", "中", "大" }),
                 // 教程提示频率 — stored only; 消费方：教程引导系统（后续切片接入）。
                 SettingDefinition.EnumSetting("gameplay.tutorialFrequency", "教程提示频率", 0, new[] { "每次显示", "仅首次", "从不" }),
+                // 震动反馈 — LIVE (TASK-A-AND-10): 触屏交互键按下的轻震开关
+                // （TouchHaptics；桌面/无振动硬件上是安全 no-op）。
+                SettingDefinition.Toggle(
+                    TouchControlSettingOptions.HapticsSettingId,
+                    "震动反馈",
+                    TouchControlSettingOptions.DefaultHaptics,
+                    apply: value => TouchControlSettingOptions.ApplyHaptics((bool)value)),
             });
         }
 

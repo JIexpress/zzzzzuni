@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -14,13 +15,26 @@ namespace ZFrame.View
     /// Like <see cref="VirtualJoystick"/> it is a pure UGUI widget: it does not
     /// know what the press means, so the caller wires it to the gameplay
     /// command path.
+    ///
+    /// TASK-A-AND-10 (打磨不重写): adds the press SCALE feedback on top of the
+    /// A-AND-04 tint — a minimal exponential tween towards 0.9 while held and
+    /// back to 1 on release (zero assets, no tween library). Outside play mode
+    /// (EditMode tests) the scale snaps instantly instead of tweening, because
+    /// Update/coroutines are not driven there.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class TouchActionButton : MonoBehaviour, IPointerDownHandler, IPointerUpHandler
     {
+        /// <summary>Local scale while the finger is down (TASK-A-AND-10 visual feedback).</summary>
+        public const float PressedScale = 0.9f;
+
+        /// <summary>Exponential approach speed of the scale tween (per second).</summary>
+        public const float TweenSpeed = 14f;
+
         private Image _background;
         private Color _idleColor = Color.white;
         private Color _pressedColor = Color.white;
+        private Coroutine _scaleTween;
 
         /// <summary>Raised on every pointer down (one per press, never per frame).</summary>
         public event Action Pressed;
@@ -51,6 +65,7 @@ namespace ZFrame.View
             PointerId = eventData.pointerId;
             PressCount++;
             ApplyColor(_pressedColor);
+            StartScaleTween(PressedScale);
             Pressed?.Invoke();
         }
 
@@ -65,11 +80,12 @@ namespace ZFrame.View
             Reset();
         }
 
-        /// <summary>Clears the held state and the pressed tint (idempotent).</summary>
+        /// <summary>Clears the held state, the pressed tint and the press scale (idempotent).</summary>
         public void Reset()
         {
             PointerId = -1;
             ApplyColor(_idleColor);
+            StartScaleTween(1f);
         }
 
         private void OnDisable()
@@ -83,6 +99,50 @@ namespace ZFrame.View
             {
                 _background.color = color;
             }
+        }
+
+        private void StartScaleTween(float targetScale)
+        {
+            if (_background == null)
+            {
+                return;
+            }
+
+            Vector3 target = Vector3.one * targetScale;
+            if (!Application.isPlaying || !isActiveAndEnabled)
+            {
+                // EditMode (tests, editor tooling) or an inactive widget
+                // (teardown): no coroutine driver — snap.
+                StopScaleTween();
+                _background.rectTransform.localScale = target;
+                return;
+            }
+
+            StopScaleTween();
+            _scaleTween = StartCoroutine(TweenScale(target));
+        }
+
+        private void StopScaleTween()
+        {
+            if (_scaleTween != null)
+            {
+                StopCoroutine(_scaleTween);
+                _scaleTween = null;
+            }
+        }
+
+        private IEnumerator TweenScale(Vector3 target)
+        {
+            RectTransform rect = _background.rectTransform;
+            while ((rect.localScale - target).sqrMagnitude > 1e-6f)
+            {
+                float step = Mathf.Clamp01(TweenSpeed * Time.unscaledDeltaTime);
+                rect.localScale = Vector3.Lerp(rect.localScale, target, step);
+                yield return null;
+            }
+
+            rect.localScale = target;
+            _scaleTween = null;
         }
     }
 }

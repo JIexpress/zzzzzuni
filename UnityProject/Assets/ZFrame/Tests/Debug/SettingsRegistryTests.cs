@@ -189,13 +189,15 @@ namespace ZFrame.Debug.Tests
         public void ControlsPage_IsTheRealBindingList()
         {
             Assert.IsTrue(_registry.TryGetPage("controls", out SettingsPage controls));
-            Assert.AreEqual(8, controls.SettingCount, "移动四向 + 交互 + 暂停 = 6 个键位行，另有手柄说明行 + 底部「全部恢复默认」");
+            Assert.AreEqual(12, controls.SettingCount,
+                "移动四向 + 交互 + 暂停 = 6 个键位行，TASK-A-AND-10 触屏四行（死区/拖拽半径/灵敏度/固定摇杆），另有手柄说明行 + 底部「全部恢复默认」");
 
             CollectionAssert.AreEqual(
                 new[]
                 {
                     SettingType.Binding, SettingType.Binding, SettingType.Binding,
                     SettingType.Binding, SettingType.Binding, SettingType.Binding,
+                    SettingType.Slider, SettingType.Slider, SettingType.Slider, SettingType.Toggle,
                     SettingType.Note, SettingType.BindingReset,
                 },
                 controls.Settings.Select(s => s.Type).ToArray());
@@ -229,27 +231,59 @@ namespace ZFrame.Debug.Tests
             Assert.AreEqual(-1, controls.Settings[4].BindingIndex);
             Assert.AreEqual(-1, controls.Settings[5].BindingIndex);
 
-            Assert.AreEqual("手柄摇杆使用默认设置，暂不支持重绑定", controls.Settings[6].DisplayName);
-            Assert.AreEqual("全部恢复默认", controls.Settings[7].DisplayName);
+            // TASK-A-AND-10 触屏四行：0.5~2.0 倍率 Slider（默认 1.0）+ 固定摇杆开关
+            // （默认 false = 浮动），全部接 TouchControlSettingOptions（即时生效）。
+            SettingDefinition deadZone = controls.Settings[6];
+            Assert.AreEqual("controls.touch.deadZone", deadZone.Id);
+            Assert.AreEqual("触屏·死区半径", deadZone.DisplayName);
+            Assert.AreEqual(0.5f, deadZone.Min);
+            Assert.AreEqual(2.0f, deadZone.Max);
+            Assert.AreEqual(1f, (float)deadZone.DefaultValue);
+            Assert.IsNotNull(deadZone.Apply, "触屏行必须即时生效（TouchControlSettingOptions.ApplyDeadZone）");
+
+            Assert.AreEqual("controls.touch.dragRadius", controls.Settings[7].Id);
+            Assert.AreEqual("controls.touch.sensitivity", controls.Settings[8].Id);
+            foreach (SettingDefinition sliderRow in new[] { controls.Settings[7], controls.Settings[8] })
+            {
+                Assert.AreEqual(SettingType.Slider, sliderRow.Type);
+                Assert.AreEqual(0.5f, sliderRow.Min);
+                Assert.AreEqual(2.0f, sliderRow.Max);
+                Assert.IsNotNull(sliderRow.Apply);
+            }
+
+            SettingDefinition fixedStick = controls.Settings[9];
+            Assert.AreEqual("controls.touch.fixedStick", fixedStick.Id);
+            Assert.AreEqual(SettingType.Toggle, fixedStick.Type);
+            Assert.AreEqual(false, (bool)fixedStick.DefaultValue, "默认浮动（TASK-A-AND-10 设计要点 1）");
+            Assert.IsNotNull(fixedStick.Apply);
+
+            Assert.AreEqual("手柄摇杆使用默认设置，暂不支持重绑定", controls.Settings[10].DisplayName);
+            Assert.AreEqual("全部恢复默认", controls.Settings[11].DisplayName);
         }
 
-        // ---------- 游戏性: stored only, consumers documented ----------
+        // ---------- 游戏性: 字幕/教程 stored, 震动反馈 live (A-AND-10) ----------
 
         [Test]
         public void GameplayPage_StoresValues_WithoutConsumersYet()
         {
             Assert.IsTrue(_registry.TryGetPage("gameplay", out SettingsPage gameplay));
             CollectionAssert.AreEqual(
-                new[] { SettingType.Toggle, SettingType.Enum, SettingType.Enum },
+                new[] { SettingType.Toggle, SettingType.Enum, SettingType.Enum, SettingType.Toggle },
                 gameplay.Settings.Select(s => s.Type).ToArray());
             CollectionAssert.AreEqual(
-                new[] { "gameplay.subtitles", "gameplay.subtitleSize", "gameplay.tutorialFrequency" },
+                new[] { "gameplay.subtitles", "gameplay.subtitleSize", "gameplay.tutorialFrequency", "gameplay.haptics" },
                 gameplay.Settings.Select(s => s.Id).ToArray());
 
-            foreach (SettingDefinition definition in gameplay.Settings)
+            foreach (SettingDefinition definition in gameplay.Settings.Take(3))
             {
-                Assert.IsNull(definition.Apply, "gameplay settings are store-only placeholders this milestone (consumers documented in XML doc)");
+                Assert.IsNull(definition.Apply, "字幕/教程 settings are store-only placeholders this milestone (consumers documented in XML doc)");
             }
+
+            // TASK-A-AND-10：震动反馈是本页唯一 LIVE 行（TouchHaptics.Enabled 开关）。
+            SettingDefinition haptics = gameplay.Settings[3];
+            Assert.AreEqual("震动反馈", haptics.DisplayName);
+            Assert.AreEqual(true, (bool)haptics.DefaultValue);
+            Assert.IsNotNull(haptics.Apply, "震动反馈必须接 TouchControlSettingOptions.ApplyHaptics（即时生效）");
         }
 
         // ---------- 无障碍: UI 缩放 real, others stored ----------

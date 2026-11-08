@@ -245,10 +245,15 @@ namespace ZFrame.View.Input.Tests
                     SettingType.Binding,
                     SettingType.Binding,
                     SettingType.Binding,
+                    SettingType.Slider,
+                    SettingType.Slider,
+                    SettingType.Slider,
+                    SettingType.Toggle,
                     SettingType.Note,
                     SettingType.BindingReset,
                 },
-                controls.Settings.Select(s => s.Type).ToArray());
+                controls.Settings.Select(s => s.Type).ToArray(),
+                "TASK-A-AND-10：键位六行后插入触屏四行（死区/拖拽半径/灵敏度 Slider + 固定摇杆 Toggle），说明行与恢复默认仍居末尾");
 
             CollectionAssert.AreEqual(
                 new[]
@@ -259,9 +264,9 @@ namespace ZFrame.View.Input.Tests
                 controls.Settings.Take(6).Select(s => s.ActionKey).ToArray(),
                 "移动拆四向（同一复合轴）+ 交互/暂停各一行");
 
-            Assert.AreEqual("手柄摇杆使用默认设置，暂不支持重绑定", controls.Settings[6].DisplayName,
+            Assert.AreEqual("手柄摇杆使用默认设置，暂不支持重绑定", controls.Settings[10].DisplayName,
                 "手柄摇杆不提供重绑入口，只如实说明");
-            Assert.AreEqual("全部恢复默认", controls.Settings[7].DisplayName);
+            Assert.AreEqual("全部恢复默认", controls.Settings[11].DisplayName);
         }
 
         [Test]

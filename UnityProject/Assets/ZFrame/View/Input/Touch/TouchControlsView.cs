@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using ZFrame.Gameplay;
@@ -32,6 +33,24 @@ namespace ZFrame.View
     /// <see cref="Screen.safeArea"/> and re-anchor when the inset changes
     /// (rotation, gesture-bar), so the stick never sits under the notch or the
     /// system gesture strip.
+    ///
+    /// TASK-A-AND-10 (打磨不重写): adds the polish layer ON TOP of the
+    /// A-AND-04 structure —
+    /// - FLOATING ORIGIN: an invisible <see cref="FloatingStickZone"/> over the
+    ///   bottom half of the safe area spawns the stick at the press point and
+    ///   hides it on release (默认). The A-AND-04 fixed bottom-left stick stays
+    ///   as the 触屏·固定摇杆 settings row; the spawn de-dup and EventSystem
+    ///   handling are untouched.
+    /// - PARAMETERISATION: 死区/拖拽半径/灵敏度 multipliers arrive through
+    ///   <see cref="TouchControlSettingOptions"/> (apply on change, read on build).
+    /// - VISUAL FEEDBACK: base/knob brighten while held; buttons tween their
+    ///   scale in <see cref="TouchActionButton"/>.
+    /// - HAPTICS: the 互动 press pulses <see cref="TouchHaptics"/> (the
+    ///   震动反馈 row owns the switch; 暂停 opens a menu and deliberately
+    ///   stays pulse-free).
+    /// - MULTI-TOUCH: unchanged A-AND-04 architecture — StandaloneInputModule
+    ///   gives one pointer stream per finger, the zone forwards to the stick
+    ///   (single-pointer ownership) and the buttons take their own pointers.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class TouchControlsView : MonoBehaviour
@@ -59,10 +78,18 @@ namespace ZFrame.View
         private static readonly Color PauseColor = new Color(0.16f, 0.17f, 0.2f, 0.85f);
         private static readonly Color PausePressedColor = new Color(0.32f, 0.33f, 0.36f, 0.95f);
 
+        // TASK-A-AND-10: held variants of the stick visuals ("半透明 + 按下增亮").
+        private static readonly Color StickBaseHeldColor = new Color(1f, 1f, 1f, 0.34f);
+        private static readonly Color KnobHeldColor = new Color(1f, 1f, 1f, 0.92f);
+
         private static Sprite _circleSprite;
 
         private PlayerInputBridge _bridge;
         private RectTransform _safeArea;
+        private RectTransform _stickZone;
+        private Image _stickBaseImage;
+        private Image _knobImage;
+        private Image _floatZoneImage;
         private Rect _appliedSafeArea = new Rect(-1f, -1f, 0f, 0f);
         private Vector2 _appliedScreen;
         private float _nextSafeAreaPoll;
@@ -94,6 +121,21 @@ namespace ZFrame.View
 
         /// <summary>Safe-area host the widgets are anchored inside.</summary>
         public RectTransform SafeArea => _safeArea;
+
+        /// <summary>
+        /// The invisible lower-half floating hit zone (null before
+        /// <see cref="Spawn"/>; the GameObject is deactivated in the fixed-stick
+        /// mode). <see cref="FloatingStickZone"/> forwards its pointer stream to
+        /// <see cref="FloatPress"/> / <see cref="FloatDrag"/> / <see cref="FloatRelease"/>.
+        /// </summary>
+        public FloatingStickZone FloatZone { get; private set; }
+
+        /// <summary>
+        /// The stick base rect (touch/limit circle). Tests and the floating
+        /// anchor logic read its <c>anchoredPosition</c>; its size follows the
+        /// 拖拽半径 multiplier.
+        /// </summary>
+        public RectTransform StickBase => _stickZone;
 
         /// <summary>
         /// The command bridge this overlay currently writes into (null after shutdown).
@@ -201,6 +243,291 @@ namespace ZFrame.View
             Teardown(destroySelf: true);
         }
 
+        // ---- TASK-A-AND-10: floating-origin seams ----------------------------
+
+        /// <summary>
+        /// Floating-press seam, camera-free form for tests/tools (the overlay
+        /// canvas is screen-space). Same body the UGUI handlers run.
+        /// </summary>
+        public void FloatPress(int pointerId, Vector2 screenPosition)
+        {
+            FloatPress(pointerId, screenPosition, null);
+        }
+
+        /// <summary>
+        /// Floating-press: re-anchors the stick base under the finger (clamped
+        /// into the safe area) and hands the pointer to the stick. Second
+        /// fingers are ignored (A-AND-04 one-pointer ownership); the fixed-stick
+        /// mode has no floating gesture at all.
+        /// </summary>
+        public void FloatPress(int pointerId, Vector2 screenPosition, Camera pressCamera)
+        {
+            if (_shutdown || Stick == null || TouchControlSettingOptions.FixedStick || Stick.IsHeld)
+            {
+                return;
+            }
+
+            if (_safeArea == null ||
+                !RectTransformUtility.ScreenPointToLocalPointInRectangle(_safeArea, screenPosition, pressCamera, out Vector2 local))
+            {
+                return;
+            }
+
+            PlaceStickBaseAt(local);
+            // Synthesized event (test/automation seam): carries pointer id +
+            // screen point only. The UIRoot canvas is ScreenSpaceOverlay, so
+            // the camera-less conversion the stick performs is exact here; the
+            // UGUI production path goes through <see cref="FloatPress(PointerEventData)"/>
+            // which preserves the original event object untouched.
+            //
+            // Forward the ORIGINAL screen point: when the base was clamped away
+            // from the finger, the press must land at its true offset from the
+            // base centre (edge presses read as a partial push, like a real
+            // floating stick).
+            Stick.OnPointerDown(new PointerEventData(EventSystem.current)
+            {
+                pointerId = pointerId,
+                position = screenPosition,
+            });
+        }
+
+        /// <summary>UGUI entry: the <see cref="FloatingStickZone"/> forwards its original event object.</summary>
+        internal void FloatPress(PointerEventData eventData)
+        {
+            if (eventData == null)
+            {
+                return;
+            }
+
+            FloatPress(eventData.pointerId, eventData.position, eventData.pressEventCamera);
+        }
+
+        /// <summary>
+        /// Test/automation seam (same discipline as
+        /// <see cref="VirtualJoystick.ApplyLocalOffset"/>): the floating press
+        /// with the point ALREADY in safe-area local units — batch-mode EditMode
+        /// has no reliable screen space, so tests express the press in the exact
+        /// coordinates <see cref="PlaceStickBaseAt"/> consumes and normalize the
+        /// press to the base centre afterwards (press point == centre == zero
+        /// value). The screen-space production path is <see cref="FloatPress(int, Vector2, Camera)"/>.
+        /// </summary>
+        internal void FloatPressAtLocal(int pointerId, Vector2 safeAreaLocalPoint)
+        {
+            if (_shutdown || Stick == null || TouchControlSettingOptions.FixedStick || Stick.IsHeld || _stickZone == null)
+            {
+                return;
+            }
+
+            PlaceStickBaseAt(safeAreaLocalPoint);
+            Stick.BeginPointer(pointerId); // ownership without a screen-point read (batch EditMode has none)
+            Stick.ApplyLocalOffset(_stickZone.rect.center); // press point == base centre → deterministic zero
+        }
+
+        /// <summary>Floating-drag seam (camera-free form). Forwards to the stick only for the owning pointer.</summary>
+        public void FloatDrag(int pointerId, Vector2 screenPosition)
+        {
+            FloatDrag(pointerId, screenPosition, null);
+        }
+
+        /// <summary>Floating-drag: same geometry step as <see cref="VirtualJoystick.OnDrag"/> for the owning pointer.</summary>
+        public void FloatDrag(int pointerId, Vector2 screenPosition, Camera pressCamera)
+        {
+            if (_shutdown || Stick == null || !Stick.IsHeld || Stick.PointerId != pointerId)
+            {
+                return;
+            }
+
+            // Synthesized event (test/automation seam; ScreenSpaceOverlay →
+            // camera-less conversion is exact). Production uses the overload below.
+            Stick.OnDrag(new PointerEventData(EventSystem.current)
+            {
+                pointerId = pointerId,
+                position = screenPosition,
+            });
+        }
+
+        /// <summary>UGUI entry: the <see cref="FloatingStickZone"/> forwards its original event object.</summary>
+        internal void FloatDrag(PointerEventData eventData)
+        {
+            if (eventData == null)
+            {
+                return;
+            }
+
+            FloatDrag(eventData.pointerId, eventData.position, eventData.pressEventCamera);
+        }
+
+        /// <summary>
+        /// Floating-release: hands the pointer back to the stick; the base
+        /// disappears through <see cref="OnStickHoldChanged"/>(false).
+        /// </summary>
+        public void FloatRelease(int pointerId)
+        {
+            if (_shutdown || Stick == null || Stick.PointerId != pointerId)
+            {
+                return;
+            }
+
+            Stick.OnPointerUp(new PointerEventData(EventSystem.current) { pointerId = pointerId });
+        }
+
+        /// <summary>
+        /// Places the base centre at <paramref name="safeAreaLocalPoint"/>
+        /// (pivot-relative safe-area units), clamped so the base circle stays
+        /// inside the safe area.
+        /// </summary>
+        private void PlaceStickBaseAt(Vector2 safeAreaLocalPoint)
+        {
+            if (_stickZone == null || _safeArea == null)
+            {
+                return;
+            }
+
+            Rect safe = _safeArea.rect; // pivot-relative: centre (0,0)
+            float half = StickDiameter * 0.5f * TouchControlSettingOptions.DragRadiusMultiplier;
+            float xMin = safe.xMin + half;
+            float xMax = safe.xMax - half;
+            float yMin = safe.yMin + half;
+            float yMax = safe.yMax - half;
+
+            float cx = Mathf.Clamp(safeAreaLocalPoint.x, xMin, Mathf.Max(xMin, xMax));
+            float cy = Mathf.Clamp(safeAreaLocalPoint.y, yMin, Mathf.Max(yMin, yMax));
+
+            // Base anchors/pivot are (0,0): anchoredPosition = base bottom-left
+            // corner minus the safe area's bottom-left corner.
+            _stickZone.anchoredPosition = new Vector2(cx - half - safe.xMin, cy - half - safe.yMin);
+        }
+
+        /// <summary>Restores the A-AND-04 fixed anchor (bottom-left corner margin).</summary>
+        private void ResetStickBaseAnchor()
+        {
+            if (_stickZone != null)
+            {
+                _stickZone.anchoredPosition = new Vector2(EdgeMargin, EdgeMargin);
+            }
+        }
+
+        /// <summary>
+        /// Press-visual feedback (TASK-A-AND-10): brighten the base/knob while
+        /// held; in the floating mode the base only EXISTS while held (spawn on
+        /// press, disappear on release).
+        /// </summary>
+        private void OnStickHoldChanged(bool held)
+        {
+            if (TouchControlSettingOptions.FixedStick)
+            {
+                ShowStickBase(held); // fixed: always visible, dim ↔ bright
+                return;
+            }
+
+            if (held)
+            {
+                ShowStickBase(held: true);
+            }
+            else
+            {
+                HideStickBase(); // floating: 松开消失
+            }
+        }
+
+        private void ShowStickBase(bool held)
+        {
+            if (_stickBaseImage == null)
+            {
+                return;
+            }
+
+            _stickBaseImage.enabled = true;
+            ApplyStickColors(held);
+        }
+
+        private void HideStickBase()
+        {
+            if (_stickBaseImage == null)
+            {
+                return;
+            }
+
+            _stickBaseImage.enabled = false; // no rendering, no raycast
+            ApplyStickColors(held: false);
+        }
+
+        private void ApplyStickColors(bool held)
+        {
+            if (_stickBaseImage != null)
+            {
+                _stickBaseImage.color = held ? StickBaseHeldColor : StickBaseColor;
+            }
+
+            if (_knobImage != null)
+            {
+                _knobImage.color = held ? KnobHeldColor : KnobColor;
+            }
+        }
+
+        /// <summary>
+        /// TASK-A-AND-10: re-applies every touch-polish setting to the live
+        /// widgets — the 死区/灵敏度 multipliers go to <see cref="VirtualJoystick.SetTuning"/>,
+        /// the 拖拽半径 multiplier resizes the base rect (visual and drag limit
+        /// stay the same circle) and the 固定摇杆 row switches the floating/fixed
+        /// presentation.
+        /// </summary>
+        private void ApplyTouchSettings()
+        {
+            if (Stick != null)
+            {
+                Stick.SetTuning(
+                    TouchControlSettingOptions.DeadZoneMultiplier,
+                    TouchControlSettingOptions.SensitivityMultiplier);
+            }
+
+            if (_stickZone != null)
+            {
+                float radiusScale = TouchControlSettingOptions.DragRadiusMultiplier;
+                _stickZone.sizeDelta = new Vector2(StickDiameter * radiusScale, StickDiameter * radiusScale);
+            }
+
+            ApplyStickMode();
+        }
+
+        private void ApplyStickMode()
+        {
+            bool floating = !TouchControlSettingOptions.FixedStick;
+
+            if (FloatZone != null)
+            {
+                FloatZone.gameObject.SetActive(floating);
+            }
+
+            if (_floatZoneImage != null)
+            {
+                _floatZoneImage.raycastTarget = floating;
+            }
+
+            if (_stickBaseImage != null)
+            {
+                // 浮动：底座纯视觉（FloatZone 命中）；固定：底座本身是命中目标（A-AND-04）。
+                _stickBaseImage.raycastTarget = !floating;
+            }
+
+            if (floating)
+            {
+                if (Stick != null && Stick.IsHeld)
+                {
+                    ShowStickBase(held: true);
+                }
+                else
+                {
+                    HideStickBase();
+                }
+            }
+            else
+            {
+                ResetStickBaseAnchor();
+                ShowStickBase(held: Stick != null && Stick.IsHeld);
+            }
+        }
+
         private void Teardown(bool destroySelf)
         {
             if (_shutdown)
@@ -214,6 +541,7 @@ namespace ZFrame.View
             {
                 Stick.Release(); // publishes Vec2.Zero while still subscribed (held finger on scene unload)
                 Stick.Moved -= OnStickMoved;
+                Stick.HoldChanged -= OnStickHoldChanged;
             }
 
             if (InteractButton != null)
@@ -228,6 +556,7 @@ namespace ZFrame.View
                 PauseButton.Reset();
             }
 
+            TouchControlSettingOptions.Changed -= ApplyTouchSettings;
             _bridge = null;
 
             if (!destroySelf)
@@ -255,8 +584,36 @@ namespace ZFrame.View
             ApplySafeArea(_safeArea, Screen.safeArea, new Vector2(Screen.width, Screen.height));
             RememberSafeArea();
 
+            // SIBLING ORDER: FloatZone FIRST — within one canvas later siblings
+            // win the raycast, so 互动/暂停 (built after) stay on top of the
+            // lower-half zone while every other bottom-half point floats the stick.
+            BuildFloatZone(_safeArea);
             BuildStick(_safeArea);
             BuildButtons(_safeArea);
+
+            // TASK-A-AND-10: live overlays follow the settings rows immediately
+            // (the boot applier / panel writes them through Apply* → Changed).
+            TouchControlSettingOptions.Changed += ApplyTouchSettings;
+            ApplyTouchSettings();
+        }
+
+        private void BuildFloatZone(RectTransform parent)
+        {
+            RectTransform zone = CreateRect(parent, FloatingStickZone.ZoneName);
+            zone.anchorMin = Vector2.zero;
+            zone.anchorMax = new Vector2(1f, 0.5f); // 下半屏（安全区内）
+            zone.pivot = new Vector2(0.5f, 0.5f);
+            zone.offsetMin = Vector2.zero;
+            zone.offsetMax = Vector2.zero;
+
+            // A raycast needs a Graphic: fully transparent, raycast-target only.
+            Image hit = zone.gameObject.AddComponent<Image>();
+            hit.color = new Color(0f, 0f, 0f, 0f);
+            hit.raycastTarget = true;
+
+            _floatZoneImage = hit;
+            FloatZone = zone.gameObject.AddComponent<FloatingStickZone>();
+            FloatZone.Owner = this;
         }
 
         private void BuildStick(RectTransform parent)
@@ -271,7 +628,7 @@ namespace ZFrame.View
             Image baseImage = zone.gameObject.AddComponent<Image>();
             baseImage.sprite = CircleSprite;
             baseImage.color = StickBaseColor;
-            baseImage.raycastTarget = true; // the touch zone is the hit target
+            baseImage.raycastTarget = true; // the touch zone is the hit target (fixed mode; floating flips this)
 
             RectTransform knob = CreateRect(zone, "Knob");
             knob.anchorMin = new Vector2(0.5f, 0.5f);
@@ -285,9 +642,14 @@ namespace ZFrame.View
             knobImage.color = KnobColor;
             knobImage.raycastTarget = false;
 
+            _stickZone = zone;
+            _stickBaseImage = baseImage;
+            _knobImage = knobImage;
+
             Stick = zone.gameObject.AddComponent<VirtualJoystick>();
             Stick.Configure(zone, knob);
             Stick.Moved += OnStickMoved;
+            Stick.HoldChanged += OnStickHoldChanged;
         }
 
         private void BuildButtons(RectTransform parent)
@@ -399,6 +761,11 @@ namespace ZFrame.View
 
         private void OnInteractPressed()
         {
+            // TASK-A-AND-10: 互动 = the haptic action button. The pulse is
+            // gated by TouchHaptics.Enabled (震动反馈 row) and is a safe no-op
+            // without vibration hardware. 暂停 opens a menu and deliberately
+            // stays pulse-free (one meaningful haptic per action verb).
+            TouchHaptics.Trigger();
             _bridge?.ApplyVirtualInteract();
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
             DeviceFileLogger.Step("touch button: 互动 pressed -> InteractInputEvent");
