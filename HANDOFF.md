@@ -1,6 +1,7 @@
 # HANDOFF —— 项目当前状态快照
 
 > 唯一权威状态源。接管者先读本文件，再读 `Docs/交接档案.md`（路线图+环境坑+技术债），再读 TASKS.md。
+> ⚡ **给下一个 LLM 主控**：先读 \`Docs/LLM-HANDOFF-NOTES.md\`——132 个任务沉淀的全部操作手册（派发模板/变异验证法/故障处置手册/技术坑备忘/工具调用技巧/额度管理），照做即可满血接力。
 > 历史交接记录已归档 git 历史（`git show G-113:HANDOFF.md`），WORKLOG.md 有全部任务索引。
 
 **快照时间**: 2026-11-04 深夜（**主控交棒**）｜**刷新者**: 主控（ZCode，GLM 会话）｜**仓库**: `C:\Users\1\Desktop\zcode\GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni（CI 绿）
