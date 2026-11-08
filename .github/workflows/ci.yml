@@ -2,6 +2,8 @@ name: CI
 
 # 分层策略（见 Docs/交接档案.md §CI）：
 #   L1 native  —— 本文件，云端可跑，不需要 Unity 许可证、不需要 GPU
+#                 （TASK-A-CI-02：装 LunarG Vulkan SDK，Vulkan 用例全量入云；
+#                  无 GPU 的真设备用例走"设备不可用→降级"路径，不假绿）
 #   L2 unity   —— 需要 Unity 许可证 + 完整 Unity 安装，默认不启用（见文末注释）
 #   L3 heavy   —— playmode/bench/打包 需要 GPU 与稳定机器，只能自托管，不进云端
 #
@@ -45,9 +47,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Vulkan SDK (LunarG)
+        # TASK-A-CI-02：补齐云端 Vulkan 用例（原先 249/全量，缺的正是被 ZR_HAS_VULKAN
+        # 条件排除的 32+ 个用例）。选型说明（V1，详见 Docs/Logs/TASK-A-CI-02.md）：
+        #   · 简报首选 `VulkanGroup/install-vulkan-sdk@v1` 经核实不存在（GitHub API 404）；
+        #   · 改用 jakoch/install-vulkan-sdk-action@v1：活跃维护（2026-11 仍有 push），
+        #     从 LunarG 官方下载，装后自动 export VULKAN_SDK（正好命中 CMakeLists 的
+        #     $ENV{VULKAN_SDK} 探测 → ZR_HAS_VULKAN=1 → VK 用例编译进测试）并把
+        #     SDK bin 加入 PATH（glslc 可用 → SPIR-V 产物生成）。
+        #   · 版本钉 1.4.363.0，与本地验证环境一致，避免 latest 漂移。
+        uses: jakoch/install-vulkan-sdk-action@v1
+        with:
+          vulkan_version: 1.4.363.0
+          install_runtime: true  # runner 无 GPU 驱动：补装 vulkan-1.dll loader，测试 exe 启动需要
+          cache: true
+
+      - name: Put Vulkan loader on PATH
+        # SDK 的 Bin 目录只有头/库/glslc，不含 vulkan-1.dll（本机那样，云端同理）；
+        # install_runtime 把 loader 装在 <SDK>\runtime\x64\。zrender_test.exe 静态导入
+        # vulkan-1.dll，必须让 DLL 搜索路径命中，否则进程启动即失败。两处都加 PATH（无害）。
+        shell: pwsh
+        run: |
+          foreach ($c in @("$env:VULKAN_SDK\Bin", (Join-Path $env:VULKAN_SDK 'runtime\x64'))) {
+            if (Test-Path $c) {
+              Add-Content $env:GITHUB_PATH $c
+              Write-Host "PATH += $c"
+            }
+          }
+
       - name: Configure (CMake / VS2022)
-        # VULKAN_SDK 不存在时 CMakeLists 会自动跳过 Vulkan 目标（D3D12 路径不受影响），
-        # 所以云端不需要安装 Vulkan SDK。
+        # 上一步已 export VULKAN_SDK → CMakeLists 启用 Vulkan 后端（ZR_HAS_VULKAN=1）。
+        # VULKAN_SDK 不存在时 CMakeLists 仍会自动跳过 Vulkan 目标（D3D12 路径不受影响）。
         run: cmake -S Native -B Native/build -G "Visual Studio 17 2022" -A x64
 
       - name: Build (Release)
@@ -55,8 +85,9 @@ jobs:
 
       - name: Run doctest suite
         # 必须在仓库根执行：tests/test_zrhi_vulkan_spv.cpp 通过相对路径找 SPIR-V 产物。
-        # 注意：无 Vulkan SDK 时用例数会少于本地的 281（Vulkan 相关被跳过），
-        # 所以这里只验退出码，不比对具体数字。
+        # TASK-A-CI-02 后云端与本地同为全量（含 Vulkan 用例，本地基线 349/778,723）。
+        # 真设备用例（B-5 屏障截断 / F1 读链）在无 GPU runner 上走"设备不可用→降级"路径
+        # （ZrVulkanCreateDevice 返回 nullptr → MESSAGE + return，用例仍 PASS 计数）。
         run: Native/build/bin/Release/zrender_test.exe --success=false
 
       - name: Upload test log on failure
