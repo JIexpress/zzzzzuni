@@ -8,7 +8,7 @@
 
 
 > Unity 2022.3 LTS 上的双轨项目：**Track A（ZFrame）玩法框架** + **Track B（ZRender）自研渲染内核**（C# SRP 壳 + 原生 C++ 核心）。
-> 全程由"主控/施工/验收"三角色治理，**103 个任务闭环**、每任务日志落盘（`Docs/Logs/`）。
+> 全程由"主控/施工/验收"三角色治理，**132 个任务闭环**、每任务日志落盘（`Docs/Logs/`）。
 
 ## 1. 双轨架构（文字版）
 
@@ -22,7 +22,7 @@ GameFramework/
 │       │   ├─ Gameplay             #   FSM / InteractSystem / Command（纯 C#，禁引擎类型）
 │       │   ├─ View                 #   UIFramework(MVP+面板栈) / SettingsSystem / SceneLoader / AudioService
 │       │   ├─ Editor               #   架构校验器 / 编辑器工具（工作台/UI校验/命名检查）
-│       │   └─ Tests                #   EditMode 916 用例 + PlayMode 48 用例
+│       │   └─ Tests                #   EditMode 1099 用例 + PlayMode 85 用例
 │       ├─ ZRender/                 # 双轨结合部：自研 SRP 壳 + P/Invoke 桥接
 │       ├─ Game/                    # 垂直切片（Bootstrap / Domain / View，SCN_Boot→SCN_Game）
 │       └─ Plugins/ZRender/         # zrender.dll（构建产物部署位，ADR-004）
@@ -32,7 +32,7 @@ GameFramework/
 │   ├─ zrender                      #   RenderGraph（生命周期/别名复用/屏障合并/split barrier）+ 特性
 │   ├─ zupscaler                    #   FSR 3.1（真机验证）/ FSR 4.1 路径 / DLSS5 骨架（能力门控）
 │   ├─ zplugin                      #   Unity 原生插件入口（C ABI）
-│   └─ tests/                       #   doctest 单测 311 用例 / 776,716 断言 + 窗口演示程序
+│   └─ tests/                       #   doctest 单测 349 用例 / 778,723 断言 + 窗口演示程序
 ├─ Tools/                           # build_native.ps1（原生一键构建）/ run_tests.ps1（全量测试一键）
 └─ Docs/                            # 方案 / 标准 / 任务日志 / 演示 / 对等闸门材料
 ```
@@ -58,7 +58,7 @@ cmake 配置 → Release 构建（零警告 /WX）→ doctest 单测 → 自动�
 ```bash
 powershell -NoProfile -ExecutionPolicy Bypass -File Tools/run_tests.ps1
 ```
-依次：原生构建+单测+ctest → Unity EditMode（916）→ Unity PlayMode（48）→ 架构校验器 → 配置校验器 → 资产命名检查 → bench 回归 → player 出包（默认 SKIP，`PLAYER_BUILD=1` 开启）。
+依次：原生构建+单测+ctest → Unity EditMode（1099）→ Unity PlayMode（85）→ 架构校验器 → 配置校验器 → 资产命名检查 → bench 回归 → player 出包（默认 SKIP，`PLAYER_BUILD=1` 开启）。
 汇总报告写入仓库根 `TestReport.txt`（生成物，未入库）。Unity 批处理纪律已内置（单实例/锁清理/勿带 -quit/超时 taskkill/证据新鲜度校验）。
 
 **④ 编辑器里玩垂直切片（Track A）**
@@ -93,10 +93,10 @@ W=Native/build/bin/Release/zrhi_d3d12_window.exe
 
 | 指标 | 数值 | 出处 |
 |---|---|---|
-| 原生单测 | **311 用例 / 776,716 断言，全绿** | doctest（2026-11-04 八段基线实跑，Vulkan SDK 已恢复） |
-| Unity EditMode | **916 用例，全绿** | NUnit（2026-11-05 A-R9-16 验收实跑） |
-| Unity PlayMode | **48 用例，全绿** | 垂直切片冒烟 + 音频真放 + 千人演练场默认可见与像素证据（2026-11-04 A-R9-15 验收实跑） |
-| 架构校验 | 25 asmdef 扫描 / 0 违规（含 Game/Domain 纯度扫描） | ArchitectureValidator（八段 exit 0） |
+| 原生单测 | **349 用例 / 778,723 断言，全绿** | doctest（2026-11-09 主控实跑 `zrender_test.exe`） |
+| Unity EditMode | **1099 用例，全绿** | NUnit（2026-11-09 01:53 五段报告） |
+| Unity PlayMode | **85 用例，全绿** | 垂直切片冒烟 + 音频真放 + 千人演练场默认可见与像素证据（2026-11-04 A-R9-15 验收实跑） |
+| 架构校验 | 26 asmdef 扫描 / 0 违规（含 Game/Domain 纯度扫描） | ArchitectureValidator（八段 exit 0） |
 | DataKernel 基准 | 406M 行/s（BMI2 实证，零分配） | B-R1-01 |
 | GPU 时间戳 | 实测 11.3ms（窗口场景） | B-R2-03 |
 | 合批收益 | 绘制调用省 94.9%（对拍一致） | B-R4-02 |
@@ -119,4 +119,4 @@ W=Native/build/bin/Release/zrhi_d3d12_window.exe
 | `Docs/Parity/parity_report.md` | URP vs ZRender 对等闸门报告 |
 | `Docs/Standards/file-conventions.md` | 文件与命名规范（UTF-8 无 BOM/LF 等） |
 | `TASKS.md` / `WORKLOG.md` / `DECISIONS.md` | 任务看板 / 任务索引 / 决策记录 |
-| `Docs/Logs/TASK-*.md` | 103 个已闭环任务日志（简报/施工/验收四节） |
+| `Docs/Logs/TASK-*.md` | 132 个已闭环任务日志（简报/施工/验收四节） |
