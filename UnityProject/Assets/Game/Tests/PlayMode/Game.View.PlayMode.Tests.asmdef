@@ -1,0 +1,25 @@
+{
+    "name": "Game.View.PlayMode.Tests",
+    "rootNamespace": "Game.View.PlayMode.Tests",
+    "references": [
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner",
+        "ZFrame.Core",
+        "ZFrame.View",
+        "Game.View",
+        "ZFrame.Render.Bindings"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
