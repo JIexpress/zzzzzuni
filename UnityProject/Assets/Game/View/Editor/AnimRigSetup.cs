@@ -32,7 +32,8 @@ namespace Game.View.Editor
     ///    pure <see cref="Game.View.Animation.KenneyLocomotionPlan"/>
     ///    constants: parameters Speed(float)/Grounded(bool)/Jump(trigger),
     ///    states Idle/Run/Jump (default Idle), transitions Speed&gt;0.1→Run /
-    ///    Speed&lt;0.1→Idle / Jump trigger→Jump / exit-time+grounded→Idle, and
+    ///    Speed&lt;0.1→Idle / Jump trigger→Jump (Idle and Run) / exit-time +
+    ///    Grounded→Idle / exit-time + Speed&gt;0.1 + Grounded→Run, and
     ///    IK pass ENABLED on the base layer (OnAnimatorIK requires it).
     ///    The Run state plays back at measuredSpeed ÷
     ///    <see cref="Game.View.Animation.KenneyLocomotionPlan.RunReferenceSpeed"/>
@@ -291,6 +292,13 @@ namespace Game.View.Editor
                 throw new InvalidOperationException("[AnimRigSetup] persisted controller lost the default state (Idle).");
             }
 
+            if (root.states.Length != 3)
+            {
+                throw new InvalidOperationException(
+                    $"[AnimRigSetup] persisted controller has {root.states.Length} states (expected 3).");
+            }
+
+            int transitionCount = 0;
             foreach (ChildAnimatorState child in root.states)
             {
                 AnimatorState state = child.state;
@@ -308,6 +316,7 @@ namespace Game.View.Editor
 
                 foreach (AnimatorStateTransition transition in state.transitions)
                 {
+                    transitionCount++;
                     if (transition == null || transition.destinationState == null)
                     {
                         throw new InvalidOperationException(
@@ -323,7 +332,14 @@ namespace Game.View.Editor
                 }
             }
 
-            report.AppendLine("  persisted verify: 3 params / 3 states / default=Idle / 4 transitions with destinations+conditions / IK pass — OK");
+            if (transitionCount != 6)
+            {
+                throw new InvalidOperationException(
+                    $"[AnimRigSetup] persisted controller has {transitionCount} transitions (expected 6: " +
+                    "Idle>Run, Run>Idle, Run>Jump, Idle>Jump, Jump>Run, Jump>Idle).");
+            }
+
+            report.AppendLine("  persisted verify: 3 params / 3 states / default=Idle / 6 transitions with destinations+conditions / IK pass — OK");
         }
 
         private static void ApplyPlan(AnimatorController controller, StringBuilder report)
@@ -398,6 +414,31 @@ namespace Game.View.Editor
             runToJump.AddCondition(AnimatorConditionMode.If, 0f,
                 Game.View.Animation.KenneyLocomotionPlan.JumpParam);
 
+            // TASK-A-ANIM-02: standing take-off (no exit time — the trigger
+            // alone decides) and the "landed while still moving" exit.
+            AnimatorStateTransition idleToJump = idle.AddTransition(jump, false);
+            ConfigureTransition(idleToJump, "IdleToJump",
+                Game.View.Animation.KenneyLocomotionPlan.IdleToJumpBlend);
+            idleToJump.AddCondition(AnimatorConditionMode.If, 0f,
+                Game.View.Animation.KenneyLocomotionPlan.JumpParam);
+
+            // Jump→Run is added BEFORE Jump→Idle on purpose: Unity takes the
+            // first transition whose conditions pass, so a body that really
+            // moves on landing resumes Run, while a standing body (Speed≈0)
+            // falls through to Jump→Idle. Both exits also require Grounded —
+            // the state machine must not leave Jump before the arc has landed,
+            // whatever the clip length (a short clip would otherwise exit mid-air).
+            AnimatorStateTransition jumpToRun = jump.AddTransition(run, false);
+            ConfigureTransition(jumpToRun, "JumpToRun",
+                Game.View.Animation.KenneyLocomotionPlan.JumpToRunBlend);
+            jumpToRun.hasExitTime = true;
+            jumpToRun.exitTime = Game.View.Animation.KenneyLocomotionPlan.JumpExitTime;
+            jumpToRun.AddCondition(AnimatorConditionMode.Greater,
+                Game.View.Animation.KenneyLocomotionPlan.LocomotionSpeedThreshold,
+                Game.View.Animation.KenneyLocomotionPlan.SpeedParam);
+            jumpToRun.AddCondition(AnimatorConditionMode.If, 0f,
+                Game.View.Animation.KenneyLocomotionPlan.GroundedParam);
+
             AnimatorStateTransition jumpToIdle = jump.AddTransition(idle, false);
             ConfigureTransition(jumpToIdle, "JumpToIdle",
                 Game.View.Animation.KenneyLocomotionPlan.JumpToIdleBlend);
@@ -407,7 +448,8 @@ namespace Game.View.Editor
                 Game.View.Animation.KenneyLocomotionPlan.GroundedParam);
 
             report.AppendLine("  params=[Speed:Float, Grounded:Bool, Jump:Trigger] default=Idle " +
-                              "transitions=[Idle>Run Speed>0.1, Run>Idle Speed<0.1, Run>Jump trig, Jump>Idle exit0.9+grounded] " +
+                              "transitions=[Idle>Run Speed>0.1, Run>Idle Speed<0.1, Run>Jump trig, Idle>Jump trig, " +
+                              "Jump>Run exit0.9+Speed>0.1+grounded, Jump>Idle exit0.9+grounded] " +
                               "baseLayer.iKPass=true");
         }
 

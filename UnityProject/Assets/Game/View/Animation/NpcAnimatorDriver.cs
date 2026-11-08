@@ -17,8 +17,15 @@ namespace Game.View.Animation
     ///   from <see cref="NpcUtilityAgent.Position"/>/Clock, not from transform
     ///   jitter), run through
     ///   <see cref="KenneyLocomotionPlan.BrainActionToSpeedParam"/>.
-    /// - <see cref="KenneyLocomotionPlan.GroundedParam"/>: true (no vertical
-    ///   physics in this slice).
+    /// - <see cref="KenneyLocomotionPlan.GroundedParam"/>: the arc's truth —
+    ///   false while the body is airborne, true the instant it lands
+    ///   (TASK-A-ANIM-02; it used to be a hard-coded true).
+    /// - Vertical motion: <see cref="RequestJump"/> starts a pure arc
+    ///   (<see cref="KenneyLocomotionPlan.JumpHeightAt"/>) and every
+    ///   <see cref="Step"/> writes <c>localPosition.y = baseY + height</c>;
+    ///   landing snaps back to the captured base exactly. The plane motion
+    ///   still belongs to <see cref="NpcUtilityView"/> (it writes XZ only and
+    ///   preserves Y), so this driver owns Y and nothing else.
     /// - Smooth turning: yaw steps toward the displacement direction capped at
     ///   <see cref="_turnSpeedDegPerSec"/> — angular-speed driven, never an
     ///   instant flip.
@@ -67,6 +74,15 @@ namespace Game.View.Animation
         private bool _hasSimSample;
         private Vec2 _lastMoveDelta;
 
+        // Jump arc state (TASK-A-ANIM-02). The base Y is captured lazily on
+        // the first drive step / first jump request — NOT in Awake, because
+        // EditMode tooling and DestroyImmediate paths may skip Awake, and the
+        // settled feet-on-ground offset must be read after the scene is posed.
+        private float _baseY;
+        private bool _hasBaseY;
+        private float _jumpElapsed;
+        private bool _isAirborne;
+
         /// <summary>When true, Update() does nothing — tests drive <see cref="Step"/> or freeze the NPC.</summary>
         public bool ManualDrive { get; set; }
 
@@ -101,6 +117,15 @@ namespace Game.View.Animation
 
         /// <summary>Diagnostics: times OnAnimatorIK has fired (0 = callback never invoked).</summary>
         public int LookIkCallbackCount { get; private set; }
+
+        /// <summary>Diagnostics: jump requests accepted since spawn (never decremented).</summary>
+        public int JumpRequestCount { get; private set; }
+
+        /// <summary>Diagnostics: jump requests rejected because the body was airborne (no double jump).</summary>
+        public int IgnoredJumpCount { get; private set; }
+
+        /// <summary>Diagnostics: arc height written on the last drive step (m, 0 = on the ground).</summary>
+        public float LastJumpHeight { get; private set; }
 
         private void Awake()
         {
@@ -145,17 +170,35 @@ namespace Game.View.Animation
             LastWrittenSpeed = speedParam;
 
             _animator.SetFloat(KenneyLocomotionPlan.SpeedParam, speedParam);
-            _animator.SetBool(KenneyLocomotionPlan.GroundedParam, true);
+            AdvanceJump(deltaTime);
             TurnToward(deltaTime);
         }
 
-        /// <summary>Queues a jump on the state machine (Run→Jump trigger). Not fired by the demo loop.</summary>
-        public void RequestJump()
+        /// <summary>
+        /// Requests a jump. Returns true when the take-off started, false when
+        /// the request was rejected — the body is already airborne (no double
+        /// jump, counted in <see cref="IgnoredJumpCount"/>) or there is no
+        /// animator. Callers that ignore the return value keep working.
+        /// </summary>
+        public bool RequestJump()
         {
-            if (_animator != null)
+            if (_animator == null)
             {
-                _animator.SetTrigger(KenneyLocomotionPlan.JumpParam);
+                return false;
             }
+
+            if (_isAirborne)
+            {
+                IgnoredJumpCount++;
+                return false;
+            }
+
+            EnsureBaseY();
+            JumpRequestCount++;
+            _jumpElapsed = 0f;
+            _isAirborne = true;
+            _animator.SetTrigger(KenneyLocomotionPlan.JumpParam);
+            return true;
         }
 
         /// <summary>
@@ -203,6 +246,53 @@ namespace Game.View.Animation
         }
 
         // ---- internals -------------------------------------------------------
+
+        /// <summary>
+        /// One step of the vertical arc: advance the elapsed air time, apply
+        /// <see cref="KenneyLocomotionPlan.JumpHeightAt"/> on top of the
+        /// captured base Y, and write the true grounded flag. Landing snaps
+        /// the offset to exactly 0 (no float residue) in the same step the arc
+        /// ends, so <c>Grounded</c> and the transform agree on every frame.
+        /// </summary>
+        private void AdvanceJump(float deltaTime)
+        {
+            EnsureBaseY();
+            float height = 0f;
+            if (_isAirborne)
+            {
+                _jumpElapsed += Mathf.Max(0f, deltaTime);
+                if (KenneyLocomotionPlan.AirborneAt(_jumpElapsed))
+                {
+                    height = KenneyLocomotionPlan.JumpHeightAt(_jumpElapsed);
+                }
+                else
+                {
+                    _isAirborne = false; // landed: height stays exactly 0 this step
+                }
+            }
+
+            LastJumpHeight = height;
+            Vector3 localPosition = transform.localPosition;
+            localPosition.y = _baseY + height;
+            transform.localPosition = localPosition;
+            _animator.SetBool(KenneyLocomotionPlan.GroundedParam, !_isAirborne);
+        }
+
+        /// <summary>
+        /// Captures the rest-pose local Y the arc is measured from (the model
+        /// child's feet-on-ground offset). Lazy on purpose: it must be read
+        /// once the scene is posed, and Awake is not guaranteed (EditMode).
+        /// </summary>
+        private void EnsureBaseY()
+        {
+            if (_hasBaseY)
+            {
+                return;
+            }
+
+            _baseY = transform.localPosition.y;
+            _hasBaseY = true;
+        }
 
         /// <summary>
         /// Displacement speed in the AGENT's clock (sim seconds), immune to

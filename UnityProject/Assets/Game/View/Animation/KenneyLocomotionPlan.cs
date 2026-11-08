@@ -20,6 +20,11 @@ namespace Game.View.Animation
     ///   action; the body simply moves because the brain said so, and the
     ///   animation follows the measured motion.
     ///
+    /// TASK-A-ANIM-02 adds the vertical hop: <see cref="JumpHeightAt"/> /
+    /// <see cref="AirborneAt"/> are the same kind of pure function for the
+    /// Y axis — the body is only in the air because the arc says so, and
+    /// <see cref="GroundedParam"/> is that truth, never a hard-coded true.
+    ///
     /// Why the state machine is gated on measured speed rather than on the
     /// brain action name directly: the Rest decision includes the WALK back
     /// to the rest point — a name-gated bool would keep the state machine in
@@ -39,10 +44,10 @@ namespace Game.View.Animation
         /// <summary>Float parameter: measured plane displacement speed in m/s.</summary>
         public const string SpeedParam = "Speed";
 
-        /// <summary>Bool parameter: grounded flag (always true in this slice — no vertical physics).</summary>
+        /// <summary>Bool parameter: grounded flag — the arc's truth (<see cref="AirborneAt"/>), not a constant.</summary>
         public const string GroundedParam = "Grounded";
 
-        /// <summary>Trigger parameter: jump request (Run→Jump; not fired by the demo loop, see <c>NpcAnimatorDriver.RequestJump</c>).</summary>
+        /// <summary>Trigger parameter: jump request (Idle→Jump / Run→Jump; see <c>NpcAnimatorDriver.RequestJump</c>).</summary>
         public const string JumpParam = "Jump";
 
         // ---- states ----------------------------------------------------------
@@ -96,6 +101,36 @@ namespace Game.View.Animation
         /// <summary>Jump→Idle transition blend duration (s).</summary>
         public const float JumpToIdleBlend = 0.1f;
 
+        /// <summary>Idle→Jump transition blend duration (s).</summary>
+        public const float IdleToJumpBlend = 0.05f;
+
+        /// <summary>Jump→Run transition blend duration (s).</summary>
+        public const float JumpToRunBlend = 0.1f;
+
+        // ---- jump arc (TASK-A-ANIM-02 — pure, engine-free) -------------------
+
+        /// <summary>Peak height of the jump arc above the take-off height (m).</summary>
+        public const float JumpPeakHeight = 0.75f;
+
+        /// <summary>
+        /// Downward acceleration of the jump arc (m/s²). Earth gravity, kept
+        /// as a written-down constant so the arc is reproducible in tests
+        /// rather than read from the engine's physics settings.
+        /// </summary>
+        public const float JumpGravity = 9.81f;
+
+        /// <summary>
+        /// Take-off vertical speed (m/s), derived as v0 = √(2·g·h) — the arc
+        /// peaks at exactly <see cref="JumpPeakHeight"/>, never hand-tuned.
+        /// </summary>
+        public static readonly float JumpInitialSpeed = (float)Math.Sqrt(2.0 * JumpGravity * JumpPeakHeight);
+
+        /// <summary>
+        /// Total air time (s), T = 2·v0/g: take-off and landing are exactly T
+        /// apart, and <see cref="JumpHeightAt"/> is zero at both ends.
+        /// </summary>
+        public static readonly float JumpAirTime = 2f * JumpInitialSpeed / JumpGravity;
+
         // ---- pure functions (the drive chain, test-pinned) -------------------
 
         /// <summary>
@@ -146,6 +181,43 @@ namespace Game.View.Animation
             }
 
             return 1f - (yaw - fullWeightYawDeg) / (zeroWeightYawDeg - fullWeightYawDeg);
+        }
+
+        /// <summary>
+        /// Height above the take-off point after <paramref name="elapsedSeconds"/>
+        /// of air time: h = v0·t − ½g·t², with t clamped to [0, T]. Both ends
+        /// are exactly 0 and the midpoint is <see cref="JumpPeakHeight"/>; a
+        /// negative, NaN or past-landing time reads as "on the ground" (0)
+        /// instead of throwing — the driver calls this every frame.
+        /// </summary>
+        public static float JumpHeightAt(float elapsedSeconds)
+        {
+            if (float.IsNaN(elapsedSeconds) || elapsedSeconds <= 0f)
+            {
+                return 0f;
+            }
+
+            if (elapsedSeconds >= JumpAirTime)
+            {
+                return 0f;
+            }
+
+            return (JumpInitialSpeed * elapsedSeconds) - (0.5f * JumpGravity * elapsedSeconds * elapsedSeconds);
+        }
+
+        /// <summary>
+        /// True while the arc is still airborne: elapsed ∈ [0, T). Negative
+        /// or past-landing times report "grounded" (false) instead of
+        /// throwing — this is the value written to <see cref="GroundedParam"/>.
+        /// </summary>
+        public static bool AirborneAt(float elapsedSeconds)
+        {
+            if (float.IsNaN(elapsedSeconds) || elapsedSeconds < 0f)
+            {
+                return false;
+            }
+
+            return elapsedSeconds < JumpAirTime;
         }
     }
 }

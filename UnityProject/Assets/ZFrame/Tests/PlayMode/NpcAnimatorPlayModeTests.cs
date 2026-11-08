@@ -9,6 +9,10 @@
 // ④ 速度-位移同步：Speed 参数 = 实测位移速度（容差），且 Run 归一化时间推进率
 //    = Speed/RunReferenceSpeed（动画播放速度真的被位移驱动）。
 // ⑤（附加）RequestJump → 状态机穿过 Jump 并返回。
+// ⑥ TASK-A-ANIM-02 真位移：起跳后 Y 沿纯函数弧线上升到 ≥ baseY+0.3 再回落，
+//    T 后精确归位 baseY（±1e-3）；Grounded 由 false 回 true（真值驱动）。
+// ⑦ 无二段跳：空中再次 RequestJump 返回 false、IgnoredJumpCount=1、弧线不重置。
+// ⑧ 站立起跳：Idle + Jump 触发 → 进入 Jump（Idle→Jump 过渡的可证伪证据）。
 
 using System.Collections;
 using Game.Domain.AI.Utility;
@@ -280,13 +284,146 @@ namespace ZFrame.PlayMode.Tests
             Animator animator = AnimatorOf(wayfarer);
             yield return WaitForState(animator, KenneyLocomotionPlan.RunState, 10f, "进入 Run");
 
-            DriverOf(wayfarer).RequestJump();
+            NpcAnimatorDriver driver = DriverOf(wayfarer);
+            Assert.IsTrue(driver.RequestJump(), "地面起跳必须被接受（RequestJump 返回 true）");
             yield return WaitForState(animator, KenneyLocomotionPlan.JumpState, 3f, "Jump 触发器必须把状态机带入 Jump");
 
             yield return WaitUntil(
                 () => !animator.GetCurrentAnimatorStateInfo(0).IsName(KenneyLocomotionPlan.JumpState)
                       && !animator.IsInTransition(0),
                 6f, "Jump 必须按 exit time + Grounded 离开");
+        }
+
+        /// <summary>
+        /// ⑥ TASK-A-ANIM-02 V4：起跳后 Y 沿弧线真的抬升（≥ baseY+0.3），T 后
+        /// 精确回落到基准（±1e-3），Grounded 由 false 回 true——位移与参数是同一真值。
+        /// 变异可证伪：把 Grounded 写回恒 true，本用例的"空中 false"必红。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Jump_LiftsTheBody_AlongTheArc_AndLandsExactlyOnTheBase()
+        {
+            yield return LoadSceneAndSmokeCheck();
+
+            NpcUtilityView wayfarer = ById("npc-anim-c");
+            Animator animator = AnimatorOf(wayfarer);
+            NpcAnimatorDriver driver = DriverOf(wayfarer);
+            yield return WaitForState(animator, KenneyLocomotionPlan.RunState, 10f, "进入 Run");
+
+            float baseY = driver.transform.position.y;
+            Assert.IsTrue(driver.RequestJump(), "起跳必须被接受");
+
+            float peakY = baseY;
+            bool sawAirborneFlag = false;
+            bool sawJumpState = false;
+            float deadline = Time.time + 2f;
+            while (Time.time < deadline)
+            {
+                peakY = Mathf.Max(peakY, driver.transform.position.y);
+                if (!animator.GetBool(KenneyLocomotionPlan.GroundedParam))
+                {
+                    sawAirborneFlag = true;
+                }
+
+                if (animator.GetCurrentAnimatorStateInfo(0).IsName(KenneyLocomotionPlan.JumpState))
+                {
+                    sawJumpState = true;
+                }
+
+                yield return null;
+            }
+
+            float observedPeak = peakY - baseY;
+            Debug.Log($"[A-ANIM-02] jump: baseY={baseY:F4} peakY={peakY:F4} rise={observedPeak:F4} " +
+                      $"T={KenneyLocomotionPlan.JumpAirTime:F4} landedY={driver.transform.position.y:F4} " +
+                      $"lastJumpHeight={driver.LastJumpHeight:F4} grounded={animator.GetBool(KenneyLocomotionPlan.GroundedParam)}");
+
+            Assert.IsTrue(sawJumpState, "起跳必须真的进入 Jump 状态（状态机与位移同源）");
+            Assert.IsTrue(sawAirborneFlag, "空中 Grounded 参数必须为 false（变异：写回恒 true 即必红）");
+            Assert.GreaterOrEqual(observedPeak, 0.3f,
+                $"Y 必须真的抬升 ≥ 0.3 m（实测 {observedPeak:0.###} m）——否则跳跃只是播片");
+            Assert.That(observedPeak, Is.EqualTo(KenneyLocomotionPlan.JumpPeakHeight).Within(0.1f),
+                $"峰值必须 ≈ JumpPeakHeight（实测 {observedPeak:0.###}）");
+
+            Assert.That(driver.transform.position.y, Is.EqualTo(baseY).Within(1e-3f),
+                $"T 后必须精确归位 baseY={baseY:F4}（实测 {driver.transform.position.y:F4}）");
+            Assert.IsTrue(animator.GetBool(KenneyLocomotionPlan.GroundedParam), "落地后 Grounded 必须回 true");
+            Assert.AreEqual(1, driver.JumpRequestCount, "只接受了一次起跳请求");
+        }
+
+        /// <summary>
+        /// ⑦ TASK-A-ANIM-02 V5：空中再次 RequestJump 返回 false、IgnoredJumpCount=1、
+        /// 弧线不重置（身体继续按原 elapsed 上升至近峰值并正常落地）。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator AirborneJumpRequest_IsIgnored_WithoutResettingTheArc()
+        {
+            yield return LoadSceneAndSmokeCheck();
+
+            NpcUtilityView wayfarer = ById("npc-anim-c");
+            Animator animator = AnimatorOf(wayfarer);
+            NpcAnimatorDriver driver = DriverOf(wayfarer);
+            yield return WaitForState(animator, KenneyLocomotionPlan.RunState, 10f, "进入 Run");
+
+            float baseY = driver.transform.position.y;
+            Assert.IsTrue(driver.RequestJump(), "地面起跳必须被接受");
+            yield return WaitUntil(() => driver.transform.position.y > baseY + 0.2f, 2f, "起跳后 Y 必须上升");
+
+            float yAtRejection = driver.transform.position.y;
+            int acceptedBefore = driver.JumpRequestCount;
+
+            Assert.IsFalse(driver.RequestJump(), "空中再次 RequestJump 必须被拒绝（禁止二段跳）");
+            Assert.AreEqual(1, driver.IgnoredJumpCount, "被拒绝的请求必须可观测（IgnoredJumpCount=1）");
+            Assert.AreEqual(acceptedBefore, driver.JumpRequestCount, "被拒绝的请求不得计入接受数");
+
+            // A reset would zero the elapsed time and drop the body back to the
+            // base on the next drive step; the arc must keep climbing instead.
+            yield return null;
+            yield return null;
+            Assert.GreaterOrEqual(driver.transform.position.y, yAtRejection - 0.02f,
+                $"被拒后弧线不得重置（拒绝时 {yAtRejection:F3}，两帧后 {driver.transform.position.y:F3}）");
+            Assert.GreaterOrEqual(driver.LastJumpHeight, yAtRejection - baseY - 0.02f, "LastJumpHeight 必须沿原弧线继续");
+
+            yield return WaitUntil(
+                () => animator.GetBool(KenneyLocomotionPlan.GroundedParam)
+                      && Mathf.Abs(driver.transform.position.y - baseY) < 1e-3f,
+                2f, "被拒之后仍必须按原定 T 正常落地归位");
+        }
+
+        /// <summary>
+        /// ⑧ TASK-A-ANIM-02 V6②：站着（Idle，Speed≈0）起跳必须进入 Jump——
+        /// 生成器少了 Idle→Jump 这条过渡时本用例必红。冻结平面驱动（不影响
+        /// 驱动器的垂直步进），排除脑自行切行为的竞态。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator StandingJump_FromIdle_EntersJumpState()
+        {
+            yield return LoadSceneAndSmokeCheck();
+
+            NpcUtilityView restful = ById("npc-anim-a");
+            NpcAnimatorDriver driver = DriverOf(restful);
+            Animator animator = AnimatorOf(restful);
+            yield return WaitUntil(
+                () => AtRestPoint(restful)
+                      && IsBrainAction(restful, NpcUtilityAgent.RestActionName)
+                      && driver.LastMeasuredSpeed < KenneyLocomotionPlan.LocomotionSpeedThreshold,
+                25f, "NPC 必须先在休息点停稳");
+
+            restful.ManualDrive = true; // 平面冻结：Speed 参数稳定为 0，只剩垂直步进
+            yield return null;
+            yield return null; // 让驱动器用冻结后的时钟写一次 Speed=0
+            yield return WaitForState(animator, KenneyLocomotionPlan.IdleState, 5f, "进入 Idle");
+
+            float baseY = driver.transform.position.y;
+            Assert.AreEqual(0f, driver.LastWrittenSpeed, 1e-5f, "站立起跳前提：Speed 参数为 0（Idle）");
+            Assert.IsTrue(driver.RequestJump(), "站着起跳必须被接受");
+
+            yield return WaitForState(animator, KenneyLocomotionPlan.JumpState, 3f,
+                "Idle→Jump 过渡必须存在——否则站着起跳状态机原地不动");
+            yield return WaitUntil(
+                () => animator.GetBool(KenneyLocomotionPlan.GroundedParam)
+                      && Mathf.Abs(driver.transform.position.y - baseY) < 1e-3f,
+                3f, "站立起跳同样必须落地归位");
+            yield return WaitForState(animator, KenneyLocomotionPlan.IdleState, 6f, "落地静止 → 回 Idle");
         }
 
         // ---- helpers -------------------------------------------------------
