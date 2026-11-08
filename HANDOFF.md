@@ -19,6 +19,14 @@
 
 方案承诺 + 两轮增强全部闭环：A 轨框架+垂直切片+**真机可玩**，B 轨渲染内核+双后端（D3D12/Vulkan 全特性 maxDelta=0）+超分全家桶+帧生成；A-AND / A-DEV / A-AUDIT / A-CI / A-R9-13 / 15 / 16 各轮均已闭环。**2026-11-04 接手时 3 个 doing、13 M + 33 ?? 的未完成现场已全部收口**，DataKernel 玩法侧缺口补齐，工作区干净、0 doing、远端已推。下一次派发见「下一步优先级」（下一步：真实构建变体数对照 / 编辑器人工取证）。
 
+## ✅ 最近完成（2026-11-04 深夜，二阶段四任务闭环——A-TECH-04/05 + A-R9-14 + B-TECH-04）
+
+- **A-TECH-04 个性权重+GOAP**（验收 PASS）：CFG 表驱动每 NPC 独立权重，5 NPC 同状态两两分化实证；GOAP 两步链（取工具→修理）空间顺序双证据
+- **A-TECH-05 装配图+序列化**（验收 PASS）：AssemblyGraph 拓扑三查+JSON 原子写重建重放+燃料质量燃烧（**物理发现：质量消失系统 ΔP=F·t 不成立，改包络判据，验收独立复核**）+分离器/接口类型匹配
+- **A-R9-14 音频接线**：SFX 入库+事件→AudioService 全链（两次中断接手，中性验证 873/873 后收尾）
+- **B-TECH-04 球面地形**（验收 PASS）：cube-sphere 6144 chunk+噪声高度+LOD 两档迟滞（同档共享边逐位一致 seams=0/跨档裙边遮蔽）+大气海拔渐变（153→76→2），7.9ms 帧耗 < 16.6 预算
+- 基线：native **349/778,723** + EditMode **983** + PlayMode **71** = **1303 用例全绿**
+
 ## ✅ 最近完成（2026-11-05 凌晨，A-R9-16 URP 变体收敛 + 离线渲染体检）
 
 - **A-R9-16**（`acef951`，独立验收 **PASS with 受限**）：21 条剥离规则（先核对三档 URP/Volume/Renderer 矩阵，**推翻候选表的 `_MAIN_LIGHT_SHADOWS_CASCADE`**，依据 URP 14.0.12 `ShaderBuildPreprocessor.cs:646-648`）、纯函数、`IPreprocessShaders`（EditorPrefs **默认关闭** + 16 条白名单 + 可回滚）、`Tools/run_urp_variant_counter.sh`、36 条 EditMode 用例。EditMode **916/916/0**、PlayMode 48、native 311 持平、三校验器 exit 0；验收亲自复做变异 `916/916/0 → 删 1 规则 916/912/4 → 还原复绿 916/916/0`。
