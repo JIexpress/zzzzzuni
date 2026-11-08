@@ -22,6 +22,10 @@ namespace Game.View.Assembly
 
         [SerializeField] private string _partId = "part";
         [SerializeField] private Color _baseColor = new Color(0.72f, 0.72f, 0.75f, 1f);
+        // TASK-A-TECH-05: serialisation identity (which factory creator
+        // rebuilds this part from a snapshot). Metadata only — the physics
+        // behaviour of the part is untouched.
+        [SerializeField] private AssemblyPartKind _kind = AssemblyPartKind.Cube;
 
         private readonly List<AttachmentPoint> _points = new List<AttachmentPoint>();
         private readonly List<AssemblyJoint> _joints = new List<AssemblyJoint>();
@@ -36,6 +40,21 @@ namespace Game.View.Assembly
 
         /// <summary>Stable identifier (diagnostics, demo HUD, tests).</summary>
         public string PartId => _partId;
+
+        /// <summary>Sets the stable identifier (factory/test configuration).</summary>
+        public void SetPartId(string partId)
+        {
+            _partId = partId;
+        }
+
+        /// <summary>Serialisation identity of this part (TASK-A-TECH-05 snapshots).</summary>
+        public AssemblyPartKind Kind => _kind;
+
+        /// <summary>Sets the serialisation identity (factory/test configuration).</summary>
+        public void SetKind(AssemblyPartKind kind)
+        {
+            _kind = kind;
+        }
 
         /// <summary>The rigid body of this piece.</summary>
         public Rigidbody Body

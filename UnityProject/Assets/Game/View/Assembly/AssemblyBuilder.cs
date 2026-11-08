@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -17,11 +18,35 @@ namespace Game.View.Assembly
     ///    (Roadmap note: this BFS over the joint graph is the seed of the
     ///    assembly-topology data structure named as the full-investment
     ///    prerequisite for direction two.)
+    ///
+    /// TASK-A-TECH-05 adds the two lifecycle events
+    /// (<see cref="JointCreated"/>/<see cref="JointBroken"/>) that
+    /// <see cref="AssemblyGraphSync"/> subscribes to keep an
+    /// <see cref="AssemblyGraph"/> mirrored with the physical bonds; they are
+    /// pure notifications and change no bond behaviour.
     /// </summary>
     public static class AssemblyBuilder
     {
         /// <summary>Upper bound on joint chain BFS in <see cref="GetComposite"/>.</summary>
         private const int MaxCompositeSize = 256;
+
+        /// <summary>Raised after <see cref="Connect"/> created a live bond.</summary>
+        public static event Action<AssemblyJoint> JointCreated;
+
+        /// <summary>Raised once when a bond dies — via <see cref="Disconnect"/>,
+        /// <see cref="AssemblyJoint.Break"/>, or the joint GameObject being
+        /// destroyed (part demolition).</summary>
+        public static event Action<AssemblyJoint> JointBroken;
+
+        /// <summary>
+        /// Raise helper for <see cref="AssemblyJoint"/> (events can only be
+        /// invoked from their declaring type; the joint announces its own
+        /// death through this).
+        /// </summary>
+        internal static void RaiseJointBroken(AssemblyJoint joint)
+        {
+            JointBroken?.Invoke(joint);
+        }
 
         /// <summary>A free docking point found for the dragged part.</summary>
         public struct SnapCandidate
@@ -183,6 +208,7 @@ namespace Game.View.Assembly
 
             var joint = movingPart.gameObject.AddComponent<AssemblyJoint>();
             joint.Configure(movingPart, movingPoint, basePart, targetPoint);
+            JointCreated?.Invoke(joint);
             return joint;
         }
 

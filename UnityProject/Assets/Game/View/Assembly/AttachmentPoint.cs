@@ -54,14 +54,33 @@ namespace Game.View.Assembly
         }
 
         /// <summary>
-        /// Compatibility rule of the slice: structural faces are universal,
-        /// otherwise the two classes must match exactly.
+        /// Compatibility rule of the slice (TASK-A-TECH-02, extended in
+        /// TASK-A-TECH-05): structural faces are universal, the two classes
+        /// must otherwise match exactly — except the dedicated fuel pairing,
+        /// where a <see cref="AttachmentPointType.FuelLine"/> end docks a
+        /// <see cref="AttachmentPointType.FuelPort"/> (and vice versa).
+        /// Everything else is a type mismatch and is refused at snap and
+        /// connect time.
         /// </summary>
         public static bool AreCompatible(AttachmentPointType a, AttachmentPointType b)
         {
-            return a == b
-                || a == AttachmentPointType.Structural
+            if (a == b)
+            {
+                return true;
+            }
+
+            if (IsFuelPair(a, b) || IsFuelPair(b, a))
+            {
+                return true;
+            }
+
+            return a == AttachmentPointType.Structural
                 || b == AttachmentPointType.Structural;
+        }
+
+        private static bool IsFuelPair(AttachmentPointType line, AttachmentPointType port)
+        {
+            return line == AttachmentPointType.FuelLine && port == AttachmentPointType.FuelPort;
         }
 
         internal void BindOccupant(AssemblyJoint joint)

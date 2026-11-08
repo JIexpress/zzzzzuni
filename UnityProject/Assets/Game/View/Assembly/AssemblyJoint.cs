@@ -38,6 +38,11 @@ namespace Game.View.Assembly
         [SerializeField] private int _solverIterations = 8;
         [SerializeField] private int _solverVelocityIterations = 2;
 
+        // TASK-A-TECH-05: guards the one-shot "bond is dead" announcement so
+        // Break() + OnDestroy (Destroy is deferred in play mode) raise
+        // AssemblyBuilder.JointBroken exactly once.
+        private bool _breakAnnounced;
+
         /// <summary>Part this component sits on (the side that moved into the dock).</summary>
         public AssemblyPart OwnerPart { get; private set; }
 
@@ -149,6 +154,7 @@ namespace Game.View.Assembly
             }
 
             IgnoreCollisions(false);
+            AnnounceBroken();
         }
 
         private void OnDestroy()
@@ -174,6 +180,20 @@ namespace Game.View.Assembly
             {
                 OtherPoint.UnbindOccupant(this);
             }
+
+            AnnounceBroken();
+        }
+
+        /// <summary>One-shot raise of AssemblyBuilder.JointBroken (TASK-A-TECH-05).</summary>
+        private void AnnounceBroken()
+        {
+            if (_breakAnnounced)
+            {
+                return;
+            }
+
+            _breakAnnounced = true;
+            AssemblyBuilder.RaiseJointBroken(this);
         }
 
         private void ApplySolverTuning(Rigidbody body)
