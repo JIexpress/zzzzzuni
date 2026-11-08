@@ -5,6 +5,12 @@
 
 **快照时间**: 2026-11-04 深夜（**主控交棒**）｜**刷新者**: 主控（ZCode，GLM 会话）｜**仓库**: `C:\Users\1\Desktop\zcode\GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni（CI 绿）
 
+## ⚡ 最新（2026-11-04 深夜，A-AI-01/A-AND-09 闭环）
+
+- **A-AI-01 NPC 记忆与态度 PASS**：记忆条目（容量 32 滚动）→半衰期聚合→态度（Fear/Anger/Trust）→**调制效用触点**（恐惧→逃跑增益/愤怒→反击/信任→Follow，行号 NpcUtilityAgent.cs:566-640）；**个性×态度联动**：同事件胆小 NPC 逃跑 vs 勇敢 NPC 反击（锚点实证+变异复红）。1031 用例。
+- **A-AND-09 人群四档 LOD PASS**：硬上限 const 锁死（L0≤20/L1≤50/L2≤512）+距离阶梯迟滞+切换无跳变（1e-4）+L2 billboard 跟随+L3 边界文档+kernel 单一数据源（每帧单次游标读，零逐实体 P/Invoke）；变异复红。PlayMode 80/80。
+- 测试家底更新：原生 349/778,723 + EditMode **1031** + PlayMode **80**。
+
 ## 三十秒速览
 
 | 项 | 值 |
