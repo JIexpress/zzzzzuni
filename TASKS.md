@@ -86,9 +86,10 @@
 | A-CONT-01 | A/CONT | 内容管线起步：程序化贴图套件 + 环境材质升级 + 内容守卫 | done(主控实跑；1106+90 全绿；细节量 +56%；地面/道具上贴图) | Docs/Logs/TASK-A-CONT-01.md | 42f5a26 |
 | A-LOOP-01 | A/LOOP | 最小可玩循环：守住火堆 90 秒（唯一动词=守） | done(主控实跑；1111+91 全绿；纯逻辑状态机+波次曲线+耐久+HUD/重开；变异复红 sha256 还原) | Docs/Logs/TASK-A-LOOP-01.md | ddfb03c |
 | A-LOOP-02 | A/LOOP | 战斗闭环：敌人血量/受击 + 玩家攻击 + 击杀计数 | done(验收PASS 6/6；1113+93；变异复红 sha256 还原；背后攻击为设计边界) | Docs/Logs/TASK-A-LOOP-02.md | 4394a2d |
+| A-ASM-03 | A/ASM | 装配玩法化①：建造模式 + 吸附连接 + 蓝图存档（进 SCN_Game） | done(验收PASS 6/6；1113+98；变异复红 sha256 还原；既有装配类零改动) | Docs/Logs/TASK-A-ASM-03.md | 2dba3c7 |
 | A-R9-19 | A/URP | 色彩管线迁移（Gamma→Linear + HDR 两档 Tonemapping） | done(主控实跑验收；Linear 下 1102+88 全绿；ZRender 桥改 UNORM 视图；两档重新分层差1.48x；灯光接受新基准未重标定) | Docs/Logs/TASK-A-R9-19.md | 82daf86 |
 
-**统计**：done 139 ／ doing 0 ／ todo 0 ／ blocked 0 ／ held 0（2026-11-09 G-151 校准）
+**统计**：done 140 ／ doing 0 ／ todo 0 ／ blocked 0 ／ held 0（2026-11-09 G-152 校准）
 
 > **2026-10-28 G-64 文档对齐（接管）**：修三处失真 ①R8 六行原被追加在「里程碑对照」标题**下方**导致表格断裂、`B-R8-03` 仍挂 `doing`（实际已 PASS，commit `be2adcf`）——已并入主表并改正状态
 > ②`HANDOFF.md` 表头仍写「R8 推进 3/4、B-R8-02 待派」（实际 47 任务全闭环）③`README.md` 与 HANDOFF 注意事项里的任务数/用例数/`TestReport.txt` 是否入库均过期。
