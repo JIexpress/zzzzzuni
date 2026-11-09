@@ -377,6 +377,33 @@ namespace Game.View.Tests
             return count;
         }
 
+        /// <summary>
+        /// TASK-A-ANIM-03: foot-IK weight is zero on flat ground, rises with
+        /// slope and with height residual, saturates at 1, and degrades to 0
+        /// on invalid limits (never throws).
+        /// </summary>
+        [Test]
+        public void FootIkWeight_IsZeroOnFlatGround_AndSaturatesAtTheLimits()
+        {
+            Assert.AreEqual(0f, KenneyLocomotionPlan.FootIkWeightFor(0f, 0f, 32f, 0.22f), 1e-6f,
+                "平地且无落差时必须为 0（脚不改动画姿态）");
+            Assert.AreEqual(1f, KenneyLocomotionPlan.FootIkWeightFor(32f, 0f, 32f, 0.22f), 1e-6f,
+                "坡度到达上限时必须为 1");
+            Assert.AreEqual(1f, KenneyLocomotionPlan.FootIkWeightFor(0f, 0.22f, 32f, 0.22f), 1e-6f,
+                "落差到达上限时必须为 1");
+            Assert.AreEqual(0.5f, KenneyLocomotionPlan.FootIkWeightFor(16f, 0f, 32f, 0.22f), 1e-4f,
+                "坡度半程应为线性 0.5");
+            Assert.AreEqual(0.5f, KenneyLocomotionPlan.FootIkWeightFor(0f, -0.11f, 32f, 0.22f), 1e-4f,
+                "负落差取绝对值，同样线性");
+
+            Assert.AreEqual(1f, KenneyLocomotionPlan.FootIkWeightFor(90f, 1f, 32f, 0.22f), 1e-6f,
+                "超限必须夹到 1，不许溢出");
+            Assert.AreEqual(0f, KenneyLocomotionPlan.FootIkWeightFor(30f, 0.2f, 0f, 0.22f), 1e-6f,
+                "坡度为 0 的非法上限必须返回 0");
+            Assert.AreEqual(0f, KenneyLocomotionPlan.FootIkWeightFor(30f, 0.2f, 32f, 0f), 1e-6f,
+                "落差上限为 0 时必须返回 0");
+        }
+
         private static void AssertHasCondition(
             AnimatorStateTransition transition,
             AnimatorConditionMode mode,

@@ -426,6 +426,58 @@ namespace ZFrame.PlayMode.Tests
             yield return WaitForState(animator, KenneyLocomotionPlan.IdleState, 6f, "落地静止 → 回 Idle");
         }
 
+        /// <summary>
+        /// TASK-A-ANIM-03 脚部 IK：平地不拽脚（权重≈0），脚下放一块 25° 斜板后
+        /// 权重必须升高（脚向斜板贴合并对齐法线）；撤掉斜板后回落。
+        /// 双向可证伪：把 FootIkEnabled 关掉 → 斜板阶段的权重恒为 0。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator FootIk_StaysOffOnFlatGround_AndEngagesOnSlope()
+        {
+            yield return LoadSceneAndSmokeCheck();
+
+            NpcUtilityView view = ById("npc-anim-c");
+            NpcAnimatorDriver driver = DriverOf(view);
+            Animator animator = AnimatorOf(view);
+            driver.ManualDrive = true; // 冻结位移，斜板始终在脚下
+            yield return WaitRealSeconds(0.4f);
+
+            Assert.Greater(driver.FootIkHitCount, 0, "脚下必须能打到地面碰撞体");
+            Assert.Less(Mathf.Max(driver.LastFootIkWeightLeft, driver.LastFootIkWeightRight), 0.05f,
+                $"平地不该拽脚：left={driver.LastFootIkWeightLeft:F3} right={driver.LastFootIkWeightRight:F3}");
+
+            Transform foot = animator.GetBoneTransform(HumanBodyBones.LeftFoot);
+            Assert.IsNotNull(foot, "人形骨架必须有 LeftFoot");
+
+            GameObject slope = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            try
+            {
+                slope.name = "~FootIkTestSlope";
+                slope.transform.position = foot.position + Vector3.up * 0.12f;
+                slope.transform.rotation = Quaternion.Euler(0f, 0f, 25f);
+                slope.transform.localScale = new Vector3(1.6f, 0.04f, 1.6f);
+
+                yield return WaitRealSeconds(0.4f);
+
+                float engaged = Mathf.Max(driver.LastFootIkWeightLeft, driver.LastFootIkWeightRight);
+                Assert.Greater(engaged, 0.3f,
+                    $"25° 斜板下脚部 IK 必须介入：left={driver.LastFootIkWeightLeft:F3} right={driver.LastFootIkWeightRight:F3}");
+
+                float residual = Mathf.Max(Mathf.Abs(driver.LastFootGroundDeltaLeft),
+                    Mathf.Abs(driver.LastFootGroundDeltaRight));
+                Assert.Greater(residual, 0.02f, $"斜板应产生可见落差，实测 {residual:F3} m");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(slope);
+                driver.ManualDrive = false;
+            }
+
+            yield return WaitRealSeconds(0.4f);
+            Assert.Less(Mathf.Max(driver.LastFootIkWeightLeft, driver.LastFootIkWeightRight), 0.05f,
+                "撤掉斜板后必须回到不介入状态");
+        }
+
         // ---- helpers -------------------------------------------------------
 
         private IEnumerator LoadSceneAndSmokeCheck()

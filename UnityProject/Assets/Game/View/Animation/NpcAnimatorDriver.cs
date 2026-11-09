@@ -69,6 +69,26 @@ namespace Game.View.Animation
         [Tooltip("Extra yaw the FBX's visual forward is off from +Z (Kenney: 0, per ModelStageLayout).")]
         [SerializeField] private float _modelYawOffsetDeg = 0f;
 
+        [Header("Foot IK (TASK-A-ANIM-03)")]
+        [Tooltip("Master switch. Tests flip it to falsify the ground-conform behaviour.")]
+        [SerializeField] private bool _footIkEnabled = true;
+
+        [Tooltip("Layers the feet are allowed to stand on.")]
+        [SerializeField] private LayerMask _footIkMask = ~0;
+
+        [Tooltip("Slope (deg from up) that reaches full foot-IK weight.")]
+        [SerializeField] private float _footIkMaxSlopeDeg = 32f;
+
+        [Tooltip("Ground-height residual (m, after neutral ankle height) that reaches full weight.")]
+        [SerializeField] private float _footIkMaxLift = 0.22f;
+
+        [Tooltip("Ray start above the animated foot / reach below it (m).")]
+        [SerializeField] private float _footRayUp = 0.6f;
+        [SerializeField] private float _footRayDown = 1.2f;
+
+        [Tooltip("Slope at or below which the neutral ankle height is learned (deg).")]
+        [SerializeField] private float _neutralSlopeDeg = 5f;
+
         private Vec2 _lastSimPosition;
         private float _lastSimClock;
         private bool _hasSimSample;
@@ -82,6 +102,15 @@ namespace Game.View.Animation
         private bool _hasBaseY;
         private float _jumpElapsed;
         private bool _isAirborne;
+
+        // Foot-IK state (TASK-A-ANIM-03). The neutral ankle height is LEARNED on
+        // flat ground (ankle bone sits above the sole by an amount that depends
+        // on the rig), so standing still reads a 0 residual instead of dragging
+        // every foot down by the bone offset.
+        private float _leftNeutralAnkle;
+        private float _rightNeutralAnkle;
+        private bool _hasLeftNeutral;
+        private bool _hasRightNeutral;
 
         /// <summary>When true, Update() does nothing — tests drive <see cref="Step"/> or freeze the NPC.</summary>
         public bool ManualDrive { get; set; }
@@ -126,6 +155,28 @@ namespace Game.View.Animation
 
         /// <summary>Diagnostics: arc height written on the last drive step (m, 0 = on the ground).</summary>
         public float LastJumpHeight { get; private set; }
+
+        /// <summary>Diagnostics: foot-IK weight applied to the left foot on the last IK pass (0..1).</summary>
+        public float LastFootIkWeightLeft { get; private set; }
+
+        /// <summary>Diagnostics: foot-IK weight applied to the right foot on the last IK pass (0..1).</summary>
+        public float LastFootIkWeightRight { get; private set; }
+
+        /// <summary>Diagnostics: ground residual (m) seen by the left foot (after neutral ankle height).</summary>
+        public float LastFootGroundDeltaLeft { get; private set; }
+
+        /// <summary>Diagnostics: ground residual (m) seen by the right foot (after neutral ankle height).</summary>
+        public float LastFootGroundDeltaRight { get; private set; }
+
+        /// <summary>Diagnostics: total successful foot raycasts (0 = no collider under the feet).</summary>
+        public int FootIkHitCount { get; private set; }
+
+        /// <summary>Master foot-IK switch (tests falsify by setting false).</summary>
+        public bool FootIkEnabled
+        {
+            get { return _footIkEnabled; }
+            set { _footIkEnabled = value; }
+        }
 
         private void Awake()
         {
@@ -210,7 +261,26 @@ namespace Game.View.Animation
         private void OnAnimatorIK(int layerIndex)
         {
             LookIkCallbackCount++;
-            if (_animator == null || _lookTarget == null)
+            if (_animator == null)
+            {
+                LastLookWeight = 0f;
+                return;
+            }
+
+            // Look-at first (head), then feet: both are procedural layers on top
+            // of the clip, and the foot solve must see the final body pose.
+            ApplyLookAt();
+            ApplyFootIk();
+        }
+
+        /// <summary>
+        /// The procedural look-at layer: head toward <see cref="_lookTarget"/>,
+        /// yaw-gated through <see cref="KenneyLocomotionPlan.LookAtWeightFor"/>
+        /// so a target behind the body gets no weight.
+        /// </summary>
+        private void ApplyLookAt()
+        {
+            if (_lookTarget == null)
             {
                 LastLookWeight = 0f;
                 return;
@@ -243,6 +313,93 @@ namespace Game.View.Animation
             // bodyWeight 0: the body stays owned by the locomotion turning;
             // only the HEAD is allowed to look (that is what the tests assert).
             _animator.SetLookAtWeight(weight, 0f, 1f, 0f, _lookAtClamp);
+        }
+
+        /// <summary>
+        /// TASK-A-ANIM-03 foot IK: each foot raycasts the ground under the
+        /// animated ankle and, when the ground is not flat under that foot,
+        /// blends the foot toward it. The neutral ankle height is learned on
+        /// flat ground so the residual is 0 there (weight 0 → the clip plays
+        /// untouched); airborne feet are released.
+        /// </summary>
+        private void ApplyFootIk()
+        {
+            if (!_footIkEnabled || _isAirborne)
+            {
+                SetFootIkIdle(AvatarIKGoal.LeftFoot);
+                SetFootIkIdle(AvatarIKGoal.RightFoot);
+                LastFootIkWeightLeft = 0f;
+                LastFootIkWeightRight = 0f;
+                LastFootGroundDeltaLeft = 0f;
+                LastFootGroundDeltaRight = 0f;
+                return;
+            }
+
+            ApplyFootIkFor(AvatarIKGoal.LeftFoot, ref _leftNeutralAnkle, ref _hasLeftNeutral,
+                out float leftWeight, out float leftDelta);
+            ApplyFootIkFor(AvatarIKGoal.RightFoot, ref _rightNeutralAnkle, ref _hasRightNeutral,
+                out float rightWeight, out float rightDelta);
+
+            LastFootIkWeightLeft = leftWeight;
+            LastFootIkWeightRight = rightWeight;
+            LastFootGroundDeltaLeft = leftDelta;
+            LastFootGroundDeltaRight = rightDelta;
+        }
+
+        /// <summary>One foot: raycast → neutral ankle learning → weight → SetIKPosition/Rotation.</summary>
+        private void ApplyFootIkFor(AvatarIKGoal goal, ref float neutralAnkle, ref bool hasNeutral,
+            out float weight, out float groundDelta)
+        {
+            weight = 0f;
+            groundDelta = 0f;
+
+            Vector3 footPosition = _animator.GetIKPosition(goal);
+            Vector3 origin = footPosition + Vector3.up * _footRayUp;
+            if (!Physics.Raycast(origin, Vector3.down, out RaycastHit hit, _footRayUp + _footRayDown,
+                    _footIkMask, QueryTriggerInteraction.Ignore))
+            {
+                SetFootIkIdle(goal);
+                return;
+            }
+
+            FootIkHitCount++;
+            float slopeDeg = Vector3.Angle(hit.normal, Vector3.up);
+            float ankleHeight = footPosition.y - hit.point.y;
+
+            // Learn the rig's ankle height only where the ground is flat —
+            // a slope would bake its own geometry into the baseline.
+            if (slopeDeg <= _neutralSlopeDeg)
+            {
+                neutralAnkle = ankleHeight;
+                hasNeutral = true;
+            }
+
+            float basis = hasNeutral ? neutralAnkle : ankleHeight;
+            float targetY = hit.point.y + basis;
+            groundDelta = targetY - footPosition.y;
+
+            weight = KenneyLocomotionPlan.FootIkWeightFor(
+                slopeDeg, groundDelta, _footIkMaxSlopeDeg, _footIkMaxLift);
+            if (weight <= 0f)
+            {
+                SetFootIkIdle(goal);
+                return;
+            }
+
+            _animator.SetIKPositionWeight(goal, weight);
+            _animator.SetIKPosition(goal, new Vector3(footPosition.x, targetY, footPosition.z));
+
+            Quaternion aligned = Quaternion.FromToRotation(Vector3.up, hit.normal)
+                                 * _animator.GetIKRotation(goal);
+            _animator.SetIKRotationWeight(goal, weight);
+            _animator.SetIKRotation(goal, aligned);
+        }
+
+        /// <summary>Releases one foot back to the animated pose.</summary>
+        private void SetFootIkIdle(AvatarIKGoal goal)
+        {
+            _animator.SetIKPositionWeight(goal, 0f);
+            _animator.SetIKRotationWeight(goal, 0f);
         }
 
         // ---- internals -------------------------------------------------------

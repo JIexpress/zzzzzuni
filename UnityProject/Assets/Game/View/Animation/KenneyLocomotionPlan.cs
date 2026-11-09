@@ -219,5 +219,34 @@ namespace Game.View.Animation
 
             return elapsedSeconds < JumpAirTime;
         }
+
+        /// <summary>
+        /// TASK-A-ANIM-03: foot-IK weight for one foot. Zero on flat ground
+        /// (slope and height residual both below the neutral band), one at or
+        /// beyond either limit, linear in between — the foot only leaves the
+        /// animated pose when the ground actually demands it.
+        ///
+        /// <paramref name="groundDelta"/> is the residual AFTER the learned
+        /// neutral ankle height is subtracted, so standing on flat ground
+        /// reads 0 even though the ankle bone sits above the sole.
+        /// </summary>
+        public static float FootIkWeightFor(float slopeDeg, float groundDelta,
+            float maxSlopeDeg, float maxLift)
+        {
+            if (maxSlopeDeg <= 0f || maxLift <= 0f)
+            {
+                return 0f;
+            }
+
+            float slope = Math.Abs(slopeDeg) / maxSlopeDeg;
+            float lift = Math.Abs(groundDelta) / maxLift;
+            float weight = slope > lift ? slope : lift;
+            if (weight <= 0f)
+            {
+                return 0f;
+            }
+
+            return weight >= 1f ? 1f : weight;
+        }
     }
 }

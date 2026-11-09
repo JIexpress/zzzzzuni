@@ -81,9 +81,10 @@
 | R10-06 | A/R10 | 修复审计P2 C#批(A-9相机还原) | done(验收PASS with受限 6/6；EditMode 719) | Docs/Logs/TASK-R10-06.md | fa671ba |
 | R10-07 | B/R10 | 补审计漏项(A-10 split屏障 + B-6 采集泄漏) | done(验收PASS with受限 10/10；native 253/711,537) | Docs/Logs/TASK-R10-07.md | 98d377b |
 | A-ANIM-02 | A/ANIM | 动画扩展一：跳跃接真实垂直位移（Grounded 真值 + 控制器 Idle→Jump/Jump→Run） | done(验收PASS；纯函数弧线峰值0.7500/落地差0.0000；1102+88用例；变异双复红) | Docs/Logs/TASK-A-ANIM-02.md | d938565 |
+| A-ANIM-03 | A/ANIM | 动画扩展二：脚步 IK（斜坡/台阶贴地，平地零干预） | done(主控实跑；1103+89 全绿；25° 斜板权重>0.3、平地<0.05；变异复红 sha256 还原) | Docs/Logs/TASK-A-ANIM-03.md | 待填 |
 | A-R9-19 | A/URP | 色彩管线迁移（Gamma→Linear + HDR 两档 Tonemapping） | done(主控实跑验收；Linear 下 1102+88 全绿；ZRender 桥改 UNORM 视图；两档重新分层差1.48x；灯光接受新基准未重标定) | Docs/Logs/TASK-A-R9-19.md | 82daf86 |
 
-**统计**：done 134 ／ doing 0 ／ todo 0 ／ blocked 0 ／ held 0（2026-11-09 G-145 校准）
+**统计**：done 135 ／ doing 0 ／ todo 0 ／ blocked 0 ／ held 0（2026-11-09 G-147 校准）
 
 > **2026-10-28 G-64 文档对齐（接管）**：修三处失真 ①R8 六行原被追加在「里程碑对照」标题**下方**导致表格断裂、`B-R8-03` 仍挂 `doing`（实际已 PASS，commit `be2adcf`）——已并入主表并改正状态
 > ②`HANDOFF.md` 表头仍写「R8 推进 3/4、B-R8-02 待派」（实际 47 任务全闭环）③`README.md` 与 HANDOFF 注意事项里的任务数/用例数/`TestReport.txt` 是否入库均过期。
