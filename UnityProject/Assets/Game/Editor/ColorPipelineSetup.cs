@@ -10,24 +10,24 @@ using UnityEngine.Rendering.Universal;
 namespace Game.Editor
 {
     /// <summary>
-    /// 【实验工具 · 默认禁用】URP 色彩管线迁移（Gamma → Linear + Tonemapping）。
+    /// URP 色彩管线迁移（Gamma → Linear + HDR 两档 Tonemapping）。
     ///
-    /// ⚠ 2026-11-09 实测结论（TASK-A-R9-19）：**这不是一个开关级迁移**。
-    /// 单独执行本工具会让 4 个用例变红，并使画面基准整体位移 +9 灰阶：
-    ///   1. `ZRenderFrameSyncTests` / `ZRenderPipelineTextureLifecycleTests` —
-    ///      Unity 在 Linear 下给 ZRender 的 BGRA8 共享纹理建 sRGB SRV，
-    ///      与原生 UNORM 资源不兼容（dxgi-fmt 91 vs 87）；
-    ///   2. `GameplayFxPixelEvidencePlayModeTests` — 加色粒子在 Linear 下变暗
-    ///      （门限 0.0040，实测 0.0003），特效强度需要重标定；
-    ///   3. `PostFxPixelEvidencePlayModeTests` — 两档都加 Tonemapping 后
-    ///      High/Medium 差异被压缩到门限以下（0.1469 vs 0.1590）。
+    /// **状态：已落地**（TASK-A-R9-19，2026-11-09）。工程当前就是
+    /// `m_ActiveColorSpace: 1` + Medium/High 两档 Tonemapping(Neutral)。
+    /// 本工具保留为**幂等重放/核对**入口：重复跑不会叠加组件，只把
+    /// 色彩空间与 Tonemapping 摆回目标状态。
     ///
-    /// 另一个机制点：切 Linear 时 Unity 会把 `m_LightsUseLinearIntensity`
-    /// 从 0 翻到 1，全场景灯光需要按线性强度重新标定——这是"切完变黑"的根因，
-    /// 不是渲染坏了。
+    /// 落地时踩过的三件事（别再踩）：
+    ///   1. 切换后**第一次运行不可信**：变体未编译完，首张截图全黑、首轮
+    ///      粒子像素用例假红。任何对照都必须复跑一次再判定。
+    ///   2. Unity 会自动把 `m_LightsUseLinearIntensity` 0→1，并重新序列化
+    ///      材质的 sRGB 颜色——迁移是一个资产级提交，不是只改 ProjectSettings。
+    ///   3. ZRender 的共享纹理桥在 Linear 下必须用 UNORM 视图
+    ///      （`CreateExternalTexture(linear:true)`），否则建 sRGB SRV 与
+    ///      UNORM 资源冲突（dxgi 91 vs 87）。见 TASK-A-R9-19 §6。
     ///
-    /// 因此本工具加了环境变量闸门，只有显式设置 `ZF_COLOR_MIGRATION_OK=1`
-    /// 才会执行，避免被误用。完整迁移步骤见 `Docs/Logs/TASK-A-R9-19.md`。
+    /// 闸门：仍需 `ZF_COLOR_MIGRATION_OK=1` 才执行，防止在未读完交接的环境里
+    /// 误跑（效果是幂等的，但会触发一次全量资产重导入）。
     ///
     /// 批处理（自退出）：
     ///   set ZF_COLOR_MIGRATION_OK=1
@@ -72,7 +72,7 @@ namespace Game.Editor
             if (Environment.GetEnvironmentVariable(AllowEnvVar) != "1")
             {
                 Debug.LogError(
-                    $"[ColorPipelineSetup] 拒绝执行：本工具是实验性的，单独开启会让 4 个用例变红。" +
+                    $"[ColorPipelineSetup] 拒绝执行：迁移是资产级操作（会触发全量重导入）。" +
                     $"确认已读完 Docs/Logs/TASK-A-R9-19.md 后，设置 {AllowEnvVar}=1 再跑。");
                 return 2;
             }

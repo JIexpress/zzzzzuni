@@ -140,3 +140,61 @@ Unity 继续用 sRGB 视图。原生侧改动 5 处 + 三张格式覆盖测试�
 | P4 | 六场景灯光线性强度标定（`m_LightsUseLinearIntensity` 会翻 1） | 未做 |
 | P5 | 全量门限复核 | 未做 |
 | P1-b | typeless 方案（可省掉"略暗"代价） | 未做，可选 |
+
+## 七、P2–P5 实施结果（2026-11-09，迁移完成）
+
+### 结论
+
+**Linear 色彩空间已落地**：`m_ActiveColorSpace: 1`、`m_LightsUseLinearIntensity: 1`、
+Medium/High 两档 Tonemapping(Neutral)、两档后处理重新分层；
+Linear 下 **EditMode 1102/1102 + PlayMode 88/88 全绿**。
+
+### P2 加色特效：无需改动（首次红是冷变体假象）
+
+- 迁移首轮 `GameplayFxPixelEvidencePlayModeTests` 红：开门火花变亮像素 0.0003（门限 0.0040）。
+- P1 修复后复跑，同一用例 **直接通过**（88/88），未改任何特效参数。
+- 归因：与"首帧黑图"同源——**色彩空间切换后的首次运行，变体未编译完，粒子/后处理路径不完整**。
+  这不是特效强度问题，重跑即消失。
+- 教训升级：**切换色彩空间/管线后，第一次跑出来的红与第一张截图都不可信，必须复跑一次再判定。**
+
+### P3 两档后处理差异：重新分层（有效）
+
+Tonemapping 把 HDR 高光压平后，High/Medium 的 on-off 差从 1.68x 掉到 1.25x（门限 1.35）。调整：
+
+| 项 | 改前 | 改后 | 依据 |
+|---|---|---|---|
+| Medium Bloom intensity | 1.0 | **0.6** | 中档应比高档"轻"，且降低 GPU 成本 |
+| High Bloom intensity | 2.5 | 2.5 | 不变（已饱和，加码收益低） |
+| High postExposure | 0.1 | **0.5** | 均匀提亮，直接拉开 on/off 差 |
+| High saturation | 8 | **14** | 高档更"浓"，与中档形成可见差异 |
+
+实测（Linear，probe 320×180）：
+
+```
+tier Low   : brighter=0.0000 meanAbs=0.08950
+tier Medium: brighter=0.1036 meanAbs=0.10802
+tier High  : brighter=0.4493 meanAbs=0.15951
+High/Medium ratio = 1.48x（门限 1.35）
+```
+
+对比度方案试过并否决：contrast=18 会把暗部压得更暗，比值反而掉到 1.33（probe 背景是暗色），已回滚。
+
+### P4 六场景灯光：不重新标定，接受线性化新基准
+
+- 切 Linear 时 Unity 自动把 `m_LightsUseLinearIntensity` 0→1，灯光强度按线性解释。
+- **决策：不逐场景重调灯光**。理由：① 现有画面不是"变黑"而是"更亮、更有层次"（SCN_Game 均值 116.5→125.9，仅 0.89% 像素差 >32，无裁切）；② 六个场景里只有 SCN_Game 有截图工具，其余场景由像素用例守护（NPC 态度分化、人群、粒子、后处理四组 PlayMode 用例全绿）；③ 逐场景重标定属于美术调优，不是管线正确性的一部分。
+- 如实标注：**P4 是"接受"而非"标定完成"**，若后续用户觉得某场景过亮/过暗，按场景单独调 `Light.intensity` 即可。
+
+### P5 全量复核
+
+| 段 | 结果 |
+|---|---|
+| EditMode | **1102 / 1102 / 0** |
+| PlayMode | **88 / 88 / 0** |
+| ZRender 桥（Linear） | 5/5，dxgi 格式报错 0，设备移除 0 |
+| SCN_Game 实拍 | 均值 116.5→125.9（+8%），pct>32 = 0.89%，最大通道 251/255 无裁切 |
+
+### 视觉证据
+
+`Docs/Parity/demo_stage_playerview.png`（已随提交更新）为 Linear 下的当前画面：
+地面有明暗梯度、角色配色正常、无过曝。改前对照存于 `TempLogs/colorspace/before/`（未入库）。

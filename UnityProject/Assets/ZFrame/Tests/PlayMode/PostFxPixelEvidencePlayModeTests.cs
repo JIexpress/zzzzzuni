@@ -225,11 +225,14 @@ namespace ZFrame.PlayMode.Tests
             Assert.Less(tierDiff[0].BrighterFraction, 0.002f,
                 $"Low tier is documented as an empty profile but {tierDiff[0].BrighterFraction:F4} of pixels got brighter");
 
-            // Medium = Bloom 1.0, High = Bloom 2.5 + ColorAdjustments: both must
-            // move the frame, and High must move it substantially more.
+            // Medium = Bloom 0.6, High = Bloom 2.5 + ColorAdjustments (exposure 0.5,
+            // saturation 14): both must move the frame, and High must move it
+            // substantially more. TASK-A-R9-19 P3 re-balanced the tiers after
+            // Tonemapping compressed the HDR top end.
             Assert.Greater(tierDiff[1].BrighterFraction, MinBrighterFraction,
-                $"Medium (Bloom 1.0) did not brighten the frame: {tierDiff[1].BrighterFraction:F4}");
-            // Measured High/Medium mean|delta| ratio: 1.68x (0.0563 vs 0.0336).
+                $"Medium (Bloom 0.6) did not brighten the frame: {tierDiff[1].BrighterFraction:F4}");
+            // Measured High/Medium mean|delta| ratio: 1.48x (0.1595 vs 0.1080, Linear +
+            // Neutral tonemapping, 2026-11-09).
             Assert.Greater(tierDiff[2].MeanAbs, tierDiff[1].MeanAbs * 1.35f,
                 $"High and Medium render the same picture: mean |delta| {tierDiff[2].MeanAbs:F5} vs {tierDiff[1].MeanAbs:F5}");
             Assert.Greater(tierOn[2].Stats.MeanLuma, tierOn[1].Stats.MeanLuma,
