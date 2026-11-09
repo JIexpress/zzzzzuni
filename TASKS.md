@@ -88,9 +88,10 @@
 | A-LOOP-02 | A/LOOP | 战斗闭环：敌人血量/受击 + 玩家攻击 + 击杀计数 | done(验收PASS 6/6；1113+93；变异复红 sha256 还原；背后攻击为设计边界) | Docs/Logs/TASK-A-LOOP-02.md | 4394a2d |
 | A-ASM-03 | A/ASM | 装配玩法化①：建造模式 + 吸附连接 + 蓝图存档（进 SCN_Game） | done(验收PASS 6/6；1113+98；变异复红 sha256 还原；既有装配类零改动) | Docs/Logs/TASK-A-ASM-03.md | 2dba3c7 |
 | A-WORLD-01 | A/WORLD | 双精度世界坐标 + 浮点原点（4000m 重定位） | done(验收PASS 7/7；1127+101；变异复红 sha256 还原；100km 处 float ULP 7.8mm vs double 4e-11m) | Docs/Logs/TASK-A-WORLD-01.md | fc08132 |
+| A-AI-03 | A/AI | 可供性扫描：Affordance 注册/容量/预算 + 接入效用打分 | done(验收PASS 7/7；1140+102；变异复红 sha256 还原；既有 AI 四文件零改动) | Docs/Logs/TASK-A-AI-03.md | ccb5897 |
 | A-R9-19 | A/URP | 色彩管线迁移（Gamma→Linear + HDR 两档 Tonemapping） | done(主控实跑验收；Linear 下 1102+88 全绿；ZRender 桥改 UNORM 视图；两档重新分层差1.48x；灯光接受新基准未重标定) | Docs/Logs/TASK-A-R9-19.md | 82daf86 |
 
-**统计**：done 141 ／ doing 0 ／ todo 0 ／ blocked 0 ／ held 0（2026-11-09 G-153 校准）
+**统计**：done 142 ／ doing 0 ／ todo 0 ／ blocked 0 ／ held 0（2026-11-09 G-154 校准）
 
 > **2026-10-28 G-64 文档对齐（接管）**：修三处失真 ①R8 六行原被追加在「里程碑对照」标题**下方**导致表格断裂、`B-R8-03` 仍挂 `doing`（实际已 PASS，commit `be2adcf`）——已并入主表并改正状态
 > ②`HANDOFF.md` 表头仍写「R8 推进 3/4、B-R8-02 待派」（实际 47 任务全闭环）③`README.md` 与 HANDOFF 注意事项里的任务数/用例数/`TestReport.txt` 是否入库均过期。
