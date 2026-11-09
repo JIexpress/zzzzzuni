@@ -47,6 +47,10 @@
 2. **HDR 开但无 Tonemapping**：Medium/High `m_SupportsHDR:1`，没有任何 Tonemapping override → 高光直接裁剪。要么补 Tonemapping（Neutral/ACES），要么关 HDR 保持三档一致。
 3. **三档后处理不连贯**：Low 什么都没有、Medium 只有 Bloom、High 多一个 ColorAdjustments——降档时画面会跳，建议按「Low=无后处理 / Medium=Bloom+Tonemap / High=再加 ColorAdjustments」重排。
 
+**缺陷 1 已实测试验（A-R9-19，已回滚，2026-11-09）**：Linear 观感确实更优（均值 +9.4、仅 0.89% 像素差 >32、无过曝），但**不是开关级迁移**——单独切会同时改写 `m_LightsUseLinearIntensity`（0→1）与 6 个材质颜色，并触发 4 红：ZRender 共享纹理 sRGB SRV 与原生 UNORM 不兼容（dxgi 91 vs 87）、加色特效变暗到门限以下、两档后处理差异被 Tonemapping 压缩。已回滚保住 1102/88 全绿。重做顺序：P1 原生格式 → P4 全场景灯光标定 → P2 特效强度 → P3 两档差异 → P5 门限复核。详见 `Docs/Logs/TASK-A-R9-19.md`；工具 `Assets/Game/Editor/ColorPipelineSetup.cs` 带 `ZF_COLOR_MIGRATION_OK=1` 闸门。
+
+⚠ **踩坑记录**：切色彩空间后的**第一张截图不可信**（URP 变体未编译完，实测首拍全黑、复拍正常）。任何色彩空间/管线切换的像素对照都必须复拍一次再判定。
+
 ## 接管者动作序列
 
 1. `git log --oneline -5` + `git status`（应干净）＋确认 `git rev-list --count origin/main..HEAD`（当前 18）
@@ -58,7 +62,7 @@
 
 | # | 事项 | 现状 | 代价 |
 |---|---|---|---|
-| 1 | 渲染三缺陷裁决（Gamma / Tonemapping / 三档后处理） | 已定位，未改 | 小，但动画面，需用户点头 |
+| 1 | 渲染三缺陷（已知会连锁，需按 P1→P5 做） | 试验已证伪并回滚，方案齐 | 大，含原生桥与美术标定 |
 | 2 | 动画扩展续（脚步 IK → 程序化层） | 跳跃已闭环；IK 只有 look-at | 中，PlayMode 可自证 |
 | 3 | SRP Batcher 与 DrawCall 可测化（A/B 测量，替代 Frame Debugger 目测） | 只有开关，无数字 | 中，PlayMode 用例可自证 |
 | 4 | 内容管线起步（贴图/材质/动画） | 0 贴图 0 动画 | 大，决定「像不像游戏」 |
