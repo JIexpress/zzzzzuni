@@ -92,8 +92,9 @@
 | A-AI-04 | A/AI | 可供性接场景：真实锚点注册 + NPC 走过去占用 | done(验收PASS 7/7；1140+110；变异复红 sha256 还原；修自占用抖动；默认零影响) | Docs/Logs/TASK-A-AI-04.md | 89f3497 |
 | A-ART-01 | A/ART | 换掉抽象小人：接入 Mixamo Vanguard 人形（Humanoid/Idle-Run-Walk/装甲材质） | done(1140+110 全绿；SCN_Game/SCN_Anim 已换；白模已补装甲配色) | Docs/Logs/TASK-A-ART-01.md | 待填 |
 | A-R9-19 | A/URP | 色彩管线迁移（Gamma→Linear + HDR 两档 Tonemapping） | done(主控实跑验收；Linear 下 1102+88 全绿；ZRender 桥改 UNORM 视图；两档重新分层差1.48x；灯光接受新基准未重标定) | Docs/Logs/TASK-A-R9-19.md | 82daf86 |
+| A-AI-05 | A/AI | NPC 自主模式（G 键开关）+ 预约态（到达才占） | held(暂缓：简报已写、未动工；用户进入正式游戏开发，此功能后置。无半成品代码，恢复时按简报直接派施工) | Docs/Logs/TASK-A-AI-05.md | — |
 
-**统计**：done 144 ／ doing 0 ／ todo 0 ／ blocked 0 ／ held 0（2026-11-09 G-156 校准）
+**统计**：done 144 ／ doing 0 ／ todo 0 ／ blocked 0 ／ held 1（2026-11-09：A-AI-05 登记为 held——简报已写未动工，暂缓后置）
 
 > **2026-10-28 G-64 文档对齐（接管）**：修三处失真 ①R8 六行原被追加在「里程碑对照」标题**下方**导致表格断裂、`B-R8-03` 仍挂 `doing`（实际已 PASS，commit `be2adcf`）——已并入主表并改正状态
 > ②`HANDOFF.md` 表头仍写「R8 推进 3/4、B-R8-02 待派」（实际 47 任务全闭环）③`README.md` 与 HANDOFF 注意事项里的任务数/用例数/`TestReport.txt` 是否入库均过期。

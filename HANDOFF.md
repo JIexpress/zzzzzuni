@@ -4,11 +4,12 @@
 > ⚡ **给下一个 LLM 主控**：先读 `Docs/LLM-HANDOFF-NOTES.md`——132 个任务沉淀的全部操作手册（派发模板/变异验证法/故障处置手册/技术坑备忘/工具调用技巧/额度管理），照做即可满血接力。
 > 历史交接记录已归档 git 历史（`git show G-113:HANDOFF.md`），WORKLOG.md 有全部任务索引。
 
-**快照时间**: 2026-11-09 凌晨（**WorkBuddy 主控接棒，全量盘点后校准**）｜**刷新者**: 主控（WorkBuddy，银橙AI 会话）｜**仓库**: `C:\Users\1\Desktop\zcode\GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni
+**快照时间**: 2026-11-09 23:50（**正式开发前收尾校准：登记 A-AI-05 为 held、对齐看板口径与领先提交数**）｜**刷新者**: 主控（WorkBuddy，银橙AI 会话）｜**仓库**: `C:\Users\1\Desktop\zcode\GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni
 
 ## ⚡ 最新（2026-11-09 20:50，A-AI-04 闭环——NPC 会自己走去找事做）
 
-- **看板真实口径**：**143 行全 done / 0 doing / 0 todo**（旧文档写 130 是 11-04 的快照；A-AI-01/A-AND-09/A-AI-02/A-AND-10 早已闭环，**不要再派**）。
+- **看板真实口径**：**144 done / 0 doing / 0 todo / 1 held**（held = A-AI-05，NPC 自主模式+预约态，简报已写未动工，正式开发前暂缓后置；A-AI-01/A-AND-09/A-AI-02/A-AND-10 早已闭环，**不要再派**）。
+- **A-AI-05 暂缓（held，本次收尾登记）**：NPC 自主模式（G 键开关）+ 预约态（到达才占）。简报已写、**零半成品代码**（`NpcAutonomyMode.cs` 不存在、`AffordanceRegistry.cs` 无预约痕迹）。用户决定进入正式游戏开发，此功能后置，恢复时按简报 §五验收清单直接派施工。
 - **测试真家底（实测）**：原生 **349 用例 / 778,723 断言全绿**（`zrender_test.exe`）；EditMode **1140** + PlayMode **110**（Linear 下实跑）；合计 **1599 用例**。架构校验 **26 asmdef / 0 违规**。
 - **A-ANIM-02 动画扩展第一刀（d938565）**：跳跃从「只触发动画」变成真垂直位移——纯函数弧线（v0=√2gh、T=2v0/g、峰值 0.7500m、落地差 0.0000）、`Grounded` 由真值驱动、控制器补 Idle→Jump 与 Jump→Run（6 过渡）、空中二次请求被拒。两处变异复红后 sha256 还原。
 - **A-ANIM-03 脚步 IK（0d65dd3）**：平地零干预（权重<0.05）、25° 斜板权重>0.3 且脚贴合地面法线；中性踝高在平地学习，避免「平地也拽脚」；变异关掉 IK → 用例必红后 sha256 还原。
@@ -23,7 +24,7 @@
 - **A-CONT-01 内容管线（42f5a26）**：6 张程序化可平铺贴图 + 7 个环境材质挂 `_BaseMap`（底色归一白，否则二次压暗）+ SCN_Game 地面换成草地材质；内容守卫 2 例（贴图槽/导入设置/底色）。画面细节量 **+56%**。
 - **A-CUT-01 L3 过场（accffb5）**：`CutsceneDirector` 门闸 + VideoPlayer→RT→全屏 RawImage；过场期间人群全局抑制（L0 隐藏、L1/L2 不提交、kernel 不读），**分配器仍不产出 L3**（A-AND-09 硬上限语义不变）。batchmode 下真解码、帧号推进；变异复红。
 - **A-R9-19 色彩管线迁移（82daf86）**：Gamma→Linear + Medium/High 补 Tonemapping(Neutral) + 两档后处理重新分层（High/Medium 差 1.48x）+ ZRender 桥改 UNORM 视图。Linear 下 **1102+88 全绿**，SCN_Game 实拍均值 +8%、无裁切。
-- **git 现场**：HEAD `82daf86`，工作区干净，**领先 origin/main 26 个提交未推**（A-AND-10 触屏包、A-AI-02、A-AND-09、A-AI-01、G-136~G-140 治理与交接手册）。
+- **git 现场**：HEAD `57ecb98`（A-ART-01），工作区有 3 处未提交改动（TASKS.md 登记 A-AI-05、`Docs/Logs/TASK-A-AI-05.md` 收尾、`Docs/接入指南-给下一个Agent.md` 新增），**领先 origin/main 50 个提交未推**（A-AND-10 触屏包、A-AI-02、A-AND-09、A-AI-01、G-136~G-140 治理与交接手册）。
 - **文档漂移已修（G-141）**：README 的 103 任务/916/48/311/25 asmdef、TASKS 行内统计 114、A-R9-18 空 commit、ROADMAP 方向四 doing/todo 全部对齐实测值。
 - **盘点新发现（已处置，见下「渲染体检」）**：色彩空间 Gamma → **已迁 Linear**；HDR 无 Tonemapping → **已补**；`Art/Textures` **0 张位图**、动画 0、预制体 5（内容短板仍在）。
 
@@ -31,7 +32,7 @@
 
 | 项 | 值 |
 |---|---|
-| 任务看板 | **133 done / 0 doing / 0 todo**（TASKS.md） |
+| 任务看板 | **144 done / 0 doing / 0 todo / 1 held**（TASKS.md，held=A-AI-05 暂缓） |
 | 测试家底 | 原生 **349 / 778,723 断言** + EditMode **1102** + PlayMode **88** ≈ **1539 用例**；三校验器 exit 0 |
 | 代码规模 | C# 530 文件 / 86,755 行；C++ 175 文件 / 77,106 行（生产 27k + 测试 34k） |
 | 可交付物 | `Build/Windows64`（81.8MB Mono 包）、`Build/Installer/ZFrame-Setup-0.1.0.32.exe`（24MB）、`Build/Android/ZFrame.apk`（IL2CPP，minSdk 22，Vulkan→GLES3） |
@@ -40,7 +41,7 @@
 
 ## 一句话现状
 
-**功能侧无未闭环任务**：双轨（玩法框架 + 原生渲染内核）全部里程碑收口，Windows/Android 都能出包。**下一棒不是补欠账，是选方向**——技术侧最值钱的三件事在「下一步优先级」，内容侧最大短板是零贴图零动画。
+**功能侧无未闭环任务（1 项 held 暂缓）**：双轨（玩法框架 + 原生渲染内核）全部里程碑收口，Windows/Android 都能出包。**下一棒不是补欠账，是选方向**——用户已决定进入正式游戏开发；技术侧最值钱的三件事在「下一步优先级」，内容侧最大短板是零贴图零动画。
 
 ## 渲染体检（2026-11-09 主控只读扫描，未改任何渲染资产）
 
@@ -71,7 +72,7 @@
 
 ## 接管者动作序列
 
-1. `git log --oneline -5` + `git status`（应干净）＋确认 `git rev-list --count origin/main..HEAD`（当前 18）
+1. `git log --oneline -5` + `git status`（有 3 处未提交改动：TASKS.md 登记 A-AI-05、A-AI-05 日志收尾、接入指南新增）＋确认 `git rev-list --count origin/main..HEAD`（当前 50）
 2. 读 `Docs/LLM-HANDOFF-NOTES.md`（操作手册）+ `Docs/交接档案.md`（环境坑/技术债）
 3. 先跑一次基线再动手：`./Native/build/bin/Release/zrender_test.exe --success=false`（应 349/778,723）；Unity 五段用 `Tools/run_tests.ps1 -Segments editmode,playmode,arch,config,naming`
 4. 从「下一步优先级」选一项 → 写简报 → 派施工 → 派**不同**验收 → commit → 刷新三件套
@@ -86,7 +87,7 @@
 | 4 | 内容管线起步（贴图/材质/动画） | 0 贴图 0 动画 | 大，决定「像不像游戏」 |
 | 5 | 游戏本体（星球探索 + 装配生存） | 用户构思中，勿抢跑 | 大 |
 | 6 | Windows IL2CPP 正式包 | 当前 Mono | 小，一条命令 + 验证 |
-| 7 | 推 20 个提交 / token 轮换 | 待用户确认 | 极小 |
+| 7 | 推 50 个提交 / token 轮换 | 待用户确认 | 极小 |
 
 ## 环境纪律速查（每条真实踩过，详见交接档案 §3）
 
@@ -100,7 +101,7 @@
 
 ## 待办备忘
 
-- **20 个提交未推**（推远程前必须用户确认，AGENTS.md 铁律）；CI token 轮换仍成立（用户给的令牌与仓内凭据逐字节相同，非新令牌）
+- **50 个提交未推**（推远程前必须用户确认，AGENTS.md 铁律）；CI token 轮换仍成立（用户给的令牌与仓内凭据逐字节相同，非新令牌）
 - `Tools/android_support_installer.exe` 456MB 已在 .gitignore（未入库），可删本地副本
 - 仓库 515MB：FSR 两个 DLL 占 65MB、`Docs/Parity` PNG 约 20MB——ADR-004 允许，但 clone 成本高
 - `TestPanelView` 仍随包（技术债 §5）；`run_tests.ps1` BOM 可顺手清

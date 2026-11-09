@@ -4,6 +4,7 @@
 
 | 日期 | 任务 | 结果 | commit |
 |---|---|---|---|
+| 2026-11-09 | A-AI-05 NPC 自主模式+预约态 | held（暂缓）：简报已写、零半成品代码；用户进入正式开发后置，恢复按简报 §五派施工 | — |
 | 2026-11-09 | A-AI-04 可供性接场景 | done：SceneAffordances 真实锚点 + AffordanceSeeker 走过去占用；验收 PASS 7/7，1140+110 | 89f3497 |
 | 2026-11-09 | A-AI-03 可供性扫描 | done：Affordance/Registry(容量/预算/最近可用)+Action 接效用；验收 PASS 7/7，1140+102 | ccb5897 |
 | 2026-11-09 | A-WORLD-01 双精度世界 | done：WorldPosition/WorldOriginMath + WorldOrigin(4km 重定位)；100km float ULP 7.8mm vs double 4e-11m；验收 PASS 7/7，1127+101 | fc08132 |
