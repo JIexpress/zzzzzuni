@@ -31,7 +31,8 @@ namespace Game.View.Crowd
         L2Billboard = 2,
 
         /// <summary>
-        /// 播片（pre-rendered video impostor）——**本任务不实现**（简报明确：
+        /// 播片（pre-rendered video impostor）——实现方式见 A-CUT-01：
+        /// 过场由 <c>CutsceneDirector</c> 全局抑制人群 + 播放预渲染片，**不经分配器**（
         /// 留接口与边界文档，播片实现留待过场任务）。当前管线的分配器永不
         /// 产出本档位；档位分配的距离映射最高只到 <see cref="L2Billboard"/>。
         /// 边界文档（实现入口与前置条件）见施工报告与 <see cref="CrowdLODPipeline"/>

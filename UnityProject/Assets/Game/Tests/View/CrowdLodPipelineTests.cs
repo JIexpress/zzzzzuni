@@ -425,5 +425,38 @@ namespace Game.View.Tests
             var zeroUp = new CrowdLodConfig { L0UpDistance = 0f };
             Assert.Throws<ArgumentException>(() => zeroUp.Validate());
         }
+
+        /// <summary>
+        /// TASK-A-CUT-01：过场门闸通过静态开关统一抑制所有存活管线；
+        /// 幂等、可恢复，释放后从存活表移除（不会留一条永远被抑制的僵尸）。
+        /// </summary>
+        [Test]
+        public void SetAllSuppressed_TogglesEveryLivePipeline_AndLeavesTheRegistryOnDispose()
+        {
+            int liveBefore = CrowdLODPipeline.LiveCount;
+            var pipeline = new CrowdLODPipeline(_world, _camera);
+            Assert.AreEqual(liveBefore + 1, CrowdLODPipeline.LiveCount, "新管线必须登记");
+
+            try
+            {
+                Assert.IsFalse(pipeline.IsSuppressed, "默认不抑制");
+
+                CrowdLODPipeline.SetAllSuppressed(true);
+                Assert.IsTrue(pipeline.IsSuppressed, "过场开始：所有存活管线必须被抑制");
+
+                CrowdLODPipeline.SetAllSuppressed(true); // 幂等
+                Assert.IsTrue(pipeline.IsSuppressed);
+
+                CrowdLODPipeline.SetAllSuppressed(false);
+                Assert.IsFalse(pipeline.IsSuppressed, "过场结束：必须恢复");
+            }
+            finally
+            {
+                pipeline.Dispose();
+            }
+
+            Assert.AreEqual(liveBefore, CrowdLODPipeline.LiveCount, "释放后必须移出存活表");
+            Assert.IsFalse(pipeline.IsSuppressed);
+        }
     }
 }

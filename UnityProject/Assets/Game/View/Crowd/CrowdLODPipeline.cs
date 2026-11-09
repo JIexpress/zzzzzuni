@@ -13,10 +13,10 @@
 //     管线只消费：接管 transform 同步与激活开关）；L1 = 程序化低模人形
 //     （CrowdLodLowPolyHumanoid，300 面）DrawMeshInstanced 批量提交；
 //     L2 = billboard 剪影四边形（CrowdLodBillboardSprite）按帧转向相机批量提交。
-//  5. **L3 播片边界（本任务不实现）**：枚举位保留，分配器永不产出 L3。
-//     未来实现入口 = <see cref="HysteresisStep"/> / Tick 表示分支的 L3 case；
-//     前置条件 = 过场/固定机位判定（场景标记驱动，与距离无关）+ VideoPlayer
-//     播片资产管线；数据侧无需新列（L3 仍是位置+朝向的消费者，数据源统一不变）。
+//  5. **L3 播片（A-CUT-01 已实现，但不走分配器）**：过场由
+//     <c>CutsceneDirector</c> 用 <see cref="SetAllSuppressed"/> 把整条表示层
+//     全局让位给播片——L0 隐藏、L1/L2 不提交、kernel 不读。分配器**仍然永不
+//     产出 L3**，因此本类的档位/hard-cap 语义（L0≤20/L1≤50/L2≤512）不受过场影响。
 //
 // 不是 MonoBehaviour（沿 KernelCrowdDriver 分轨约定）：注册到 ITickQueue 的
 // View 档，Logic 档（模拟）先行，本管线每帧在 View 档读 kernel → 定档 → 同步表示。
@@ -86,6 +86,12 @@ namespace Game.View.Crowd
         private Material _l2Material;
         private bool _representationsDisabled;
 
+        // 过场（A-CUT-01）：L3 播片期间整条表示层被全局抑制——L0 隐藏、
+        // L1/L2 不提交、kernel 不再读取。L3 不通过逐实体档位产出，分配器的
+        // 硬上限语义（A-AND-09）因此完全不变。
+        private bool _suppressed;
+        private static readonly List<CrowdLODPipeline> s_live = new List<CrowdLODPipeline>();
+
         private ZkMask _readMask;
         private ZkEachBatchHandler _readBatchHandler;
         private ITickQueue _queue;
@@ -117,6 +123,51 @@ namespace Game.View.Crowd
                 .With(KernelCrowdIds.Velocity)
                 .With(KernelCrowdIds.Tag);
             _readBatchHandler = ReadBatch;
+            s_live.Add(this);
+        }
+
+        /// <summary>当前存活的管线数（过场抑制的覆盖面；测试与诊断用）。</summary>
+        public static int LiveCount => s_live.Count;
+
+        /// <summary>本管线是否被过场抑制（true = 表示层整体让位给播片）。</summary>
+        public bool IsSuppressed => _suppressed;
+
+        /// <summary>
+        /// 过场门闸入口（A-CUT-01）：对**所有存活管线**统一抑制/恢复。
+        /// 抑制时隐藏 L0、清零 L1/L2 计数并停止 kernel 读取——看不见的群体
+        /// 不应该继续消耗 CPU。恢复后下一帧 Tick 会按距离重新定档。
+        /// </summary>
+        public static void SetAllSuppressed(bool suppressed)
+        {
+            for (int i = s_live.Count - 1; i >= 0; --i)
+            {
+                s_live[i].SetSuppressed(suppressed);
+            }
+        }
+
+        /// <summary>单实例抑制（幂等）。</summary>
+        public void SetSuppressed(bool suppressed)
+        {
+            if (_suppressed == suppressed)
+            {
+                return;
+            }
+
+            _suppressed = suppressed;
+            if (!suppressed)
+            {
+                return;
+            }
+
+            for (int i = 0; i < _regs.Count; ++i)
+            {
+                DeactivateL0(_regs[i]);
+            }
+
+            LastL1Instances = 0;
+            LastL2Instances = 0;
+            LastL1SubmitCalls = 0;
+            LastL2SubmitCalls = 0;
         }
 
         // ---- 只读状态 ----------------------------------------------------------
@@ -312,6 +363,19 @@ namespace Game.View.Crowd
                 return; // kernel 真实性：数据源没了 → 渲染冻结、不抛异常
             }
 
+            if (_suppressed)
+            {
+                // 过场中：表示层让位给播片，连 kernel 都不读。
+                for (int i = 0; i < _regs.Count; ++i)
+                {
+                    DeactivateL0(_regs[i]);
+                }
+
+                LastL1Instances = 0;
+                LastL2Instances = 0;
+                return;
+            }
+
             // ① 单次游标：全部档位的实体状态（无任何其它位置来源）。
             _readBatches = 0;
             LastKernelReadRows = _world.EachBatches(_readMask, _readBatchHandler);
@@ -380,6 +444,7 @@ namespace Game.View.Crowd
 
             _disposed = true;
             _initialized = false;
+            s_live.Remove(this);
             _queue?.Unregister(this);
             _queue = null;
             DestroyObject(_l1Mesh);
