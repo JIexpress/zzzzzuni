@@ -81,6 +81,9 @@ namespace Game.Domain.Survival
         /// <summary>已经触发的波次数（从 1 开始；未开始为 0）。</summary>
         public int WaveIndex { get; private set; }
 
+        /// <summary>本轮已击杀的敌人数（TASK-A-LOOP-02；重开清零）。</summary>
+        public int Kills { get; private set; }
+
         /// <summary>是否已结束（胜利或失败）。</summary>
         public bool IsFinished => Phase == SurvivalPhase.Won || Phase == SurvivalPhase.Lost;
 
@@ -157,6 +160,21 @@ namespace Game.Domain.Survival
             return true;
         }
 
+        /// <summary>
+        /// 记一次击杀（TASK-A-LOOP-02）。只在 Running 生效，返回是否计入。
+        /// **不改变 Phase、不推进时间**：击杀是记账，不是流程推进。
+        /// </summary>
+        public bool RegisterKill()
+        {
+            if (Phase != SurvivalPhase.Running)
+            {
+                return false;
+            }
+
+            Kills++;
+            return true;
+        }
+
         /// <summary>第 <paramref name="waveIndex"/> 波的敌人数量（1 起，单调不减）。</summary>
         public static int WaveSize(int waveIndex)
         {
@@ -188,6 +206,7 @@ namespace Game.Domain.Survival
             FireHp = MaxFireHp;
             Phase = SurvivalPhase.Idle;
             WaveIndex = 0;
+            Kills = 0;
             _nextWaveAt = FirstWaveDelaySeconds;
             _wavePending = false;
         }

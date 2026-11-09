@@ -7,6 +7,7 @@ namespace Game.View.Survival
 {
     /// <summary>
     /// TASK-A-LOOP-01：最小可玩循环的**表现层编排**——守住火堆 90 秒。
+    /// TASK-A-LOOP-02 补上战斗：按 J 用身前扇形打死敌人，击杀数进 HUD。
     ///
     /// 设计边界（很重要）：
     ///  - 规则全部在 <see cref="SurvivalLoopState"/>（纯逻辑，EditMode 覆盖）；
@@ -30,11 +31,30 @@ namespace Game.View.Survival
         private const int AttackerDamage = 8;
         private const float SpawnRadius = 18f;
 
+        // ---- TASK-A-LOOP-02 战斗数值（纯 View 侧几何参数，规则仍归状态机）----
+        /// <summary>攻击距离（米，水平面）。</summary>
+        public const float AttackRange = 2.5f;
+
+        /// <summary>扇形半角余弦：cos(60°) = 0.5，即前方 ±60°。</summary>
+        private const float AttackHalfAngleCos = 0.5f;
+
+        /// <summary>攻击冷却（秒）。</summary>
+        public const float AttackCooldownSeconds = 0.35f;
+
+        /// <summary>每次攻击伤害（敌人 2 点血 → 两下致死）。</summary>
+        public const int AttackDamage = 1;
+
+        /// <summary>攻击键（旧输入；刻意不新增 Input System action，避免牵动重绑定矩阵）。</summary>
+        private const KeyCode AttackKey = KeyCode.J;
+
         private static SurvivalLoop _instance;
 
         private readonly List<GameObject> _attackers = new List<GameObject>();
         private GameObject _fire;
         private SurvivalLoopState _state;
+        private Transform _player;
+        private bool _playerResolved;
+        private float _nextAttackAt;
 
         /// <summary>存活实例（未挂载/已卸载为 null）。</summary>
         public static SurvivalLoop Instance => _instance;
@@ -114,6 +134,101 @@ namespace Game.View.Survival
             }
 
             MoveAttackers(Time.deltaTime);
+            HandleAttackInput();
+        }
+
+        /// <summary>
+        /// 攻击输入（J）：冷却门在输入路径上，<see cref="Attack"/> 本身只做几何判定，
+        /// 这样测试可以直接连打两下而不受 Time.time 影响。
+        /// </summary>
+        private void HandleAttackInput()
+        {
+            if (!Input.GetKeyDown(AttackKey) || Time.time < _nextAttackAt)
+            {
+                return;
+            }
+
+            _nextAttackAt = Time.time + AttackCooldownSeconds;
+            Attack();
+        }
+
+        /// <summary>
+        /// 立刻判定一次攻击（不含冷却）：向玩家身前 ±60°、2.5m 内的存活敌人各造成 1 点伤害。
+        /// 打断致死的敌人交给 <see cref="SurvivalLoopState.RegisterKill"/> 记账后由本类销毁。
+        /// 返回命中的敌人数（测试/诊断用）。
+        /// </summary>
+        public int Attack()
+        {
+            if (_state == null || _state.Phase != SurvivalPhase.Running)
+            {
+                return 0;
+            }
+
+            Transform origin = ResolvePlayer();
+            if (origin == null)
+            {
+                return 0;
+            }
+
+            Vector3 originPoint = origin.position;
+            originPoint.y = 0f;
+
+            Vector3 forward = origin.forward;
+            forward.y = 0f;
+            if (forward.sqrMagnitude < 1e-4f)
+            {
+                forward = Vector3.forward;
+            }
+
+            forward.Normalize();
+
+            int hits = 0;
+            for (int i = _attackers.Count - 1; i >= 0; i--)
+            {
+                GameObject attacker = _attackers[i];
+                if (attacker == null)
+                {
+                    _attackers.RemoveAt(i);
+                    continue;
+                }
+
+                var health = attacker.GetComponent<SurvivalAttacker>();
+                if (health == null || health.IsDead)
+                {
+                    continue;
+                }
+
+                Vector3 toTarget = attacker.transform.position;
+                toTarget.y = 0f;
+                Vector3 delta = toTarget - originPoint;
+                float distance = delta.magnitude;
+                if (distance > AttackRange)
+                {
+                    continue;
+                }
+
+                // 贴脸时方向无意义，直接算命中。
+                if (distance > 1e-4f && Vector3.Dot(forward, delta / distance) < AttackHalfAngleCos)
+                {
+                    continue;
+                }
+
+                hits++;
+                if (health.TakeDamage(AttackDamage))
+                {
+                    _state.RegisterKill();
+                    _attackers.RemoveAt(i);
+                    Destroy(attacker);
+                }
+            }
+
+            return hits;
+        }
+
+        /// <summary>测试/调试：在指定位置生成一个带血量的敌人，返回其对象。</summary>
+        public GameObject SpawnAttackerForTests(Vector3 position)
+        {
+            return SpawnAttacker(position);
         }
 
         /// <summary>开始一轮（建火堆 + 清空敌人 + Running）。幂等：非 Idle 不重复开始。</summary>
@@ -126,6 +241,7 @@ namespace Game.View.Survival
 
             EnsureFire();
             ClearAttackers();
+            _nextAttackAt = 0f;
             _state.Start();
         }
 
@@ -199,25 +315,56 @@ namespace Game.View.Survival
                 Vector3 position = FirePosition
                     + new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * SpawnRadius;
 
-                var attacker = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                attacker.name = "~SurvivalAttacker";
-                attacker.transform.position = position + Vector3.up * 0.6f;
-                attacker.transform.localScale = new Vector3(0.6f, 1.2f, 0.6f);
-
-                var renderer = attacker.GetComponent<Renderer>();
-                if (renderer != null)
-                {
-                    Shader shader = Shader.Find("Universal Render Pipeline/Lit");
-                    if (shader != null)
-                    {
-                        var material = new Material(shader) { name = "~SurvivalAttackerMat" };
-                        material.SetColor("_BaseColor", new Color(0.55f, 0.12f, 0.12f));
-                        renderer.sharedMaterial = material;
-                    }
-                }
-
-                _attackers.Add(attacker);
+                SpawnAttacker(position);
             }
+        }
+
+        private GameObject SpawnAttacker(Vector3 position)
+        {
+            var attacker = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            attacker.name = "~SurvivalAttacker";
+            attacker.transform.position = position + Vector3.up * 0.6f;
+            attacker.transform.localScale = new Vector3(0.6f, 1.2f, 0.6f);
+
+            var renderer = attacker.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+                if (shader != null)
+                {
+                    var material = new Material(shader) { name = "~SurvivalAttackerMat" };
+                    material.SetColor("_BaseColor", new Color(0.55f, 0.12f, 0.12f));
+                    renderer.sharedMaterial = material;
+                }
+            }
+
+            // 必须在材质之后挂载：组件在 Awake 里把当前颜色记为闪白还原色。
+            attacker.AddComponent<SurvivalAttacker>();
+
+            _attackers.Add(attacker);
+            return attacker;
+        }
+
+        /// <summary>攻击原点：场景里的 Player（没有就退到主相机，仍没有则视为无玩家）。</summary>
+        private Transform ResolvePlayer()
+        {
+            if (_playerResolved)
+            {
+                return _player;
+            }
+
+            GameObject player = GameObject.Find("Player");
+            if (player != null)
+            {
+                _player = player.transform;
+            }
+            else if (Camera.main != null)
+            {
+                _player = Camera.main.transform;
+            }
+
+            _playerResolved = true;
+            return _player;
         }
 
         private void MoveAttackers(float deltaTime)
@@ -237,7 +384,13 @@ namespace Game.View.Survival
 
                 if (distance <= AttackerReach)
                 {
-                    _state.ApplyFireDamage(AttackerDamage);
+                    // 只有活着的敌人才啃火堆；已被打死的（理论上当帧就被移除了）绝不扣耐久。
+                    var health = attacker.GetComponent<SurvivalAttacker>();
+                    if (health == null || !health.IsDead)
+                    {
+                        _state.ApplyFireDamage(AttackerDamage);
+                    }
+
                     _attackers.RemoveAt(i);
                     Destroy(attacker);
                     continue;
@@ -297,8 +450,8 @@ namespace Game.View.Survival
                 return;
             }
 
-            GUI.Label(new Rect(20f, 20f, 300f, 32f),
-                $"剩余 {Mathf.CeilToInt(_state.RemainingSeconds)}s   第 {Mathf.Max(1, _state.WaveIndex)} 波",
+            GUI.Label(new Rect(20f, 20f, 520f, 32f),
+                $"剩余 {Mathf.CeilToInt(_state.RemainingSeconds)}s   第 {Mathf.Max(1, _state.WaveIndex)} 波   击杀 {_state.Kills}",
                 style);
 
             var bar = new Rect(20f, 58f, 260f, 20f);
@@ -312,11 +465,11 @@ namespace Game.View.Survival
 
             if (_state.Phase == SurvivalPhase.Won)
             {
-                GUI.Label(new Rect(20f, 120f, 520f, 32f), "胜利：守住了！按 R 重开", style);
+                GUI.Label(new Rect(20f, 120f, 520f, 32f), $"胜利：守住了！击杀 {_state.Kills}。按 R 重开", style);
             }
             else if (_state.Phase == SurvivalPhase.Lost)
             {
-                GUI.Label(new Rect(20f, 120f, 520f, 32f), "失败：火堆熄灭了。按 R 重开", style);
+                GUI.Label(new Rect(20f, 120f, 520f, 32f), $"失败：火堆熄灭了。击杀 {_state.Kills}。按 R 重开", style);
             }
         }
     }
