@@ -58,6 +58,12 @@ namespace Game.View.Editor
             report.AppendLine($"SCN_Game model stage record (TASK-A-R9-10) @ {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
             report.AppendLine($"unity: {Application.unityVersion}  scene: {scene.path}");
 
+            // TASK-A-ART-01: Animators do not evaluate in edit mode, so a freshly
+            // imported humanoid would be captured in its T-pose. Sample the Idle
+            // take into the pose before rendering — the player-view shot then
+            // shows the actual in-game silhouette, not the bind pose.
+            int posed = PoseHumanoids();
+
             int captured = 0;
             captured += Capture(new Vector3(0f, 3.2f, -4.2f), Quaternion.Euler(10f, 0f, 0f), 60f,
                 Path.Combine(repoRoot, kOutDir, "demo_stage_playerview.png"));
@@ -106,13 +112,59 @@ namespace Game.View.Editor
                     $"minY={final.min.y:F3} pos={root.transform.position:F2} yaw={root.transform.eulerAngles.y:F0}");
             }
 
-            report.AppendLine($"placed={recorded.Count}/10  shots={captured}/6");
+            report.AppendLine($"placed={recorded.Count}/10  shots={captured}/6  posed={posed}");
+            AnimationMode.StopAnimationMode();
 
             File.WriteAllText(Path.Combine(repoRoot, kOutDir, "demo_stage_log.txt"),
                 report.Replace("\r\n", "\n").ToString(), new UTF8Encoding(false));
             Debug.Log($"[StageScreenshot] report:\n{report}");
 
             return captured == 6 && recorded.Count == 10 ? 0 : 1;
+        }
+
+        /// <summary>
+        /// TASK-A-ART-01: poses every Animator-driven character at 35 % of its
+        /// Idle take so the edit-mode capture shows the locomotion silhouette
+        /// instead of the bind (T) pose. Returns the number of posed objects.
+        /// </summary>
+        private static int PoseHumanoids()
+        {
+            if (!AnimationMode.InAnimationMode())
+            {
+                AnimationMode.StartAnimationMode();
+            }
+
+            int posed = 0;
+            foreach (Animator animator in UnityEngine.Object.FindObjectsOfType<Animator>())
+            {
+                RuntimeAnimatorController controller = animator.runtimeAnimatorController;
+                if (controller == null)
+                {
+                    continue;
+                }
+
+                AnimationClip idle = null;
+                foreach (AnimationClip clip in controller.animationClips)
+                {
+                    if (clip != null && clip.name == "Idle")
+                    {
+                        idle = clip;
+                        break;
+                    }
+                }
+
+                if (idle == null || idle.length <= 0f)
+                {
+                    continue;
+                }
+
+                AnimationMode.BeginSampling();
+                AnimationMode.SampleAnimationClip(animator.gameObject, idle, idle.length * 0.35f);
+                AnimationMode.EndSampling();
+                posed++;
+            }
+
+            return posed;
         }
 
         /// <summary>Look-at variant of <see cref="Capture"/> (position → target).</summary>

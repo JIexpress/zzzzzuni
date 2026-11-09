@@ -48,7 +48,6 @@ namespace Game.View.Editor
         private const string EmptyScenePath = ScenesDir + "/SCN_Empty.unity";
         private const string GameScenePath = ScenesDir + "/SCN_Game.unity";
         private const string UtilityScenePath = ScenesDir + "/SCN_Utility.unity";
-        private const string ModelPath = "Assets/Art/Models/CHR_Kenney_CharacterMedium.fbx";
         private const string ControllerPath = "Assets/Art/Models/CHR_KenneyLocomotion.controller";
 
         /// <summary>Target on-screen height of the characters (metres).</summary>
@@ -187,34 +186,16 @@ namespace Game.View.Editor
             shell.transform.position = Vector3.zero; // same start point for both NPCs
             shell.transform.SetParent(parent, false);
 
-            GameObject model = (GameObject)PrefabUtility.InstantiatePrefab(
-                AssetDatabase.LoadAssetAtPath<GameObject>(ModelPath));
-            if (model == null)
-            {
-                throw new System.InvalidOperationException(
-                    $"[AnimSceneSetup] model FBX missing at {ModelPath} — run AnimRigSetup first.");
-            }
-
-            model.transform.SetParent(shell.transform, worldPositionStays: false);
-            model.transform.localPosition = Vector3.zero;
-            model.transform.localRotation = Quaternion.identity; // GameSceneSetup pattern: the FBX root carries pure yaw; inner nodes keep the rig rotations
-            // GameSceneSetup pattern: measure → rescale → settle. The import
-            // leaves Blender's ×100 node scales in place; never trust the file.
-            Bounds original = MeasureBounds(model);
-            float scale = ModelStageLayout.ScaleForHeight(original.size.y, CharacterHeightMeters);
-            model.transform.localScale = Vector3.one * scale;
-            Bounds rescaled = MeasureBounds(model);
-            model.transform.localPosition = new Vector3(0f, -rescaled.min.y, 0f); // feet on ground (shell at origin)
-
-            // The Animator comes from the FBX import itself; pin the generated
-            // controller and keep the View in charge of the transform.
+            // TASK-A-ART-01: the body is the Mixamo Vanguard humanoid. Scale is
+            // measured from the imported bounds and the feet settle on y=0
+            // (HumanoidCharacterSetup.AttachHumanoid — the same helper the
+            // SCN_Game NPC uses). The Kenney-named controller stays: its clips
+            // are Humanoid, so they retarget onto the Mixamo avatar by muscle
+            // space and the NpcAnimatorDriver / state-machine contract is
+            // untouched (NpcAnimatorPlayModeTests pins the controller name).
+            GameObject model = HumanoidCharacterSetup.AttachHumanoid(
+                shell.transform, CharacterHeightMeters, disableShellRenderer: false);
             var animator = model.GetComponent<Animator>();
-            if (animator == null)
-            {
-                animator = model.AddComponent<Animator>();
-                animator.avatar = AnimRigSetup.FindModelAvatar();
-            }
-
             var controller = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(ControllerPath);
             if (controller == null)
             {
@@ -223,6 +204,10 @@ namespace Game.View.Editor
             }
 
             animator.runtimeAnimatorController = controller;
+            // Binding a controller rebinds the rig — flip the visual forward
+            // AFTER it (the driver treats transform.forward as the movement
+            // direction; the Vanguard body natively faces −Z).
+            HumanoidCharacterSetup.AlignVisualForward(model);
             animator.applyRootMotion = false; // the View owns the transform — clips are in-place loops
             animator.cullingMode = AnimatorCullingMode.AlwaysAnimate; // batch/PlayMode tests have no culling surprises
 
@@ -243,42 +228,6 @@ namespace Game.View.Editor
             SetReference(driver, "_npcView", view);
             SetReference(driver, "_animator", animator);
             SetReference(driver, "_lookTarget", player);
-        }
-
-        /// <summary>Combined world bounds of every renderer under <paramref name="root"/> (GameSceneSetup pattern — skinned renderers use their sharedMesh bounds).</summary>
-        private static Bounds MeasureBounds(GameObject root)
-        {
-            var bounds = new Bounds();
-            bool hasAny = false;
-            foreach (Renderer renderer in root.GetComponentsInChildren<Renderer>(true))
-            {
-                var skinned = renderer as SkinnedMeshRenderer;
-                Bounds part = skinned != null && skinned.sharedMesh != null
-                    ? TransformBounds(skinned.sharedMesh.bounds, skinned.localToWorldMatrix)
-                    : renderer.bounds;
-                if (!hasAny)
-                {
-                    bounds = part;
-                    hasAny = true;
-                }
-                else
-                {
-                    bounds.Encapsulate(part);
-                }
-            }
-
-            return bounds;
-        }
-
-        private static Bounds TransformBounds(Bounds bounds, Matrix4x4 matrix)
-        {
-            var center = matrix.MultiplyPoint(bounds.center);
-            var extents = bounds.extents;
-            var worldExtents = new Vector3(
-                Mathf.Abs(matrix.m00) * extents.x + Mathf.Abs(matrix.m01) * extents.y + Mathf.Abs(matrix.m02) * extents.z,
-                Mathf.Abs(matrix.m10) * extents.x + Mathf.Abs(matrix.m11) * extents.y + Mathf.Abs(matrix.m12) * extents.z,
-                Mathf.Abs(matrix.m20) * extents.x + Mathf.Abs(matrix.m21) * extents.y + Mathf.Abs(matrix.m22) * extents.z);
-            return new Bounds(center, worldExtents * 2f);
         }
 
         private static void ApplyBuildSettings()

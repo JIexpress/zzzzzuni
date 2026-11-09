@@ -182,6 +182,12 @@ namespace Game.View.Editor
             npc.transform.position = new Vector3(-2.2f, 1f, 2.2f);
             npc.transform.localScale = new Vector3(0.9f, 0.95f, 0.9f);
 
+            // TASK-A-ART-01: the capsule stays as the interaction collider, but
+            // its placeholder body is replaced by the humanoid mesh (same
+            // measured-height + feet-on-ground treatment as the model stage).
+            HumanoidCharacterSetup.AttachHumanoid(npc.transform,
+                HumanoidCharacterSetup.NpcHeightMeters, disableShellRenderer: true);
+
             var proxy = npc.AddComponent<InteractableProxy>();
             SetEnum(proxy, "_kind", (int)InteractableKind.Dialog);
             SetString(proxy, "_id", "npc-elder");
