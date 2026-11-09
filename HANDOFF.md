@@ -12,7 +12,7 @@
 - **测试真家底（实测）**：原生 **349 用例 / 778,723 断言全绿**（`zrender_test.exe`）；EditMode **1102** + PlayMode **88**（Linear 下实跑）；合计 **1539 用例**。架构校验 **26 asmdef / 0 违规**。
 - **A-ANIM-02 动画扩展第一刀（d938565）**：跳跃从「只触发动画」变成真垂直位移——纯函数弧线（v0=√2gh、T=2v0/g、峰值 0.7500m、落地差 0.0000）、`Grounded` 由真值驱动、控制器补 Idle→Jump 与 Jump→Run（6 过渡）、空中二次请求被拒。两处变异复红后 sha256 还原。
 - **A-R9-19 色彩管线迁移（82daf86）**：Gamma→Linear + Medium/High 补 Tonemapping(Neutral) + 两档后处理重新分层（High/Medium 差 1.48x）+ ZRender 桥改 UNORM 视图。Linear 下 **1102+88 全绿**，SCN_Game 实拍均值 +8%、无裁切。
-- **git 现场**：HEAD `82daf86`，工作区干净，**领先 origin/main 25 个提交未推**（A-AND-10 触屏包、A-AI-02、A-AND-09、A-AI-01、G-136~G-140 治理与交接手册）。
+- **git 现场**：HEAD `82daf86`，工作区干净，**领先 origin/main 26 个提交未推**（A-AND-10 触屏包、A-AI-02、A-AND-09、A-AI-01、G-136~G-140 治理与交接手册）。
 - **文档漂移已修（G-141）**：README 的 103 任务/916/48/311/25 asmdef、TASKS 行内统计 114、A-R9-18 空 commit、ROADMAP 方向四 doing/todo 全部对齐实测值。
 - **盘点新发现（已处置，见下「渲染体检」）**：色彩空间 Gamma → **已迁 Linear**；HDR 无 Tonemapping → **已补**；`Art/Textures` **0 张位图**、动画 0、预制体 5（内容短板仍在）。
 
