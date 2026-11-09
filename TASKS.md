@@ -87,7 +87,7 @@
 | A-LOOP-01 | A/LOOP | 最小可玩循环：守住火堆 90 秒（唯一动词=守） | done(主控实跑；1111+91 全绿；纯逻辑状态机+波次曲线+耐久+HUD/重开；变异复红 sha256 还原) | Docs/Logs/TASK-A-LOOP-01.md | ddfb03c |
 | A-LOOP-02 | A/LOOP | 战斗闭环：敌人血量/受击 + 玩家攻击 + 击杀计数 | done(验收PASS 6/6；1113+93；变异复红 sha256 还原；背后攻击为设计边界) | Docs/Logs/TASK-A-LOOP-02.md | 4394a2d |
 | A-ASM-03 | A/ASM | 装配玩法化①：建造模式 + 吸附连接 + 蓝图存档（进 SCN_Game） | done(验收PASS 6/6；1113+98；变异复红 sha256 还原；既有装配类零改动) | Docs/Logs/TASK-A-ASM-03.md | 2dba3c7 |
-| A-WORLD-01 | A/WORLD | 双精度世界坐标 + 浮点原点（4000m 重定位） | done(验收PASS 7/7；1127+101；变异复红 sha256 还原；100km 处 float ULP 7.8mm vs double 4e-11m) | Docs/Logs/TASK-A-WORLD-01.md | 待填 |
+| A-WORLD-01 | A/WORLD | 双精度世界坐标 + 浮点原点（4000m 重定位） | done(验收PASS 7/7；1127+101；变异复红 sha256 还原；100km 处 float ULP 7.8mm vs double 4e-11m) | Docs/Logs/TASK-A-WORLD-01.md | fc08132 |
 | A-R9-19 | A/URP | 色彩管线迁移（Gamma→Linear + HDR 两档 Tonemapping） | done(主控实跑验收；Linear 下 1102+88 全绿；ZRender 桥改 UNORM 视图；两档重新分层差1.48x；灯光接受新基准未重标定) | Docs/Logs/TASK-A-R9-19.md | 82daf86 |
 
 **统计**：done 141 ／ doing 0 ／ todo 0 ／ blocked 0 ／ held 0（2026-11-09 G-153 校准）

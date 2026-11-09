@@ -6,12 +6,13 @@
 
 **快照时间**: 2026-11-09 凌晨（**WorkBuddy 主控接棒，全量盘点后校准**）｜**刷新者**: 主控（WorkBuddy，银橙AI 会话）｜**仓库**: `C:\Users\1\Desktop\zcode\GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni
 
-## ⚡ 最新（2026-11-09 18:45，A-ASM-03 闭环——能在游戏里造东西了）
+## ⚡ 最新（2026-11-09 19:05，A-ASM-03 + A-WORLD-01 闭环——能造东西，也有行星尺度的地基）
 
-- **看板真实口径**：**140 行全 done / 0 doing / 0 todo**（旧文档写 130 是 11-04 的快照；A-AI-01/A-AND-09/A-AI-02/A-AND-10 早已闭环，**不要再派**）。
-- **测试真家底（实测）**：原生 **349 用例 / 778,723 断言全绿**（`zrender_test.exe`）；EditMode **1113** + PlayMode **98**（Linear 下实跑）；合计 **1560 用例**。架构校验 **26 asmdef / 0 违规**。
+- **看板真实口径**：**141 行全 done / 0 doing / 0 todo**（旧文档写 130 是 11-04 的快照；A-AI-01/A-AND-09/A-AI-02/A-AND-10 早已闭环，**不要再派**）。
+- **测试真家底（实测）**：原生 **349 用例 / 778,723 断言全绿**（`zrender_test.exe`）；EditMode **1127** + PlayMode **101**（Linear 下实跑）；合计 **1577 用例**。架构校验 **26 asmdef / 0 违规**。
 - **A-ANIM-02 动画扩展第一刀（d938565）**：跳跃从「只触发动画」变成真垂直位移——纯函数弧线（v0=√2gh、T=2v0/g、峰值 0.7500m、落地差 0.0000）、`Grounded` 由真值驱动、控制器补 Idle→Jump 与 Jump→Run（6 过渡）、空中二次请求被拒。两处变异复红后 sha256 还原。
 - **A-ANIM-03 脚步 IK（0d65dd3）**：平地零干预（权重<0.05）、25° 斜板权重>0.3 且脚贴合地面法线；中性踝高在平地学习，避免「平地也拽脚」；变异关掉 IK → 用例必红后 sha256 还原。
+- **A-WORLD-01 双精度世界（fc08132）**：`WorldPosition`（double）+ `WorldOriginMath` 纯函数 + `WorldOrigin`（4000m 注册制重定位）。100km 处 float ULP **7.8mm** vs double 守恒 **4.4e-11m**；验收 PASS 7/7。**未挂载到任何场景**（零影响）。
 - **A-ASM-03 建造模式（2dba3c7）**：SCN_Game 里按 **B** 进建造：Q/E 切 5 种零件、鼠标吸附连接（≤1.2m）、右键删除、**K 存 / L 读**蓝图（`slot1`，走 AssemblyGraphSync+SnapshotCodec+Rebuilder）。默认待机零可见物。验收 PASS 6/6，PlayMode 98。
 - **A-LOOP-02 战斗闭环（4394a2d）**：敌人 2 点血 + 受击闪白，J 键扇形攻击（2.5m/±60°/0.35s），击杀计入 HUD；活敌才扣火堆耐久。验收 PASS 6/6。
 - **技术验证报告**：`Docs/TECH-VALIDATION.md`（AI 自主 NPC / 装配 / 行星尺度三条线的现状-差距-路径-验证方式，含建议任务顺序）。
