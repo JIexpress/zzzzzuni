@@ -81,7 +81,7 @@
 | R10-06 | A/R10 | 修复审计P2 C#批(A-9相机还原) | done(验收PASS with受限 6/6；EditMode 719) | Docs/Logs/TASK-R10-06.md | fa671ba |
 | R10-07 | B/R10 | 补审计漏项(A-10 split屏障 + B-6 采集泄漏) | done(验收PASS with受限 10/10；native 253/711,537) | Docs/Logs/TASK-R10-07.md | 98d377b |
 | A-ANIM-02 | A/ANIM | 动画扩展一：跳跃接真实垂直位移（Grounded 真值 + 控制器 Idle→Jump/Jump→Run） | done(验收PASS；纯函数弧线峰值0.7500/落地差0.0000；1102+88用例；变异双复红) | Docs/Logs/TASK-A-ANIM-02.md | d938565 |
-| A-R9-19 | A/URP | 色彩管线迁移（Gamma→Linear + HDR 两档 Tonemapping） | held(证伪回滚：Linear 观感更优但触发4红——ZRender SRV 格式不兼容/加色特效变暗/两档差异压缩；已拆 P1-P5 前置) | Docs/Logs/TASK-A-R9-19.md | — |
+| A-R9-19 | A/URP | 色彩管线迁移（Gamma→Linear + HDR 两档 Tonemapping） | held(P1已解：ZRender 桥改线性视图，Linear 全量 EditMode 1102 绿；余 P2 特效强度/P3 两档差异/P4 六场景灯光) | Docs/Logs/TASK-A-R9-19.md | P1 见 §6 |
 
 **统计**：done 133 ／ doing 0 ／ todo 0 ／ blocked 0 ／ held 1（2026-11-09 G-143 校准；held=A-R9-19）
 

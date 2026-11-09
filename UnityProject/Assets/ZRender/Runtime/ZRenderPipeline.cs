@@ -233,8 +233,15 @@ namespace ZFrame.Render
                         return false;
                     }
 
+                    // linear: true —— 共享目标是 BGRA8 **UNORM**（原生 RTV 以 UNORM 写）。
+                    // 在 Linear 色彩空间下传 false 会让 Unity 建 **sRGB** SRV，与 UNORM 资源
+                    // 不兼容（D3D12: dxgi-fmt 91 vs 87，日志刷 "non compatible format"）。
+                    // 取 UNORM 视图后采样不做 sRGB 解码：Gamma 工程下与旧行为完全一致；
+                    // Linear 工程下这条桥的画面会比原生窗口直出略暗（ZRender 非活跃管线，
+                    // 活跃的是 URP）。彻底方案是把共享资源改成 TYPELESS，让两种视图都合法，
+                    // 但实测该改法会触发 D3D12 设备移除，需单独定位（TASK-A-R9-19 P1-b）。
                     _externalTextures[slot] = Texture2D.CreateExternalTexture(
-                        width, height, TextureFormat.BGRA32, false, false, resource);
+                        width, height, TextureFormat.BGRA32, false, true, resource);
                     if (_externalTextures[slot] == null)
                     {
                         Debug.LogError("[ZRender] Texture2D.CreateExternalTexture 返回 null（D3D12 资源指针不被接受？）");

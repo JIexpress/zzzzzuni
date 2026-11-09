@@ -93,3 +93,50 @@ verify colorSpace==Linear: True
 - 只在 Editor 批处理渲染路径验证（`StageScreenshot` 用编辑期相机 `Camera.Render()`），未出 Player 包对照。
 - 只验了 SCN_Game 一个场景，其余 5 个场景的灯光标定未做（P4）。
 - 首帧黑图现象只观察到一次，未做多次采样统计其复现率。
+
+## 六、P1 实施结果（2026-11-09，已落地）
+
+### 6.1 结论
+
+**P1 完成**：ZRender 的 Unity 桥接已能在 Linear 色彩空间下正常工作，不再产生 D3D12 格式报错。
+
+**改动只有一行（托管侧）**：`ZRenderPipeline.EnsureNativeTargetForSize` 里
+`Texture2D.CreateExternalTexture(..., linear: false, ...)` → `linear: true`。
+
+理由：原生共享目标是 **BGRA8 UNORM**（`zrhi_d3d12_unity_target.cpp` 的 `ZrFormat::BGRA8Unorm`）。
+Linear 色彩空间下传 `false` 会让 Unity 建 **sRGB** SRV，与 UNORM 资源不兼容
+（`dxgi-fmt=91 vs 87`）。传 `true` 后 Unity 建 UNORM 视图，格式一致。
+
+代价（如实）：Linear 下这条桥采样不做 sRGB 解码，画面会比原生窗口直出略暗。
+ZRender 不是活跃管线（活跃的是 URP），且 Gamma 工程下 `linear` 标志不参与任何转换，
+**Gamma 行为与此前完全一致**。
+
+### 6.2 证据（全部本机实跑）
+
+| 场景 | 结果 |
+|---|---|
+| Linear + ZRender 相关 EditMode（过滤 `ZRender`，5 例） | **5/5 通过**；`non compatible format` 出现 **0** 次；`887a0005` 设备移除 **0** 次 |
+| Linear + 全量 EditMode | **1102/1102/0** |
+| Gamma + 全量 EditMode / PlayMode（回归） | **1102/1102/0**、**88/88/0** |
+
+### 6.3 走过的弯路：TYPELESS 方案（P1-b，未采用）
+
+按"语义最正确"的做法先实现了 TYPELESS：资源建 `B8G8R8A8_TYPELESS`、原生 RTV 用 UNORM 显式视图、
+Unity 继续用 sRGB 视图。原生侧改动 5 处 + 三张格式覆盖测试期望表：
+
+- 原生单测 **349/349、778,762 断言**通过（新增格式被三条"全枚举覆盖"用例正确拦截并补齐）；
+- 但 Unity 侧共享目标创建直接失败：`d3d12 : CreateCommittedResource ... failed (887a0005)`，
+  设备以 **887a0001（无效调用）** 被移除，D3D12 调试层未输出具体调用点。
+
+判断：正确方向但需要单独定位无效调用（最可疑是 typeless 资源的回读 `CopyTextureRegion`），
+成本超过本次收益，**已回滚**，留作 P1-b。上面的托管侧方案已能解掉迁移的硬前置。
+
+### 6.4 剩余（重做完整 Linear 迁移仍缺）
+
+| # | 事项 | 状态 |
+|---|---|---|
+| P2 | 加色特效强度重标定（火花 0.0003 vs 门限 0.004） | 未做 |
+| P3 | 两档后处理差异重设计（0.1469 vs 门限 0.159） | 未做 |
+| P4 | 六场景灯光线性强度标定（`m_LightsUseLinearIntensity` 会翻 1） | 未做 |
+| P5 | 全量门限复核 | 未做 |
+| P1-b | typeless 方案（可省掉"略暗"代价） | 未做，可选 |
