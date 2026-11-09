@@ -6,13 +6,13 @@
 
 **快照时间**: 2026-11-09 凌晨（**WorkBuddy 主控接棒，全量盘点后校准**）｜**刷新者**: 主控（WorkBuddy，银橙AI 会话）｜**仓库**: `C:\Users\1\Desktop\zcode\GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni
 
-## ⚡ 最新（2026-11-09 16:20，A-R9-19 + A-ANIM-03 闭环，L3 片源就绪）
+## ⚡ 最新（2026-11-09 16:55，A-CUT-01 闭环——L3 播片过场可用）
 
-- **看板真实口径**：**135 行全 done / 0 doing / 1 todo（A-CUT-01 L3 过场，简报与片源已就绪）**（旧文档写 130 是 11-04 的快照；A-AI-01/A-AND-09/A-AI-02/A-AND-10 早已闭环，**不要再派**）。
-- **测试真家底（实测）**：原生 **349 用例 / 778,723 断言全绿**（`zrender_test.exe`）；EditMode **1103** + PlayMode **89**（Linear 下实跑）；合计 **1541 用例**。架构校验 **26 asmdef / 0 违规**。
+- **看板真实口径**：**136 行全 done / 0 doing / 0 todo**（旧文档写 130 是 11-04 的快照；A-AI-01/A-AND-09/A-AI-02/A-AND-10 早已闭环，**不要再派**）。
+- **测试真家底（实测）**：原生 **349 用例 / 778,723 断言全绿**（`zrender_test.exe`）；EditMode **1104** + PlayMode **90**（Linear 下实跑）；合计 **1543 用例**。架构校验 **26 asmdef / 0 违规**。
 - **A-ANIM-02 动画扩展第一刀（d938565）**：跳跃从「只触发动画」变成真垂直位移——纯函数弧线（v0=√2gh、T=2v0/g、峰值 0.7500m、落地差 0.0000）、`Grounded` 由真值驱动、控制器补 Idle→Jump 与 Jump→Run（6 过渡）、空中二次请求被拒。两处变异复红后 sha256 还原。
 - **A-ANIM-03 脚步 IK（0d65dd3）**：平地零干预（权重<0.05）、25° 斜板权重>0.3 且脚贴合地面法线；中性踝高在平地学习，避免「平地也拽脚」；变异关掉 IK → 用例必红后 sha256 还原。
-- **A-CUT-01 片源就绪（657f06c）**：Blender 5.2 Workbench 渲出 3s/640×360 占位过场并入库，简报含门闸/播片链路/L3 分支改造与 V1-V5，**待派发**。
+- **A-CUT-01 L3 过场（accffb5）**：`CutsceneDirector` 门闸 + VideoPlayer→RT→全屏 RawImage；过场期间人群全局抑制（L0 隐藏、L1/L2 不提交、kernel 不读），**分配器仍不产出 L3**（A-AND-09 硬上限语义不变）。batchmode 下真解码、帧号推进；变异复红。
 - **A-R9-19 色彩管线迁移（82daf86）**：Gamma→Linear + Medium/High 补 Tonemapping(Neutral) + 两档后处理重新分层（High/Medium 差 1.48x）+ ZRender 桥改 UNORM 视图。Linear 下 **1102+88 全绿**，SCN_Game 实拍均值 +8%、无裁切。
 - **git 现场**：HEAD `82daf86`，工作区干净，**领先 origin/main 26 个提交未推**（A-AND-10 触屏包、A-AI-02、A-AND-09、A-AI-01、G-136~G-140 治理与交接手册）。
 - **文档漂移已修（G-141）**：README 的 103 任务/916/48/311/25 asmdef、TASKS 行内统计 114、A-R9-18 空 commit、ROADMAP 方向四 doing/todo 全部对齐实测值。
