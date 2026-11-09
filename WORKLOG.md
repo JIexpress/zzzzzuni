@@ -4,6 +4,7 @@
 
 | 日期 | 任务 | 结果 | commit |
 |---|---|---|---|
+| 2026-11-09 | A-R9-19 色彩管线迁移（P2-P5） | done：Gamma→Linear + 两档 Tonemapping、后处理重新分层（1.48x）、ZRender 桥 UNORM；Linear 1102+88 全绿；灯光接受新基准 | 82daf86 |
 | 2026-11-09 | A-R9-19 P1 ZRender 桥 Linear 兼容 | done(P1)：共享纹理改线性视图，Linear 全量 EditMode 1102/1102、dxgi 报错 0、Gamma 回归 1102+88；typeless 方案证伪留 P1-b | b70cc38 |
 | 2026-11-09 | A-ANIM-02 跳跃接真实垂直位移 | done：施工→验收 PASS（纯函数弧线 v0=√2gh/T=2v0/g、Grounded 真值、控制器 Idle→Jump/Jump→Run、无二段跳；1102+88 用例，变异双复红 sha256 还原） | d938565 |
 | 2026-11-09 | A-AND-10 触屏打磨包 | done：施工→验收 PASS（浮动摇杆/多点/触觉/参数化；1099+85 用例） | 044c827 |

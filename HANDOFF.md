@@ -6,14 +6,15 @@
 
 **快照时间**: 2026-11-09 凌晨（**WorkBuddy 主控接棒，全量盘点后校准**）｜**刷新者**: 主控（WorkBuddy，银橙AI 会话）｜**仓库**: `C:\Users\1\Desktop\zcode\GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni
 
-## ⚡ 最新（2026-11-09 05:40，接管盘点 + A-ANIM-02 闭环）
+## ⚡ 最新（2026-11-09 13:40，A-ANIM-02 + A-R9-19 色彩管线迁移闭环）
 
-- **看板真实口径**：**133 行全 done / 0 doing / 0 todo**（旧文档写 130 是 11-04 的快照；A-AI-01/A-AND-09/A-AI-02/A-AND-10 早已闭环，**不要再派**）。
-- **测试真家底（实测）**：原生 **349 用例 / 778,723 断言全绿**（`zrender_test.exe`）；EditMode **1102** + PlayMode **88**（A-ANIM-02 验收 XML 实计）；合计 **1539 用例**。架构校验 **26 asmdef / 0 违规**。
+- **看板真实口径**：**134 行全 done / 0 doing / 0 todo**（旧文档写 130 是 11-04 的快照；A-AI-01/A-AND-09/A-AI-02/A-AND-10 早已闭环，**不要再派**）。
+- **测试真家底（实测）**：原生 **349 用例 / 778,723 断言全绿**（`zrender_test.exe`）；EditMode **1102** + PlayMode **88**（Linear 下实跑）；合计 **1539 用例**。架构校验 **26 asmdef / 0 违规**。
 - **A-ANIM-02 动画扩展第一刀（d938565）**：跳跃从「只触发动画」变成真垂直位移——纯函数弧线（v0=√2gh、T=2v0/g、峰值 0.7500m、落地差 0.0000）、`Grounded` 由真值驱动、控制器补 Idle→Jump 与 Jump→Run（6 过渡）、空中二次请求被拒。两处变异复红后 sha256 还原。
-- **git 现场**：HEAD `d938565`，工作区干净，**领先 origin/main 20 个提交未推**（A-AND-10 触屏包、A-AI-02、A-AND-09、A-AI-01、G-136~G-140 治理与交接手册）。
+- **A-R9-19 色彩管线迁移（82daf86）**：Gamma→Linear + Medium/High 补 Tonemapping(Neutral) + 两档后处理重新分层（High/Medium 差 1.48x）+ ZRender 桥改 UNORM 视图。Linear 下 **1102+88 全绿**，SCN_Game 实拍均值 +8%、无裁切。
+- **git 现场**：HEAD `82daf86`，工作区干净，**领先 origin/main 25 个提交未推**（A-AND-10 触屏包、A-AI-02、A-AND-09、A-AI-01、G-136~G-140 治理与交接手册）。
 - **文档漂移已修（G-141）**：README 的 103 任务/916/48/311/25 asmdef、TASKS 行内统计 114、A-R9-18 空 commit、ROADMAP 方向四 doing/todo 全部对齐实测值。
-- **盘点新发现（文档此前未记录，见下「渲染体检」）**：色彩空间是 **Gamma** 而 URP+HDR+Bloom 按线性工作；Medium/High 开 HDR 但全工程无 Tonemapping override；`Art/Textures` **0 张位图**、动画 0、预制体 5。
+- **盘点新发现（已处置，见下「渲染体检」）**：色彩空间 Gamma → **已迁 Linear**；HDR 无 Tonemapping → **已补**；`Art/Textures` **0 张位图**、动画 0、预制体 5（内容短板仍在）。
 
 ## 三十秒速览
 
@@ -37,19 +38,25 @@
 | 活跃管线 | `GraphicsSettings.m_CustomRenderPipeline` = `URP_Medium.asset`；包内只有 URP 14.0.11 | ZRender 需手动切换 |
 | 三档映射 | QualitySettings 三档 → Low/Medium/High 三个 URP asset；MSAA 1/2/4，阴影距离 20/40/60，软阴影仅 High；三档 `m_UseSRPBatcher:1` | 映射正确 |
 | 材质/Shader | 10 个 `.mat` **全部**引用 URP/Lit（guid `933532a4…`）；自定义 shader 仅 `ZRenderBlit.shader` | 无粉红风险 |
-| 后处理链 | Low **无任何 override**；Medium 只有 Bloom；High = Bloom + ColorAdjustments；**全工程无 Tonemapping** | ⚠ 见缺陷 1/2 |
-| 色彩空间 | `m_ActiveColorSpace: 0` = **Gamma** | ⚠ 见缺陷 1 |
+| 后处理链 | Low 无 override（无 HDR，按设计）；Medium = Tonemapping(Neutral) + Bloom 0.6；High = Tonemapping + Bloom 2.5 + ColorAdjustments(exposure 0.5/sat 14) | 三档分层，差 1.48x |
+| 色彩空间 | `m_ActiveColorSpace: 1` = **Linear**（2026-11-09 A-R9-19 迁移） | 正确 |
 | 深度/不透明纹理 | `m_RequireDepthTexture:0` / `m_RequireOpaqueTexture:0`；RendererFeatures 空 | 做 SSAO/软粒子前必须开 |
 | 内容资产 | 贴图 **0**、动画 **0**、预制体 5（4 UI + 1 测试立方）、模型 25 个 FBX、音频 7 | 玩法只能靠运行时生成几何 |
 
-**三个待裁决的渲染缺陷（我不擅自改，因为会动画面）**：
-1. **Gamma 色彩空间 + URP**：URP 官方要求 Linear。当前 HDR + Bloom 在 Gamma 下混合，光照与泛光都不物理；改 Linear 会整体变亮/对比变化，需要你点头并做像素对照。
-2. **HDR 开但无 Tonemapping**：Medium/High `m_SupportsHDR:1`，没有任何 Tonemapping override → 高光直接裁剪。要么补 Tonemapping（Neutral/ACES），要么关 HDR 保持三档一致。
-3. **三档后处理不连贯**：Low 什么都没有、Medium 只有 Bloom、High 多一个 ColorAdjustments——降档时画面会跳，建议按「Low=无后处理 / Medium=Bloom+Tonemap / High=再加 ColorAdjustments」重排。
+**渲染缺陷处置结果（2026-11-09 A-R9-19 已全部落地，Linear 下 1102+88 全绿）**：
 
-**缺陷 1 已实测试验（A-R9-19，已回滚，2026-11-09）**：Linear 观感确实更优（均值 +9.4、仅 0.89% 像素差 >32、无过曝），但**不是开关级迁移**——单独切会同时改写 `m_LightsUseLinearIntensity`（0→1）与 6 个材质颜色，并触发 4 红：ZRender 共享纹理 sRGB SRV 与原生 UNORM 不兼容（dxgi 91 vs 87）、加色特效变暗到门限以下、两档后处理差异被 Tonemapping 压缩。已回滚保住 1102/88 全绿。**P1 已解（2026-11-09）**：ZRender 桥改 `CreateExternalTexture(linear:true)`，Linear 下不再建 sRGB SRV，Linear 全量 EditMode **1102/1102**、Gamma 回归 1102+88；typeless 方案实测触发设备移除，留作 P1-b。剩余：P4 全场景灯光标定 → P2 特效强度 → P3 两档差异 → P5 门限复核。详见 `Docs/Logs/TASK-A-R9-19.md`；工具 `Assets/Game/Editor/ColorPipelineSetup.cs` 带 `ZF_COLOR_MIGRATION_OK=1` 闸门。
+| # | 缺陷 | 处置 | 证据 |
+|---|---|---|---|
+| 1 | Gamma 色彩空间 + URP（HDR/Bloom 在线性空间外混合） | 切 **Linear** | SCN_Game 均值 116.5→125.9（+8%）、pct>32=0.89%、无裁切；全量 1102+88 |
+| 2 | HDR 开但无 Tonemapping（高光直接裁剪） | Medium/High 补 **Tonemapping(Neutral)** | 同上 |
+| 3 | 三档后处理不连贯 | 重新分层：Low 无后处理 / Medium Tonemap+Bloom 0.6 / High +exposure 0.5+sat 14 | High/Medium on-off 差 **1.48x**（门限 1.35） |
 
-⚠ **踩坑记录**：切色彩空间后的**第一张截图不可信**（URP 变体未编译完，实测首拍全黑、复拍正常）。任何色彩空间/管线切换的像素对照都必须复拍一次再判定。
+代价与边界（如实）：
+- **P4 灯光未逐场景重标定**：`m_LightsUseLinearIntensity` 随迁移翻 1，画面整体略亮——这是"接受新基准"，不是"调完"。某场景偏亮/偏暗就单独调该场景 `Light.intensity`。
+- **ZRender 桥**在 Linear 下改用 UNORM 视图（`CreateExternalTexture(linear:true)`），dxgi 报错消失；代价是这条**非活跃**管线（活跃的是 URP）画面比原生窗口直出略暗。可消除该代价的 typeless 方案实测触发设备移除，留作 P1-b。
+- 迁移工具 `Assets/Game/Editor/ColorPipelineSetup.cs` 保留为幂等重放入口，带 `ZF_COLOR_MIGRATION_OK=1` 闸门。
+
+⚠ **踩坑记录（咬了两次）**：切色彩空间后的**第一次运行不可信**——首张截图全黑、首轮粒子像素用例假红（0.0003 vs 门限 0.0040），复跑即恢复。任何色彩空间/管线切换的证据都必须复跑一次再判定。
 
 ## 接管者动作序列
 
