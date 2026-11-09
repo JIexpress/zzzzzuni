@@ -6,12 +6,13 @@
 
 **快照时间**: 2026-11-09 凌晨（**WorkBuddy 主控接棒，全量盘点后校准**）｜**刷新者**: 主控（WorkBuddy，银橙AI 会话）｜**仓库**: `C:\Users\1\Desktop\zcode\GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni
 
-## ⚡ 最新（2026-11-09 19:45，A-AI-03 闭环——NPC 开始「看得见世界」）
+## ⚡ 最新（2026-11-09 20:50，A-AI-04 闭环——NPC 会自己走去找事做）
 
-- **看板真实口径**：**142 行全 done / 0 doing / 0 todo**（旧文档写 130 是 11-04 的快照；A-AI-01/A-AND-09/A-AI-02/A-AND-10 早已闭环，**不要再派**）。
-- **测试真家底（实测）**：原生 **349 用例 / 778,723 断言全绿**（`zrender_test.exe`）；EditMode **1140** + PlayMode **102**（Linear 下实跑）；合计 **1591 用例**。架构校验 **26 asmdef / 0 违规**。
+- **看板真实口径**：**143 行全 done / 0 doing / 0 todo**（旧文档写 130 是 11-04 的快照；A-AI-01/A-AND-09/A-AI-02/A-AND-10 早已闭环，**不要再派**）。
+- **测试真家底（实测）**：原生 **349 用例 / 778,723 断言全绿**（`zrender_test.exe`）；EditMode **1140** + PlayMode **110**（Linear 下实跑）；合计 **1599 用例**。架构校验 **26 asmdef / 0 违规**。
 - **A-ANIM-02 动画扩展第一刀（d938565）**：跳跃从「只触发动画」变成真垂直位移——纯函数弧线（v0=√2gh、T=2v0/g、峰值 0.7500m、落地差 0.0000）、`Grounded` 由真值驱动、控制器补 Idle→Jump 与 Jump→Run（6 过渡）、空中二次请求被拒。两处变异复红后 sha256 还原。
 - **A-ANIM-03 脚步 IK（0d65dd3）**：平地零干预（权重<0.05）、25° 斜板权重>0.3 且脚贴合地面法线；中性踝高在平地学习，避免「平地也拽脚」；变异关掉 IK → 用例必红后 sha256 还原。
+- **A-AI-04 可供性接场景（89f3497）**：`SceneAffordances` 按真实锚点（桶/树/NPC）注册 3 条可供性、**零可见物**；`AffordanceSeeker` 走过去并占用（默认不挂、10s 超时）。修掉「自占用导致目标抖动」的 bug。验收 PASS 7/7。**受限**：Claim 发生在选中时而非到达时。
 - **A-AI-03 可供性扫描（ccb5897）**：`Affordance`/`AffordanceRegistry`（容量/64 预算/最近可用）+ `AffordanceAction` 接入效用打分（`needWeight×clamp01(1-d/max)×available`）。既有 AI 四文件零改动。验收 PASS 7/7。
 - **已知偶发**：物理边界用例 `ConnectedChain_...` 曾出现 0.0500005335 vs 0.05 的边缘红，复跑即过（验收已记录，未修）。
 - **A-WORLD-01 双精度世界（fc08132）**：`WorldPosition`（double）+ `WorldOriginMath` 纯函数 + `WorldOrigin`（4000m 注册制重定位）。100km 处 float ULP **7.8mm** vs double 守恒 **4.4e-11m**；验收 PASS 7/7。**未挂载到任何场景**（零影响）。

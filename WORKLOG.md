@@ -4,6 +4,7 @@
 
 | 日期 | 任务 | 结果 | commit |
 |---|---|---|---|
+| 2026-11-09 | A-AI-04 可供性接场景 | done：SceneAffordances 真实锚点 + AffordanceSeeker 走过去占用；验收 PASS 7/7，1140+110 | 89f3497 |
 | 2026-11-09 | A-AI-03 可供性扫描 | done：Affordance/Registry(容量/预算/最近可用)+Action 接效用；验收 PASS 7/7，1140+102 | ccb5897 |
 | 2026-11-09 | A-WORLD-01 双精度世界 | done：WorldPosition/WorldOriginMath + WorldOrigin(4km 重定位)；100km float ULP 7.8mm vs double 4e-11m；验收 PASS 7/7，1127+101 | fc08132 |
 | 2026-11-09 | A-ASM-03 建造模式 | done：B 开关/QE 五件/吸附连接/右键删除/K-L 蓝图存档；验收 PASS 6/6，1113+98 | 2dba3c7 |
