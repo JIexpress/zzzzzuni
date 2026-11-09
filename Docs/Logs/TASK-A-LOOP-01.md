@@ -55,6 +55,39 @@
 - `UnityProject/Assets/Scenes/SCN_Game.unity`（火堆对象 + 组件挂载）
 - `Docs/Logs/TASK-A-LOOP-01.md`
 
-## 六、施工报告（待填）
+## 六、实施记录
+
+**新增**
+- `Game/Domain/Survival/SurvivalLoopState.cs`：纯逻辑状态机（Idle/Running/Won/Lost）、
+  90s 计时、耐久、波次消费、波次曲线纯函数（人数 1/1/1/2/2/2…，间隔 6s×0.85ⁿ，下限 3s）。
+- `Game/View/Survival/SurvivalLoop.cs`：表现层编排——SCN_Game 自动挂载但**默认待机**，
+  按 F 开始；建火堆（发光橙）、按波刷红方块敌人、敌人抵达 2.2m 内扣 8 点耐久并消失；
+  HUD 用 IMGUI（刻意不走 Canvas：不会被相机 RenderTexture 捕获，**不污染既有像素用例**）；
+  胜利/失败提示 + R 重开。
+- 测试：`SurvivalLoopStateTests`（5 例纯逻辑）、`SurvivalLoopPlayModeTests`（场景闭环 1 例）。
+
+**设计取舍**
+- 待机态不建任何可见物——这样后处理/开门火花/相机差分的像素用例在 SCN_Game 里跑时画面零影响。
+- 敌人不复用现有 Enemy FSM，先用最简"直线逼近 + 抵达扣血"，把闭环跑通；接 AI 是下一步。
+
+## 七、验收结论
+
+| # | 断言 | 结果 |
+|---|---|---|
+| V1 | 计时胜利（89s Running → 91s Won，时间夹在 90） | PASS |
+| V2 | 耐久归零判负；失败后伤害被拒 | PASS |
+| V3 | 结束后 Tick/伤害/刷波全部幂等；Reset 复位 | PASS |
+| V4 | 波次人数单调不减、间隔单调不增且 ≥3s | PASS |
+| V5 | PlayMode：待机无火堆无敌人 → StartLoop → 模拟 95s 判胜 → 重开满耐久 → 满额伤害判负 → 销毁解除静态引用 | PASS |
+| V6 | 变异复红（去掉 `ApplyFireDamage` 的 Phase 守卫 → 2 例红；按原样还原后 sha256 一致） | PASS |
+
+**全量**：EditMode **1111/1111**、PlayMode **91/91**。
+
+**受限**
+- 敌人是"直线逼近"的最简实现，没有寻路/攻击动作/受击反馈；玩家目前**不能击杀敌人**，
+  只能靠站位挡（这一版只验证"守"的闭环，战斗留给下一刀）。
+- HUD 是 IMGUI 占位；没有音效；没有难度档位；没有存档（重开即重置）。
+- 未在 Android 真机验证。
+
 
 ## 七、验收结论（待填）
