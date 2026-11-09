@@ -84,9 +84,10 @@
 | A-ANIM-03 | A/ANIM | 动画扩展二：脚步 IK（斜坡/台阶贴地，平地零干预） | done(主控实跑；1103+89 全绿；25° 斜板权重>0.3、平地<0.05；变异复红 sha256 还原) | Docs/Logs/TASK-A-ANIM-03.md | 待填 |
 | A-CUT-01 | A/CUT | L3 播片过场（固定机位 + VideoPlayer，人群切 L3） | done(主控实跑；1104+90 全绿；真解码帧号推进；变异复红 sha256 还原；L3 契约不变) | Docs/Logs/TASK-A-CUT-01.md | 待填 |
 | A-CONT-01 | A/CONT | 内容管线起步：程序化贴图套件 + 环境材质升级 + 内容守卫 | done(主控实跑；1106+90 全绿；细节量 +56%；地面/道具上贴图) | Docs/Logs/TASK-A-CONT-01.md | 42f5a26 |
+| A-LOOP-01 | A/LOOP | 最小可玩循环：守住火堆 90 秒（唯一动词=守） | done(主控实跑；1111+91 全绿；纯逻辑状态机+波次曲线+耐久+HUD/重开；变异复红 sha256 还原) | Docs/Logs/TASK-A-LOOP-01.md | ddfb03c |
 | A-R9-19 | A/URP | 色彩管线迁移（Gamma→Linear + HDR 两档 Tonemapping） | done(主控实跑验收；Linear 下 1102+88 全绿；ZRender 桥改 UNORM 视图；两档重新分层差1.48x；灯光接受新基准未重标定) | Docs/Logs/TASK-A-R9-19.md | 82daf86 |
 
-**统计**：done 137 ／ doing 0 ／ todo 1 ／ blocked 0 ／ held 0（2026-11-09 G-149 校准；todo=A-LOOP-01）
+**统计**：done 138 ／ doing 0 ／ todo 0 ／ blocked 0 ／ held 0（2026-11-09 G-150 校准）
 
 > **2026-10-28 G-64 文档对齐（接管）**：修三处失真 ①R8 六行原被追加在「里程碑对照」标题**下方**导致表格断裂、`B-R8-03` 仍挂 `doing`（实际已 PASS，commit `be2adcf`）——已并入主表并改正状态
 > ②`HANDOFF.md` 表头仍写「R8 推进 3/4、B-R8-02 待派」（实际 47 任务全闭环）③`README.md` 与 HANDOFF 注意事项里的任务数/用例数/`TestReport.txt` 是否入库均过期。
