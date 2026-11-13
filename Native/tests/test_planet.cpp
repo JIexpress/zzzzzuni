@@ -14,7 +14,8 @@
 
 #include "doctest/doctest.h"
 
-#include "planet_math.h"
+#include "zplanet/planet_math.h" // TASK-B-PLANET-03：生产头（§①③④；include 根 = Native/）
+#include "planet_math.h"         // tests shim：§② 重力/kGravityMu 留 tests（原生通道不含物理）
 
 #include <cmath>
 #include <cstring>

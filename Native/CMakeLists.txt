@@ -278,6 +278,16 @@ target_link_libraries(zplugin
         zupscaler
 )
 
+# ---- TASK-B-PLANET-03：zplanet 行星数学（header-only，纯标准库）----------------
+# 生产头 zplanet/planet_math.h（§① 浮点原点 §③ 球面几何 §④ cube-sphere/chunk/
+# LOD/地平线；语义零改动自 tests/planet_math.h 提升；§② 重力留 tests 不提升——
+# 原生通道不含物理）。INTERFACE 目标只承载 include 根（Native/），不编译任何
+# 翻译单元；zrender/zplugin 对其零依赖（不链接、不 include），消费按需
+# target_link_libraries(... zplanet) 后 #include "zplanet/planet_math.h"。
+add_library(zplanet INTERFACE)
+target_include_directories(zplanet INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+set_target_properties(zplanet PROPERTIES FOLDER "ZRender/Modules")
+
 # ---- SHARED zrender.dll ------------------------------------------------------
 # 导出符号由 zrender.def 声明，链接器据此从五模块静态库抽取 ZR_* 实现。
 add_library(zrender SHARED
@@ -344,7 +354,7 @@ add_executable(zrender_test
     tests/test_devconsole_proto.cpp # TASK-B-R9-16（DevConsole 白名单解析/参数/信封转义）
     tests/test_devconsole_auth.cpp # TASK-X-SEC-01（token 常量时间比较/限流窗口/形态校验）
     tests/test_rg_export_path.cpp # TASK-X-SEC-01（rg.export 根白名单/`..`/绝对路径/junction 逃逸）
-    tests/test_planet.cpp # TASK-B-TECH-03（浮点原点重定位/球面重力积分/重定位阈值；共享 tests/planet_math.h）
+    tests/test_planet.cpp # TASK-B-TECH-03（浮点原点重定位/球面重力积分/重定位阈值；TASK-B-PLANET-03 起 §①③④ 指生产头 zplanet/planet_math.h，§② 重力经 tests shim）
     # zfgprobe 的 hook/wrap/dll 三个编译单元并入测试目标（TASK-R10-05 B-3/B-7 需要
     # 直接驱动 HookCreateSwapChainForHwnd / WrapShutdown / ZFG_FgShutdown）。
     # 注意：zfg_dxgi_proxy.cpp **有意不并入**——其 ForwardArgs 会把测试进程内的
@@ -399,6 +409,7 @@ target_link_libraries(zrender_test
         zrender_core
         zupscaler
         zplugin
+        zplanet # TASK-B-PLANET-03：行星数学生产头 include 根（仅测试 exe 消费；zrender/zplugin 零依赖不变）
 )
 set_target_properties(zrender_test PROPERTIES FOLDER "ZRender/Tests")
 
