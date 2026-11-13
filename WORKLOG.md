@@ -4,6 +4,7 @@
 
 | 日期 | 任务 | 结果 | commit |
 |---|---|---|---|
+| 2026-11-14 | B-PLANET-07 Unity 托管桥 | done：验收PASS(J1-J8)；chunk 流式管理器(成本加权分帧预算+近档硬帽)+WorldOrigin 首次真接线(ToCameraRelativeView 唯一边界)；SetLod C# 逐式镜像；账目 A1-A12；门控整体关闭；G4-R1 原生门委托 08、G-07-1/路径偏差主控追认；EditMode 1211/1211(+29) | b73c0c5 |
 | 2026-11-14 | B-PROBE-01 fsr4-probe 探针 | done：验收PASS(F1-F7)；QueryCaps+null/真设备枚举+FG 族双设备对照(首次有数)；两机可跑(便携亲测)；本机负对照三方逐位互证；阳性 MISSING=对端 RX 9060 XT 补验(步骤在 README)；def 56 零改动 | 74ec9bd |
 | 2026-11-14 | B-PLANET-04 chunk通道生产实现(P2最大件) | done：验收PASS(E1-E10,变异亲做)；六导出 50→56；RenderFrame 集成+--planet3 真渲染(30chunk/306K像素/截图)；相机原点迁移零破坏；账目恒等式；单 chunk 近档 7.4ms 实测补 MISSING；G1-G6 处置裁决+G4 改判全档(开销转 07)；G1 设计稿 uv 勘误；375 用例全绿 | 8b03db6 |
 | 2026-11-14 | B-PLANET-06 SetWorld+SampleHeight | done：验收PASS(D1-D10)；快照 SRWLOCK+纯函数无锁采样；def 48→50；**12864 个 chunk 顶点采样 0 失配**(float 位形 memcmp,验收修正口径)；并发 38400 次零撕裂；367 用例/821,749 全绿；溢出封口延后(B-PLANET-09+) | 63fa2f4 |

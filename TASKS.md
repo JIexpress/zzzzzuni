@@ -203,9 +203,9 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | B-PLANET-04 | B/PLANET | chunk通道生产实现(句柄表/生成/上传/RenderFrame集成/剔除移植/着色器) | done(验收PASS E1-E10变异亲做;56导出;--planet3真渲染306K像素;12864顶点账目恒等式;单chunk近档7.4ms实测) | Docs/Logs/TASK-B-PLANET-04.md | 8b03db6 |
 | B-PLANET-05 | B/PLANET | SetCameraOrigin+round-trip doctest | done(验收PASS C1-C7;def 46→48 dumpbin实证;五组doctest全绿) | Docs/Logs/TASK-B-PLANET-05.md | 3d3ac1c |
 | B-PLANET-06 | B/PLANET | SetWorld+SampleHeight(含与chunk顶点逐位一致断言) | done(验收PASS D1-D10;12864顶点0失配;并发38400次零撕裂;def 48→50) | Docs/Logs/TASK-B-PLANET-06.md | 63fa2f4 |
-| B-PLANET-07 | B/PLANET | Unity托管桥(流式管理器+WorldOrigin接线;首个生产消费者) | doing(简报已写,含G4-R1开销处理责任) | Docs/Logs/TASK-B-PLANET-07.md | |
+| B-PLANET-07 | B/PLANET | Unity托管桥(流式管理器+WorldOrigin接线;首个生产消费者) | done(验收PASS J1-J8;EditMode 1211/1211(+29);账目A1-A12;唯一边界铁律保持) | Docs/Logs/TASK-B-PLANET-07.md | b73c0c5 |
 | B-PROBE-01 | B/PROBE | fsr4-probe探针:真设备/null对照可复核工具+本机存档(改进计划§5) | done(验收PASS F1-F7;三方逐位互证;便携模式亲测;FG族首次有数;阳性MISSING=对端补验) | Docs/Logs/TASK-B-PROBE-01.md | 74ec9bd |
-| B-PLANET-08 | B/PLANET | 接缝专项(float缝宽实测+neighborMask行为定版) | todo | (简报待写) | |
+| B-PLANET-08 | B/PLANET | 接缝专项(float缝宽实测+neighborMask行为定版) | doing(先测量后裁决) | Docs/Logs/TASK-B-PLANET-08.md | |
 | B-PLANET-09 | B/PLANET | planet-budget探针(1080p/接缝/贴地扫描/双机) | todo | (简报待写) | |
 | B-PLANET-10 | B/PLANET | abi-precision探针(四点ULP双口径) | todo | (简报待写) | |
 | B-PLANET-11 | B/PLANET | 编辑器内验收集成(三档截图/1km行走/账目断言) | todo | (简报待写) | |
