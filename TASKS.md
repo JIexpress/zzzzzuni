@@ -192,7 +192,18 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | A-CONF-01 | A/CONF | Config CSV→C#行类型代码生成器(08对照#11半项补全) | done(验收PASS V1-V10;四通道;EditMode 1167全绿;架构26/0;08对照#11改判已实现) | Docs/Logs/TASK-A-CONF-01.md | d15faad |
 | A-CONF-02 | A/CONF | 表类薄壳+注册行自动化(连表类也零手写;A-CONF-01遗留§6.1) | todo | (简报待写) | |
 | X-NAMES-01 | X/HYG | 资产命名规则扩容(T_/ENV_ 前缀)或 T_ENV_*.png 改名——清 6 处存量红灯(A-CONT-01 42f5a26 引入) | todo | (简报待写) | |
-| B-KERNEL-01 | B/KERNEL | 组件定位周期实测断言+文档BMI2/POPCNT表述纠正(08对照#7) | todo | Docs/Logs/TASK-B-KERNEL-01.md | |
+| B-KERNEL-01 | B/KERNEL | 组件定位周期实测断言+文档BMI2/POPCNT表述纠正(08对照#7) | doing(施工完成:实测4~5/5周期,变异80~90有牙,目标3未达如实记;验收中) | Docs/Logs/TASK-B-KERNEL-01.md | |
 | B-VIS-01 | B/VIS | 多视图共享可见性核实:B-R4-02交付范围审计,裁决是否需补实现(08对照#4) | done(裁决A:需求已满足,VisibilitySet一次录入六视图消费;注记:真frustum剔除缺→B-VIS-02) | Docs/Logs/TASK-B-VIS-01.md | (本提交) |
 | B-VIS-02 | B/VIS | 真视锥剔除纯函数CullToViewMask+帧内录入/消费计数断言(不挡路,核实任务衍生加固) | todo | Docs/Logs/TASK-B-VIS-02.md | |
-| B-PLANET-01 | B/PLANET | P2拆解+行星ABI设计稿(double原点/chunk句柄/LOD邻居/高度采样)(改进计划P2) | todo | Docs/Logs/TASK-B-PLANET-01.md | |
+| B-PLANET-01 | B/PLANET | P2拆解+行星ABI设计稿(double原点/chunk句柄/LOD邻居/高度采样)(改进计划P2) | done(验收FAIL一轮→修订R1→复验PASS;F1-F7全落地;46导出裁决正确;D8接受) | Docs/Logs/TASK-B-PLANET-01.md | 80d82bc |
+| B-PLANET-02 | B/PLANET | 行星ABI头落地(zplugin.h+def+ApiVersion 2→3+Bindings声明+ERR_ARGS注释同步) | todo | (简报待写) | |
+| B-PLANET-03 | B/PLANET | 行星数学生产化(planet_math §①③④提升,语义零改动) | todo | (简报待写) | |
+| B-PLANET-04 | B/PLANET | chunk通道生产实现(句柄表/生成/上传/RenderFrame集成/剔除移植/着色器) | todo | (简报待写) | |
+| B-PLANET-05 | B/PLANET | SetCameraOrigin+round-trip doctest | todo | (简报待写) | |
+| B-PLANET-06 | B/PLANET | SetWorld+SampleHeight(含与chunk顶点逐位一致断言) | todo | (简报待写) | |
+| B-PLANET-07 | B/PLANET | Unity托管桥(流式管理器+WorldOrigin接线;首个生产消费者) | todo | (简报待写) | |
+| B-PLANET-08 | B/PLANET | 接缝专项(float缝宽实测+neighborMask行为定版) | todo | (简报待写) | |
+| B-PLANET-09 | B/PLANET | planet-budget探针(1080p/接缝/贴地扫描/双机) | todo | (简报待写) | |
+| B-PLANET-10 | B/PLANET | abi-precision探针(四点ULP双口径) | todo | (简报待写) | |
+| B-PLANET-11 | B/PLANET | 编辑器内验收集成(三档截图/1km行走/账目断言) | todo | (简报待写) | |
+| B-PLANET-12 | B/PLANET | IL2CPP+Android各一次(Android按D8裁决=托管等效实现) | todo | (简报待写) | |

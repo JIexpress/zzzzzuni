@@ -4,6 +4,7 @@
 
 | 日期 | 任务 | 结果 | commit |
 |---|---|---|---|
+| 2026-11-14 | B-PLANET-01 P2 行星 ABI 设计稿 | done：验收FAIL一轮(F1 ApiVersion链时序撞车等7项)→修订R1→复验PASS；四项ABI签名可抄 zplugin.h(链2→3)+D1-D10 决策+精度预算 10 环节+B-PLANET-02..12 拆解(46 导出裁决正确)；D8 裁决接受(Android=托管等效实现) | 80d82bc |
 | 2026-11-14 | A-CONF-01 Config 行类型代码生成 | done：验收PASS(V1-V10,独立复跑)；四通道生成器(schema解析/发射/菜单·右键·导入钩子·批处理)；EnemyConfigRow 迁 Generated(GUID 不变)；+26 用例；EditMode 1167全绿；架构26/0；08对照#11 半→已实现；遗留：表类薄壳(A-CONF-02)/naming 6存量(X-NAMES-01) | d15faad |
 | 2026-11-14 | B-FSR-02 P1 能力三态诚实化 | done：验收PASS(V1-V10全过)；ZrUpscalerCaps+fsr4ProbeMode(0真设备/1回退/2未探测)+ApiVersion2；C#三态文案+未知兜底；全仓写死能力审计15项(8改7核,含fg_ffx移交)；原生351/778,743+EditMode1167全绿；真机fsr4ProbeMode=0实证；移交：FG双设备对照/provider版本串读口→B-PROBE-01 | ce4bdf4 |
 | 2026-11-14 | B-FSR-01 P0 FSR4真设备探测修复 | done：验收PASS(11P+1MISSING裁决,0FAIL)；350用例/778,737断言(+1/+14)全绿；负对照成立(780M null=真=2条/fsr4=0=硬件真相)；失实注释4文件改事实陈述；fg_ffx同型遗留移交B-FSR-02；阳性对照移交B-PROBE-01对端补验 | ae03f62 |
@@ -147,7 +148,7 @@
 | 2026-10-23 | B-R2-02 D3D12 后端基座 | done：施工→验收 PASS 7/7（34用例6651断言、窗口模式60帧颜色readback校验OK、零隐式转换审查、dll已部署UnityProject） | f7daeac |
 | 2026-10-23 | A-M0-01 Unity 工程(重派) | done：许可证激活后施工→验收 PASS 7/7（编译零错误、8 asmdef矩阵一致、SCN_Boot首位、dll+meta入库） | 0af8ab8 |
 | 2026-10-23 | B-R2-01 RHI 核心语义层 | done：施工→验收 PASS 7/7（15新用例、全库31用例6473断言、零Vulkan头、Vk位值static_assert对齐） | 876d5d5 |
-| 2026-10-23 | B-R1-01 DataKernel 数据内核 | done：施工→验收 PASS 7/7（16用例431断言、BMI2 实证、基准 406M行/s、零分配审查通过） | 17177c6 |
+| 2026-10-23 | B-R1-01 DataKernel 数据内核 | done：施工→验收 PASS 7/7（16用例431断言、定位指令 POPCNT/TZCNT 实证〔原记"BMI2 实证"系误述，勘误 2026-11-14 见 TASK-B-KERNEL-01：PEXT 存在未实装〕、基准 406M行/s、零分配审查通过） | 17177c6 |
 | 2026-10-23 | B-R0-01 CMake 原生构建基座 | done：施工全绿→验收 PASS 7/7（5 用例 16 断言、/WX 零警告、3 符号导出实证） | 3c63b41 |
 | 2026-10-23 | G-01 治理基座 | done: 治理文档全套+git init+首提交 | f781cfb |
 | 2026-10-30 | R10-05 审计P2原生批(8条) | 施工完成全绿(251用例,变异3条)——**验收待跑**(用户外出前落盘) | (WIP 38759ce) |
