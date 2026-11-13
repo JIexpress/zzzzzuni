@@ -27,7 +27,7 @@ GameFramework/
 │       ├─ Game/                    # 垂直切片（Bootstrap / Domain / View，SCN_Boot→SCN_Game）
 │       └─ Plugins/ZRender/         # zrender.dll（构建产物部署位，ADR-004）
 ├─ Native/                          # Track B：C++ 渲染内核（CMake，/W4 /WX 零警告）
-│   ├─ zkernel                      #   数据内核：SoA + 128 位组件掩码 + BMI2（基准 406M 行/s）
+│   ├─ zkernel                      #   数据内核：SoA + 128 位组件掩码 + POPCNT/TZCNT 定位（实测 5 cycles/op，基准 406M 行/s）
 │   ├─ zrhi                         #   RHI：Vulkan 语义抽象 + D3D12/Vulkan 双后端 + bindless + 时间戳
 │   ├─ zrender                      #   RenderGraph（生命周期/别名复用/屏障合并/split barrier）+ 特性
 │   ├─ zupscaler                    #   FSR 3.1（真机验证）/ FSR 4.1 路径 / DLSS5 骨架（能力门控）
@@ -97,7 +97,7 @@ W=Native/build/bin/Release/zrhi_d3d12_window.exe
 | Unity EditMode | **1099 用例，全绿** | NUnit（2026-11-09 01:53 五段报告） |
 | Unity PlayMode | **85 用例，全绿** | 垂直切片冒烟 + 音频真放 + 千人演练场默认可见与像素证据（2026-11-04 A-R9-15 验收实跑） |
 | 架构校验 | 26 asmdef 扫描 / 0 违规（含 Game/Domain 纯度扫描） | ArchitectureValidator（八段 exit 0） |
-| DataKernel 基准 | 406M 行/s（BMI2 实证，零分配） | B-R1-01 |
+| DataKernel 基准 | 406M 行/s（零分配）；组件定位实测 5 cycles/op（POPCNT/TZCNT 硬件直查，<40 断言防退化；2026-11-14 @Zen4 7840HS） | B-R1-01 + B-KERNEL-01 |
 | GPU 时间戳 | 实测 11.3ms（窗口场景） | B-R2-03 |
 | 合批收益 | 绘制调用省 94.9%（对拍一致） | B-R4-02 |
 | FSR 3.1 真机 | ratio=1.346（edge 0.159 vs 0.118），780M/provider 3.1.5 | B-R6-01 |

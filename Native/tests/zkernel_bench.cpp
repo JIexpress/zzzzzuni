@@ -1,8 +1,17 @@
 // =============================================================================
 // zkernel_bench.cpp —— 数据内核基准程序（TASK-B-R1-01 / TASK-B-R8-03 / B-R9-12）
 //
-// a) 组件列定位：ZkBitsBelow（硬件 POPCNT 低位置位计数）+ 偏移表取数，
-//    RDTSC 采样取中位周期数（amortize RDTSC 对开销）
+// a) 组件列定位（TASK-B-KERNEL-01 扩为三口径，RDTSC 成对采样取中位周期数，
+//    摊还 RDTSC 对开销；位索引取 k&127 随迭代在寄存器内变化防外提）：
+//    a1 纯位定位   = ZkBitsBelow(POPCNT 低位置位计数) 本体；
+//    a2 端到端查询 = a1 + chunk 列偏移表取数（真实批量查询 EachBatches 的
+//       "mask 定位 + chunk 偏移换算"一条龙，含 L1 载入延迟链）——
+//       即需求"约 3 周期定位组件偏移"的实测口径；
+//    a3 随机取址   = GetComponent 式单实体取列地址（额外含 ChunkIndexOf/
+//       RowInChunk 的运行时 % / 除法）——如实呈现随机访问路径的额外成本，
+//       与 a2 口径分开报告、不混用。
+//    另打印 cpuid 指令集能力（POPCNT/BMI1/BMI2）：BMI2=PEXT 在 CPU 上存在
+//    但内核未使用（内核为 POPCNT/TZCNT 直查），防文档表述漂移。
 // b) 100 万实体 Spawn(3 组件, 28B/行) + 全量 Each 遍历 3 列求和，
 //    报毫秒与 M 行/秒（3 次取中位）
 // c) TASK-B-R8-03 架型迁移吞吐：1 万实体各 Add/Remove 3 次（预热 1 轮不计入——
@@ -41,6 +50,40 @@ struct Weight { float w; };            // 组件 3：4B（迁移用第 4 组件�
 
 uint64_t g_sink = 0; // 防优化下沉，末尾打印
 
+/// 非 const 运行时容量：阻止编译器把 row % capacity 折叠成乘法
+/// （真实 Archetype::capacity 为运行期成员值，除法如实计入 a3 口径）
+uint32_t g_fakeCapacity = 585;
+
+/// cpuid 指令集能力检测（TASK-B-KERNEL-01）：
+///   POPCNT = CPUID leaf1 ECX bit23（SSE4.2/ABM 家族，ZkBitsBelow 实际使用）
+///   BMI1   = CPUID leaf7 EBX bit3（TZCNT，ZkListBits 实际使用）
+///   BMI2   = CPUID leaf7 EBX bit8（PEXT——多数 CPU 存在但本内核未使用，
+///            打印仅为澄清文档「BMI2 实装」表述）
+struct CpuCaps
+{
+    bool popcnt;
+    bool bmi1;
+    bool bmi2;
+};
+
+CpuCaps DetectCpuCaps()
+{
+    CpuCaps caps = {false, false, false};
+    std::int32_t regs[4] = {};
+    __cpuid(regs, 0);
+    const std::int32_t maxLeaf = regs[0];
+    if (maxLeaf >= 1) {
+        __cpuid(regs, 1);
+        caps.popcnt = (regs[2] & (1 << 23)) != 0; // ECX bit 23 = POPCNT
+    }
+    if (maxLeaf >= 7) {
+        __cpuidex(regs, 7, 0);
+        caps.bmi1 = (regs[1] & (1 << 3)) != 0; // EBX bit 3 = BMI1 (TZCNT)
+        caps.bmi2 = (regs[1] & (1 << 8)) != 0; // EBX bit 8 = BMI2 (PEXT)
+    }
+    return caps;
+}
+
 const char* CpuBrand()
 {
     static char brand[49] = {};
@@ -67,10 +110,12 @@ double MedianOf3(double a, double b, double c)
     return std::max(std::min(a, b), std::min(std::max(a, b), c));
 }
 
-/// a) 列定位基准（两项；位索引取 k&127 随迭代在寄存器内变化，防循环不变量外提）：
-///    pure = ZkBitsBelow(POPCNT) 纯位定位（位索引在寄存器，无访存链）
-///    full = ZkBitsBelow + 列偏移表取数（真实定位路径，含 L1 载入延迟链）
-void BenchColumnLocate(double& pure, double& full)
+/// a) 列定位基准（三口径；位索引取 k&127 随迭代在寄存器内变化，防循环不变量外提）：
+///    pure   = ZkBitsBelow(POPCNT) 纯位定位（位索引在寄存器，无访存链）
+///    full   = ZkBitsBelow + 列偏移表取数（批量查询端到端，含 L1 载入延迟链）
+///    random = GetComponent 式随机取址：定位 + 列偏移 + 行内偏移换算
+///             （row % capacity / row / capacity 运行时除法如实计入）
+void BenchColumnLocate(double& pure, double& full, double& random)
 {
     // 模拟典型 archetype 掩码：26 个组件位散布在 w0/w1
     Mask128 mask{};
@@ -78,14 +123,18 @@ void BenchColumnLocate(double& pure, double& full)
         mask.Set(b);
     }
     uint64_t colOffset[128]; // 伪列偏移表（模拟 Archetype::columnOffset）
+    uint32_t colSize[128];   // 伪列宽表（模拟 Archetype::columnSize，组件字节数混合）
     for (uint32_t k = 0; k < 128; ++k) {
         colOffset[k] = 0x40ull * k;
+        colSize[k] = 4u + 4u * (k % 3u); // 4/8/12B 混合，模拟 Position/Velocity/Tag
     }
+    char* fakeBase = reinterpret_cast<char*>(colOffset); // 伪 chunk 基址（只算地址不访存）
 
     constexpr uint32_t kInner = 96;    // 每 RDTSC 区间重复定位次数（摊还读对开销）
     constexpr uint32_t kSamples = 8192;
     std::vector<uint32_t> cyclesPure(kSamples);
     std::vector<uint32_t> cyclesFull(kSamples);
+    std::vector<uint32_t> cyclesRandom(kSamples);
     uint32_t slotAcc = 0;
     uint64_t acc = 0;
 
@@ -98,17 +147,31 @@ void BenchColumnLocate(double& pure, double& full)
         uint64_t t1 = __rdtsc();
         cyclesPure[s] = static_cast<uint32_t>((t1 - t0) / kInner);
 
-        // ---- 完整定位路径：POPCNT + 偏移表取数（含 L1 载入延迟链）----
+        // ---- 端到端查询路径：POPCNT + 偏移表取数（含 L1 载入延迟链）----
         t0 = __rdtsc();
         for (uint32_t k = 0; k < kInner; ++k) {
             acc += colOffset[ZkBitsBelow(mask, k & 127u)];
         }
         t1 = __rdtsc();
         cyclesFull[s] = static_cast<uint32_t>((t1 - t0) / kInner);
+
+        // ---- 随机取址（GetComponent 式单实体）：定位 + 列偏移 + 行内偏移换算 ----
+        t0 = __rdtsc();
+        for (uint32_t k = 0; k < kInner; ++k) {
+            const uint32_t row = (k * 2654435761u) & 0x3FFFFFu; // 伪全局行号
+            const uint32_t slot = ZkBitsBelow(mask, k & 127u);
+            const uint64_t off = colOffset[slot]
+                + static_cast<uint64_t>(row % g_fakeCapacity)
+                    * static_cast<uint64_t>(colSize[slot]);
+            acc += reinterpret_cast<uintptr_t>(fakeBase + off) + (row / g_fakeCapacity);
+        }
+        t1 = __rdtsc();
+        cyclesRandom[s] = static_cast<uint32_t>((t1 - t0) / kInner);
     }
     g_sink += acc + slotAcc;
     pure = static_cast<double>(MedianOf(cyclesPure));
     full = static_cast<double>(MedianOf(cyclesFull));
+    random = static_cast<double>(MedianOf(cyclesRandom));
 }
 
 /// b) 百万实体 Spawn + 全量 Each
@@ -355,10 +418,18 @@ void BenchEachParallel(double ms[5], double mrows[5], double speedup[5], double&
 int main(int argc, char** argv)
 {
     std::printf("==== zkernel_bench (zkernel %s) ====\n", ZK_GetVersion());
-    std::printf("CPU: %s\n\n", CpuBrand());
+    std::printf("CPU: %s\n", CpuBrand());
+    const CpuCaps caps = DetectCpuCaps();
+    std::printf(
+        "CPU ISA: POPCNT=%d BMI1(TZCNT)=%d BMI2(PEXT)=%d  (内核实际使用 POPCNT/TZCNT；PEXT 未使用)\n",
+        caps.popcnt ? 1 : 0, caps.bmi1 ? 1 : 0, caps.bmi2 ? 1 : 0);
+    if (!caps.popcnt || !caps.bmi1) {
+        std::printf("MISSING: 本机 CPU 无 POPCNT/TZCNT 支持——定位周期口径不可作硬件直查证据\n");
+    }
+    std::printf("\n");
 
-    double locatePure = 0.0, locateFull = 0.0;
-    BenchColumnLocate(locatePure, locateFull);
+    double locatePure = 0.0, locateFull = 0.0, locateRandom = 0.0;
+    BenchColumnLocate(locatePure, locateFull, locateRandom);
     double spawnMs = 0.0, eachMs = 0.0, checksum = 0.0, expected = 0.0;
     BenchWorld(spawnMs, eachMs, checksum, expected);
     double addMs = 0.0, removeMs = 0.0, rowsPerSec = 0.0;
@@ -374,8 +445,12 @@ int main(int argc, char** argv)
     std::printf("%-46s%s\n", "基准项", "结果");
     std::printf("%-46s%s\n", "----------------------------------------------",
         "------------------------");
-    std::printf("[组件列定位] ZkBitsBelow(POPCNT) 纯位定位 中位 : %.2f cycles/op\n", locatePure);
-    std::printf("[组件列定位] +偏移表取数(完整路径,L1链) 中位  : %.2f cycles/op\n", locateFull);
+    std::printf("[组件列定位] a1 ZkBitsBelow(POPCNT) 纯位定位 中位     : %.2f cycles/op\n",
+        locatePure);
+    std::printf("[组件列定位] a2 端到端:定位+chunk列偏移表取数(查询路径) : %.2f cycles/op\n",
+        locateFull);
+    std::printf("[组件列定位] a3 随机取址(GetComponent式,含行内除法)中位 : %.2f cycles/op\n",
+        locateRandom);
     std::printf("[Spawn      ] 1,000,000 实体 x 3 组件(28B/行) : %.1f ms (%.2f M 实体/s)\n",
         spawnMs, 1000.0 / spawnMs);
     std::printf("[Each       ] 全量遍历 3 列读求和(中位)      : %.1f ms (%.0f M 行/s)\n", eachMs,

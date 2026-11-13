@@ -7,6 +7,8 @@
 //   3. 跨 chunk 边界（实体数超过单 chunk 容量×2）
 //   4. 多组件列读写回正确性
 //   5. 组件列槽位序 = 掩码低位计数（直接构造已知掩码断言）
+//   6. ZkBitsBelow 热路径周期实测断言（TASK-B-KERNEL-01：cycles/op < 40，
+//      无 POPCNT/TZCNT 机器 SKIP + MISSING 说明，不许静默通过）
 //
 // doctest main 由 test_smoke.cpp 提供（多编译单元共享）。
 // =============================================================================
@@ -15,6 +17,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <intrin.h> // __cpuid / __cpuidex（TASK-B-KERNEL-01 指令集能力检测）
 #include <vector>
 
 #include "zkernel/zkernel.h"
@@ -438,4 +441,122 @@ TEST_CASE("多组件跨 chunk（容量 455 × 2 以上）读写回")
     CHECK(sumPos == expected);
     CHECK(sumVel == expected);
     CHECK(sumTag == static_cast<uint64_t>(kCount) * (kCount - 1) / 2);
+}
+
+// =============================================================================
+// TASK-B-KERNEL-01 —— 组件定位周期实测断言
+//
+// 需求「约 3 个 CPU 周期定位组件偏移」的实测闭环：
+//   1. cpuid 检测 POPCNT（leaf1 ECX bit23）+ TZCNT（leaf7 EBX bit3 = BMI1）：
+//      缺失时周期断言用例经 doctest::skip 装饰器整用例 SKIP，并在
+//      「CPU 指令集能力自报」用例输出 MISSING 说明（WARN 级默认输出可见、
+//      不致失败）——不许静默通过。
+//   2. 有硬件支持时断言热路径 cycles/op < 40（宽松硬件上限：硬件指令直查
+//      实测 ~1-6 cycles，逐位循环/软件查表实现实测远超 40——变异验证见
+//      Docs/Logs/TASK-B-KERNEL-01.md 施工报告）。
+// 口径与 zkernel_bench.cpp BenchColumnLocate 一致（kInner/kSamples/掩码分布
+// 相同）：断言覆盖 a1 纯位定位与 a2 端到端（定位+chunk 列偏移表取数）；
+// a3 随机取址含运行时除法，只测不断言（见 bench 人类可读表）。
+// =============================================================================
+namespace {
+
+/// 本机是否具备 ZkBitsBelow 硬件直查前提（POPCNT + TZCNT/BMI1）。
+bool CpuHasPopcntTzcnt()
+{
+    std::int32_t regs[4] = {};
+    __cpuid(regs, 0);
+    if (regs[0] < 1) {
+        return false;
+    }
+    __cpuid(regs, 1);
+    if ((regs[2] & (1 << 23)) == 0) { // ECX bit 23 = POPCNT
+        return false;
+    }
+    __cpuidex(regs, 7, 0);
+    return (regs[1] & (1 << 3)) != 0; // EBX bit 3 = TZCNT（BMI1）
+}
+
+/// 中位样本（与 zkernel_bench.cpp MedianOf 同法）
+uint32_t MedianOf(std::vector<uint32_t>& v)
+{
+    std::nth_element(v.begin(), v.begin() + static_cast<std::ptrdiff_t>(v.size() / 2), v.end());
+    return v[v.size() / 2];
+}
+
+uint64_t g_cyclesSink = 0; // 防优化下沉（与 bench g_sink 同策）
+
+} // namespace
+
+TEST_CASE("CPU 指令集能力自报（cpuid）——无 POPCNT/TZCNT 时周期实测断言用例 SKIP")
+{
+    const bool has = CpuHasPopcntTzcnt();
+    if (has) {
+        MESSAGE("CPU 支持 POPCNT/TZCNT（BMI1）：ZkBitsBelow 周期实测断言用例启用");
+        CHECK(has);
+    } else {
+        // WARN 级：默认输出可见（MISSING 说明），不致用例失败
+        WARN_MESSAGE(false,
+            "MISSING: 本机 CPU 无 POPCNT/TZCNT（BMI1）支持——"
+            "「ZkBitsBelow 周期实测断言」用例已 SKIP；本机不构成『硬件指令直查』证据"
+            "（zkernel 功能不受影响，周期口径在本机未验证）");
+        CHECK(!has); // 缺支持路径也留显式断言记录
+    }
+}
+
+TEST_CASE(
+    "ZkBitsBelow 周期实测断言（热路径 <40 cycles/op）——无 POPCNT/TZCNT 时本用例 SKIP，MISSING 见『CPU 指令集能力自报』"
+    * doctest::skip(!CpuHasPopcntTzcnt()))
+{
+    // —— 与 zkernel_bench.cpp BenchColumnLocate 同口径 ——
+    // 模拟典型 archetype 掩码：26 个组件位散布在 w0/w1（稠疏混合）
+    Mask128 mask{};
+    for (uint32_t b = 5; b < 128; b += 5) {
+        mask.Set(b);
+    }
+    uint64_t colOffset[128]; // 伪列偏移表（模拟 Archetype::columnOffset）
+    for (uint32_t k = 0; k < 128; ++k) {
+        colOffset[k] = 0x40ull * k;
+    }
+
+    constexpr uint32_t kInner = 96;    // 每 RDTSC 区间重复定位次数（摊还读对开销）
+    constexpr uint32_t kSamples = 8192;
+    std::vector<uint32_t> cyclesPure(kSamples);
+    std::vector<uint32_t> cyclesFull(kSamples);
+    uint32_t slotAcc = 0;
+    uint64_t acc = 0;
+
+    for (uint32_t s = 0; s < kSamples; ++s) {
+        // a1 纯位定位：POPCNT 计数（位索引在寄存器，模拟 compId 已在寄存器）
+        uint64_t t0 = __rdtsc();
+        for (uint32_t k = 0; k < kInner; ++k) {
+            slotAcc += ZkBitsBelow(mask, k & 127u);
+        }
+        uint64_t t1 = __rdtsc();
+        cyclesPure[s] = static_cast<uint32_t>((t1 - t0) / kInner);
+
+        // a2 端到端查询定位：POPCNT + chunk 列偏移表取数（含 L1 载入延迟链）
+        t0 = __rdtsc();
+        for (uint32_t k = 0; k < kInner; ++k) {
+            acc += colOffset[ZkBitsBelow(mask, k & 127u)];
+        }
+        t1 = __rdtsc();
+        cyclesFull[s] = static_cast<uint32_t>((t1 - t0) / kInner);
+    }
+    g_cyclesSink += acc + slotAcc;
+
+    const double pure = static_cast<double>(MedianOf(cyclesPure));
+    const double full = static_cast<double>(MedianOf(cyclesFull));
+    MESSAGE("实测（中位, kInner=" << kInner << ", kSamples=" << kSamples
+                                 << "）: a1 纯位定位 = " << pure << " cycles/op, "
+                                 << "a2 定位+chunk列偏移表取数 = " << full << " cycles/op");
+
+    // 宽松硬件上限 40 cycles/op：证明"硬件指令直查"而非"逐位循环"。
+    // 变异验证（TASK-B-KERNEL-01 施工报告）：ZkBitsBelow 改逐位循环实现后
+    // 本断言实测 >> 40 必红，还原后绿。
+    CHECK_MESSAGE(pure < 40.0,
+        "ZkBitsBelow 纯位定位实测 " << pure
+            << " cycles/op ≥ 40——热路径疑似退化为逐位循环/软件查表，未实现硬件指令直查（变异防线）");
+    CHECK_MESSAGE(full < 40.0,
+        "定位+chunk 列偏移表取数实测 " << full
+            << " cycles/op ≥ 40——端到端查询定位路径超宽松硬件上限（变异防线）");
 }

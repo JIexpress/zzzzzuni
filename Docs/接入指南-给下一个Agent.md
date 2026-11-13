@@ -189,7 +189,7 @@ W=Native/build/bin/Release/zrhi_d3d12_window.exe
 
 | 用户需求（原话提炼） | 实现位置 | 状态 | 证据 |
 |---|---|---|---|
-| "不用通用 ECS，自写数据内核（128位掩码/约3周期定位/SoA）" | `Native/zkernel/` + C# `ZKernelNative` | ✅ 吞吐 406M 行/s；**定位周期实测 4-5 非目标 3**（如实） | `需求达成对照.md:二-10` |
+| "不用通用 ECS，自写数据内核（128位掩码/约3周期定位/SoA）" | `Native/zkernel/` + C# `ZKernelNative` | ✅ 吞吐 406M 行/s；**定位周期实测 4~5 cycles/op 非设计目标 3（如实，2026-11-14 @Zen4：端到端取数口径 5、含行内除法随机取址 17；POPCNT/TZCNT 直查实证）** | `需求达成对照.md:二-10`、`Docs/Logs/TASK-B-KERNEL-01.md` |
 | "手写 Render Graph（屏障合并/别名复用/split barrier）" | `Native/zrender/` `rg_render_graph` | ✅ 别名真复用、屏障合并、split 落地 | `框架设计方案.md:附录A.3` |
 | "渲染管线原生 C++ 重写 + 多后端 GPU" | `Native/zrhi/` D3D12+Vulkan | ✅ 双后端逐像素 maxDelta=0 | `README.md:104` |
 | "FSR4.1 主 + FSR3.1 回退 + DLSS5" | `Native/zupscaler/` | 🟡 FSR3.1 真机✅；FSR4.1/DLSS5 代码+单测✅真机受限（无独显） | `README.md:109` |
