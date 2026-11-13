@@ -3,7 +3,8 @@ using NUnit.Framework;
 namespace ZFrame.Editor.Tests
 {
     /// <summary>
-    /// AssetNamingRules 纯逻辑单测：前缀表正例/反例/白名单/不适用扩展名。
+    /// AssetNamingRules 纯逻辑单测：前缀表正例/反例/白名单/不适用扩展名，
+    /// 以及纹理域段模式 T_ENV_Name.png（TASK-X-NAMES-01，A-CONT-01 程序化环境套件）。
     /// </summary>
     public sealed class AssetNamingRulesTests
     {
@@ -120,6 +121,70 @@ namespace ZFrame.Editor.Tests
         {
             Assert.AreEqual(NamingCheckResult.Whitelisted,
                 AssetNamingRules.Check(@"UI\Resources\ui_pause_panel.prefab").Result);
+        }
+
+        // ----------------- 纹理域段模式 T_ENV_Name.png（TASK-X-NAMES-01）-----------------
+
+        [TestCase("T_ENV_Bark.png")]
+        [TestCase("T_ENV_Grass.png")]
+        [TestCase("T_ENV_Metal.png")]
+        [TestCase("T_ENV_Road.png")]
+        [TestCase("T_ENV_Rock.png")]
+        [TestCase("T_ENV_Wood.png")]
+        public void TextureDomainPattern_Passes(string path)
+        {
+            // A-CONT-01（42f5a26）入库的 6 张真实环境纹理（Art/Textures/）
+            var (result, reason) = AssetNamingRules.Check(path);
+            Assert.AreEqual(NamingCheckResult.Ok, result, path);
+            StringAssert.Contains("T_ENV_", reason);
+        }
+
+        [Test]
+        public void TextureDomain_BadIdentifier_Violation()
+        {
+            var (result, reason) = AssetNamingRules.Check("T_ENV_bogus-name.png");
+            Assert.AreEqual(NamingCheckResult.Violation, result);
+            StringAssert.Contains("标识符", reason);
+        }
+
+        [Test]
+        public void TextureDomain_UnregisteredDomain_Violation()
+        {
+            var (result, reason) = AssetNamingRules.Check("T_BOSS_Ogre.png");
+            Assert.AreEqual(NamingCheckResult.Violation, result);
+            StringAssert.Contains("未注册", reason);
+        }
+
+        [Test]
+        public void TextureDomain_EmptyName_Violation()
+        {
+            var (result, reason) = AssetNamingRules.Check("T_ENV_.png");
+            Assert.AreEqual(NamingCheckResult.Violation, result);
+            StringAssert.Contains("标识符", reason);
+        }
+
+        [Test]
+        public void TextureDomain_LowerCaseStart_Violation()
+        {
+            var (result, reason) = AssetNamingRules.Check("T_ENV_bark.png");
+            Assert.AreEqual(NamingCheckResult.Violation, result);
+            StringAssert.Contains("标识符", reason);
+        }
+
+        [Test]
+        public void TextureDomain_PatternIsPngOnly()
+        {
+            // 模式仅限 .png（A-CONT-01 套件产物格式）；.tga 仍按无合法前缀判违规
+            Assert.AreEqual(NamingCheckResult.Violation, AssetNamingRules.Check("T_ENV_Bark.tga").Result);
+        }
+
+        [Test]
+        public void TextureDomain_ValidAnyDirectory_InvalidStemKeepsWhitelist()
+        {
+            // 合法域段命名同前缀表原则：任何目录都合规；
+            // 非法 T_ stem 不覆盖目录白名单的存量豁免语义
+            Assert.AreEqual(NamingCheckResult.Ok, AssetNamingRules.Check("Settings/T_ENV_Bark.png").Result);
+            Assert.AreEqual(NamingCheckResult.Whitelisted, AssetNamingRules.Check("ZFrame/Tests/T_foo.png").Result);
         }
     }
 }
