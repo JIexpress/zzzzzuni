@@ -205,9 +205,11 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | B-PLANET-06 | B/PLANET | SetWorld+SampleHeight(含与chunk顶点逐位一致断言) | done(验收PASS D1-D10;12864顶点0失配;并发38400次零撕裂;def 48→50) | Docs/Logs/TASK-B-PLANET-06.md | 63fa2f4 |
 | B-PLANET-07 | B/PLANET | Unity托管桥(流式管理器+WorldOrigin接线;首个生产消费者) | done(验收PASS J1-J8;EditMode 1211/1211(+29);账目A1-A12;唯一边界铁律保持) | Docs/Logs/TASK-B-PLANET-07.md | b73c0c5 |
 | B-PROBE-01 | B/PROBE | fsr4-probe探针:真设备/null对照可复核工具+本机存档(改进计划§5) | done(验收PASS F1-F7;三方逐位互证;便携模式亲测;FG族首次有数;阳性MISSING=对端补验) | Docs/Logs/TASK-B-PROBE-01.md | 74ec9bd |
-| B-PLANET-08 | B/PLANET | 接缝专项(float缝宽实测+neighborMask行为定版) | doing(先测量后裁决) | Docs/Logs/TASK-B-PLANET-08.md | |
+| B-PLANET-08 | B/PLANET | 接缝专项(float缝宽实测+neighborMask行为定版) | done(验收PASS M1-M7;VB缝宽MISSING清零240对三层口径;定版A维持裙边;G4-R1门远档税920ms→0.019ms) | Docs/Logs/TASK-B-PLANET-08.md | dce7e49 |
 | B-PLANET-09 | B/PLANET | planet-budget探针(1080p/接缝/贴地扫描/双机) | todo | (简报待写) | |
 | B-PLANET-10 | B/PLANET | abi-precision探针(四点ULP双口径) | todo | (简报待写) | |
 | B-PLANET-11 | B/PLANET | 编辑器内验收集成(三档截图/1km行走/账目断言) | todo | (简报待写) | |
 | B-PLANET-12 | B/PLANET | IL2CPP+Android各一次(Android按D8裁决=托管等效实现) | todo | (简报待写) | |
 | X-DIAG-02 | X/DIAG | test_zfg_env.cpp:117 `-s` 全量跑 SIGSEGV(B-PLANET-03 发现,基线即有)——定位根因并修 | todo | (简报待写) | |
+| B-PLANET-13 | B/PLANET | 裙边深度口径裁决(生产2%×格距 vs 设计稿2%×chunk弧长;near侧T型失配裕度仅×1.3——B-PLANET-08新发现) | todo | (简报待写) | |
+| X-DIAG-03 | X/DIAG | Parity截图period-3通道轮转条纹伪影(B-TECH-04存档即有)——影响所有截图判读,独立修复 | todo | (简报待写) | |
