@@ -185,11 +185,11 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | A-AI-02 | A/AI | AI 队友协作(GOAP社交协调层) | done(验收PASS;变异复红) | Docs/Logs/TASK-A-AI-02.md | fec368f |
 | A-AND-10 | A/AND | 触屏打磨:浮动摇杆/多点/触觉/参数化 | done(验收PASS;85+1099用例) | Docs/Logs/TASK-A-AND-10.md | 044c827 |
 | G-158 | 治理 | U盘交接材料入仓(Docs/Planning四文档)+Tools/Probes探针家底转移+双机分工登记(本机=引擎机/对端=游戏机) | done | Docs/Planning/ | (本提交) |
-| B-FSR-01 | B/FSR | P0修复:FSR4探测传空设备假阴性——枚举适配器后建真设备再问(改进计划P0/08对照#16) | doing | Docs/Logs/TASK-B-FSR-01.md | |
+| B-FSR-01 | B/FSR | P0修复:FSR4探测传空设备假阴性——枚举适配器后建真设备再问(改进计划P0/08对照#16) | done(验收PASS:11P+1MISSING按裁决,0FAIL;350用例全绿;负对照成立=硬件真相;阳性移交B-PROBE-01对端补验) | Docs/Logs/TASK-B-FSR-01.md | ae03f62 |
 | B-FSR-02 | B/FSR | P1能力三态诚实化(probeMode)+全仓写死能力表面审计(demo/设置页/失实注释)(改进计划P1) | todo | Docs/Logs/TASK-B-FSR-02.md | |
 | B-PROBE-01 | B/PROBE | fsr4-probe探针:真设备/null对照可复核工具+本机存档(改进计划§5) | todo | Docs/Logs/TASK-B-PROBE-01.md | |
 | B-PROBE-02 | B/PROBE | linear-bridge探针:ZRender vs URP同机位亮度差数字化(改进计划§5) | todo | Docs/Logs/TASK-B-PROBE-02.md | |
-| A-CONF-01 | A/CONF | Config CSV→C#行类型代码生成器(08对照#11半项补全) | todo | Docs/Logs/TASK-A-CONF-01.md | |
+| A-CONF-01 | A/CONF | Config CSV→C#行类型代码生成器(08对照#11半项补全) | doing | Docs/Logs/TASK-A-CONF-01.md | |
 | B-KERNEL-01 | B/KERNEL | 组件定位周期实测断言+文档BMI2/POPCNT表述纠正(08对照#7) | todo | Docs/Logs/TASK-B-KERNEL-01.md | |
 | B-VIS-01 | B/VIS | 多视图共享可见性核实:B-R4-02交付范围审计,裁决是否需补实现(08对照#4) | done(裁决A:需求已满足,VisibilitySet一次录入六视图消费;注记:真frustum剔除缺→B-VIS-02) | Docs/Logs/TASK-B-VIS-01.md | (本提交) |
 | B-VIS-02 | B/VIS | 真视锥剔除纯函数CullToViewMask+帧内录入/消费计数断言(不挡路,核实任务衍生加固) | todo | Docs/Logs/TASK-B-VIS-02.md | |

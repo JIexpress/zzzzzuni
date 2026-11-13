@@ -11,9 +11,9 @@
 - **双机分工（用户 2026-11-14 拍板）**：本机（780M/RDNA3）=**引擎改进机**；另一台机（RX 9060 XT/RDNA4，`D:\Dev\ZFrame` 只读）=**游戏开发机**——第一版 EVA 修复循环用 URP（清单 `Docs/Planning/07-第一版清单-2026-11-13.md`）。本机本轮=按 U 盘《ZRender-改进计划-2026-11-13》补齐全部未完成项。
 - **交接材料入仓（G-158）**：`Docs/Planning/`（07 清单/08 需求对照/改进计划/约法三章）；探针家底移 `Tools/Probes/`（env-probe.js 仓库自适应两机可跑，out/ 存两机证据）。**约法三章为硬规矩**：真跑/真输入/缺就报缺/可复核；**全仓写死能力表面一律视为伪造候选**（对端 demo FSR 选项写死被真机戳穿的教训，用户明确要求）。
 - **08 对照结论（对端 AI 实测，基线 cdf4eb2=本机 HEAD，无漂移）**：框架要求基本全实现；ZRender 实为"旁路渲染器"（C ABI 只收 float 矩阵+rgba）；未做到=XeSS/FSR3.5/多视图共享可见性；半=Config 代码生成/替代 Unity/满血 bindless/3 周期实测/跨平台。**改进计划口径：不把 ZRender 做成完整管线，只做行星 chunk 专用通道（P2，第二章前，4–8 周）。**
-- **P0 已定位（对端证实+本机代码复核）**：`Native/zupscaler/upscaler_caps.cpp:61` `ZupFsr4Probe(nullptr)` 传空设备 → 假阴性（对端实测 null=2 条 vs 真机=4 条含 4.1.2）；本机历史 B-R6-02"FSR4 本机不可用"即此根因。修复=B-FSR-01（**doing**，简报已写）。
+- **P0 已闭环（B-FSR-01，ae03f62，验收 PASS 11P+1MISSING裁决）**：upscaler_caps.cpp 枚举适配器后建真设备传 `ZupFsr4Probe`。**实测修正——780M(iGPU)+仓内 SDK v2.3.0 即使真设备也无 4.x provider（null=真设备=2 条：3.1.5/2.3.4）**：「FSR4 本机不可用」是硬件真相（B-R6-02 结论成立），假阴性差异只在支持硬件出现（对端 RX 9060 XT null=2 vs 真=4 含 4.1.2）。修复价值=支持硬件上消除假阴性，本机负对照证无误报。350 用例/778,737 断言全绿（+1/+14）；失实注释 4 文件改事实陈述；fg_ffx.cpp/.h 同型遗留移交 B-FSR-02；**阳性对照移交 B-PROBE-01（两机探针，对端补验）**。
 - **本机 env-probe 首跑**：HEAD cdf4eb2 / 556 C# / 6 场景 / 许可证在位；**本机 Build/Windows64 播放器缺 FFX DLL**（对端是手工补的 3 FFX+1 AGS）→ 引擎机玩家包当前不能跑 FSR（属实记录）；原生测试 exe 目录 FFX DLL 齐备，真机验证走 `zrender_test.exe`。
-- **本轮看板新增**：B-FSR-01(doing)/B-FSR-02/B-PROBE-01/B-PROBE-02/A-CONF-01/B-KERNEL-01/B-VIS-01/B-PLANET-01(todo)；P2 实施任务待 B-PLANET-01 设计稿后拆。
+- **本轮进度（2026-11-14 凌晨）**：B-VIS-01 done（裁决 A，132d183）｜B-FSR-01 done（ae03f62，验收 PASS）｜B-PLANET-01 设计稿交付（`Docs/Planning/P2-行星ABI设计.md` 534 行，D1–D10 决策+B-PLANET-02..12 拆解+§14 可抄签名汇编）**待验收**｜A-CONF-01 施工中｜B-FSR-02 派发中。P2 实施任务（B-PLANET-02..12）待设计稿验收 PASS 后由主控登看板。
 - **git 现场**：main 领先 origin/main **51+ 提交**未推（推远程需用户确认——AGENTS.md 铁律）。
 
 ## ⚡ 最新-2026-11-09（A-AI-04 闭环——NPC 会自己走去找事做）
