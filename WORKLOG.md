@@ -4,6 +4,7 @@
 
 | 日期 | 任务 | 结果 | commit |
 |---|---|---|---|
+| 2026-11-14 | B-KERNEL-01 周期实测断言 | done：验收PASS(K1-K7,变异亲做恰1红)；实测 a1 4~5/a2 5/a3 17 cycles/op(Zen4)——设计目标约3未达如实记录；变异逐位循环80~90证断言有牙；PEXT存在未实装→BMI2表述6文件纠正；无POPCNT SKIP+MISSING；353用例全绿；08对照#7 未验证→已验证 | fcbcb95 |
 | 2026-11-14 | B-PLANET-01 P2 行星 ABI 设计稿 | done：验收FAIL一轮(F1 ApiVersion链时序撞车等7项)→修订R1→复验PASS；四项ABI签名可抄 zplugin.h(链2→3)+D1-D10 决策+精度预算 10 环节+B-PLANET-02..12 拆解(46 导出裁决正确)；D8 裁决接受(Android=托管等效实现) | 80d82bc |
 | 2026-11-14 | A-CONF-01 Config 行类型代码生成 | done：验收PASS(V1-V10,独立复跑)；四通道生成器(schema解析/发射/菜单·右键·导入钩子·批处理)；EnemyConfigRow 迁 Generated(GUID 不变)；+26 用例；EditMode 1167全绿；架构26/0；08对照#11 半→已实现；遗留：表类薄壳(A-CONF-02)/naming 6存量(X-NAMES-01) | d15faad |
 | 2026-11-14 | B-FSR-02 P1 能力三态诚实化 | done：验收PASS(V1-V10全过)；ZrUpscalerCaps+fsr4ProbeMode(0真设备/1回退/2未探测)+ApiVersion2；C#三态文案+未知兜底；全仓写死能力审计15项(8改7核,含fg_ffx移交)；原生351/778,743+EditMode1167全绿；真机fsr4ProbeMode=0实证；移交：FG双设备对照/provider版本串读口→B-PROBE-01 | ce4bdf4 |
