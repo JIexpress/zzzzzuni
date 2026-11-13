@@ -122,8 +122,13 @@ void ReleaseFgRuntime(FgRuntime* runtime)
     }
 }
 
-/// 枚举 FRAMEGENERATION provider（nativeDevice 可为 null——FFX 返回与真机设备
-/// 一致的保守列表）。返回写入数；outFirst 安全拷贝首个 provider 名。
+/// 枚举 FRAMEGENERATION provider。nativeDevice 可为 null（无硬件环境的回退），
+/// 但 FFX 对 null 设备的 provider 枚举返回**截断**列表——同族行为已在 UPSCALER
+/// 效果族实测证伪"null 与真机一致"：RX 9060 XT（2026-11-13）null=2 条 vs 真设备
+/// =4 条含 4.1.2（见 Docs/Logs/TASK-B-FSR-01.md）；FRAMEGENERATION 族未做双设备
+/// 对照，null 口径的结论只能当"未检测"，不得据此宣布 FG 不支持。能力判定应传真
+/// 设备（窗口/探针路径均传真实 ID3D12Device*）。返回写入数；outFirst 安全拷贝
+/// 首个 provider 名。
 uint32_t EnumerateFgProviders(FgRuntime* runtime, void* nativeDevice,
     char* outFirst, uint32_t outFirstCapacity, bool verbose)
 {

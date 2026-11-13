@@ -14,7 +14,9 @@
 //   6. FSR jitter 序列（官方公式：phaseCount 与 Halton(2,3) 已知值）
 //   7. FFX provider 版本选择（B-R6-02：FSR4 只认 4.x；3.1/2.3 回退链）
 //   8. ZupProbeDeviceCaps 探测结构稳定性（B-FSR-01：无硬件环境下字段合法、
-//      布尔自洽、进程内确定性——不断言本机有 FSR4，CI 无 GPU 必须可过）
+//      布尔自洽、进程内确定性——不断言本机有 FSR4，CI 无 GPU 必须可过）；
+//      fsr4ProbeMode 探测口径三态语义（B-FSR-02：0=真设备/1=null 回退/
+//      2=未探测，值域与自洽性断言）
 //
 // mock 设计：每 backend 独立工厂（CreateMockFsr4/Fsr3/Fsr2/Bilinear），
 // Initialize 结果按 backend 查表注入（g_mockInitResults）——与链的尝试顺序
@@ -752,9 +754,9 @@ TEST_CASE("ZupProbeDeviceCaps: structure stability (hardware-independent invaria
     zr::UpscalerDeviceCaps caps;
     REQUIRE(zr::ZupProbeDeviceCaps(&caps));
 
-    // POD 档案布局稳定（2×uint32 + 4×bool 对齐后 12 字节；B-FSR-01 明确不改
-    // 结构——断言防隐式变形，B-FSR-02 若扩字段须同步更新此断言）
-    CHECK(sizeof(zr::UpscalerDeviceCaps) == 12u);
+    // POD 档案布局稳定（2×uint32 + 4×bool + uint32 fsr4ProbeMode 对齐后 16 字节；
+    // B-FSR-02 追加 fsr4ProbeMode——断言防隐式变形）
+    CHECK(sizeof(zr::UpscalerDeviceCaps) == 16u);
 
     // 布尔自洽：fsr4Available 必须以 fsrRuntimePresent 为前提（组合门控）
     if (!caps.fsrRuntimePresent) {
@@ -786,8 +788,49 @@ TEST_CASE("ZupProbeDeviceCaps: structure stability (hardware-independent invaria
     CHECK(again.deviceId == caps.deviceId);
     CHECK(again.fsrRuntimePresent == caps.fsrRuntimePresent);
     CHECK(again.fsr4Available == caps.fsr4Available);
+    CHECK(again.fsr4ProbeMode == caps.fsr4ProbeMode);
     CHECK(again.nvidiaHardware == caps.nvidiaHardware);
     CHECK(again.dlssRuntimePresent == caps.dlssRuntimePresent);
+}
+
+// =============================================================================
+// 9b. fsr4ProbeMode 探测口径三态（TASK-B-FSR-02：0=真设备/1=null 回退/2=未探测）
+// =============================================================================
+TEST_CASE("ZupProbeDeviceCaps: fsr4ProbeMode three-state semantics (B-FSR-02)")
+{
+    zr::UpscalerDeviceCaps caps;
+    REQUIRE(zr::ZupProbeDeviceCaps(&caps));
+
+    // 值域：原生侧只允许产出 0/1/2（消费方对未知值按"未检测"兜底是 UI 责任）
+    CHECK(caps.fsr4ProbeMode <= 2u);
+
+    // 未探测（2）绝不许伴随阳性结论——"没测过"既不能伪装成"支持"也不能算"不支持"
+    if (caps.fsr4ProbeMode == 2u) {
+        CHECK_FALSE(caps.fsr4Available);
+    }
+
+    if (caps.vendorId == 0u) {
+        // 无硬件适配器（CI / 纯软件适配器）：没有真设备可建 → 口径必非 0
+        //（不许把 null 回退伪装成"真设备探测可信"），且 fsr4Available=false
+        //（null 枚举的截断列表不得作为阳性来源——B-FSR-01 实测口径）。
+        CHECK(caps.fsr4ProbeMode != 0u);
+        CHECK_FALSE(caps.fsr4Available);
+        // 运行时在位 → provider 枚举以 null 口径执行过 = 1；
+        // 运行时缺席 → provider 枚举未执行 = 2。
+        CHECK(caps.fsr4ProbeMode == (caps.fsrRuntimePresent ? 1u : 2u));
+    } else {
+        // 有硬件适配器：建真设备成功 → 0（可信）；建备异常失败 → 回退 1；
+        // FFX 运行时缺席（provider 枚举未执行）→ 2。三者与运行时状态自洽。
+        if (caps.fsrRuntimePresent) {
+            CHECK((caps.fsr4ProbeMode == 0u || caps.fsr4ProbeMode == 1u));
+            // 本机（780M + FFX DLL 在位）的既证结论：真设备建成功 → 口径 0
+            if (caps.vendorId == 0x1002u && caps.deviceId == 0x15BFu) {
+                CHECK(caps.fsr4ProbeMode == 0u);
+            }
+        } else {
+            CHECK(caps.fsr4ProbeMode == 2u);
+        }
+    }
 }
 
 // =============================================================================

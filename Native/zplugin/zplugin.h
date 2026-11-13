@@ -17,7 +17,8 @@
 extern "C" {
 #endif
 
-/// C ABI 版本号；发生不兼容变更时递增（当前 1）。
+/// C ABI 版本号；发生不兼容变更时递增（当前 2——B-FSR-02 在 ZrUpscalerCaps
+/// 末尾追加 fsr4ProbeMode 字段）。
 uint32_t ZR_ApiVersion(void);
 
 /// ZRender 版本字符串（与 CMake project VERSION 同源），如 "0.1.0"。
@@ -61,7 +62,8 @@ int ZR_GetBackend(void);
 //   - 本组函数**不**创建 D3D12 设备、**不**初始化渲染后端——它们只维护设置视图。
 //     真正的后端初始化仍由渲染线程的 UpscalerChain::SelectAndInitialize 完成，
 //     后者以自身日志为权威证据。
-//   - 首次调用会触发一次保守能力探测（DXGI + dll 可加载性），结果进程内缓存。
+//   - 首次调用会触发一次能力探测（DXGI 适配器 + 运行时探测；FSR4 的 provider
+//     枚举用探测期短命建的真设备，B-FSR-01），结果进程内缓存。
 //
 // 后端编号（ZrUpscalerPreferred）：0=Auto（按能力选优），1..5 与
 // zr::UpscalerBackend 的枚举值 + 1 一一对应（Bilinear=1 … Dlss=5）。
@@ -82,15 +84,26 @@ enum ZrUpscalerPreferred {
 };
 
 /// 能力/状态快照（全定宽 POD；托管侧按布局直接封送）
+/// ABI 历史：v1 = 本结构前 8 个字段（32B）；v2 = 末尾追加 fsr4ProbeMode（36B）。
 typedef struct ZrUpscalerCaps {
     uint32_t structSize;         // 调用方填 sizeof(ZrUpscalerCaps)（版本化）
     uint32_t vendorId;           // PCI vendor id（0x1002=AMD、0x10DE=NVIDIA…）
     uint32_t deviceId;           // PCI device id
     uint32_t fsrRuntimePresent;  // 1 = FFX 运行时 dll 可加载且导出齐全
-    uint32_t fsr4Available;      // 1 = provider 枚举命中 4.x（保守：device=null 枚举）
+    uint32_t fsr4Available;      // 1 = provider 枚举命中 4.x（真实设备探测；
+                                 //     回退口径下可能失真——见 fsr4ProbeMode）
     uint32_t dlssAvailable;      // 1 = Streamline 运行时 + NVIDIA 硬件齐备
     uint32_t preferredBackend;   // ZrUpscalerPreferred（0=Auto）
     uint32_t activeBackend;      // 解析后的生效后端（1..5；Auto 时按能力选优）
+    // ---- B-FSR-02 追加（放末尾：structSize 版本化协议允许向后兼容追加）----
+    // fsr4Available 的探测口径三态（fsr4Available 的可信度由此判定）：
+    //   0 = 真实设备探测（provider 枚举拿到真 ID3D12Device*，结论可信）
+    //   1 = 保守回退（建备失败走了 device=null 枚举——FFX 的 null 枚举返回截断
+    //       列表，结果可能失真；消费方（UI）必须按"未检测"处理）
+    //   2 = 未探测（provider 枚举未执行——典型：FFX 运行时缺席；此时
+    //       fsr4Available 恒 0，不代表硬件不支持）
+    // 未知值（未来版本可能扩展）一律按"未检测"处理，不得当作 0。
+    uint32_t fsr4ProbeMode;
 } ZrUpscalerCaps;
 
 /// 设置首选后端。越界返回 ZR_UPSCALER_ERR_RANGE，成功返回 ZR_UPSCALER_OK。

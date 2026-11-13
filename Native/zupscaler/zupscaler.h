@@ -66,9 +66,18 @@ struct UpscalerDeviceCaps {
     uint32_t vendorId = 0;           // PCI vendor id：0x1002/0x1022=AMD、0x10DE=NVIDIA、0x8086=Intel
     uint32_t deviceId = 0;           // PCI device id（代际细分用）
     bool fsrRuntimePresent = false;  // FSR 运行时可用（ffx dll 可加载 + 导出齐全）
-    bool fsr4Available = false;      // FFX provider 枚举命中 4.x 版本族（真实能力，不猜代际）
+    bool fsr4Available = false;      // FFX provider 枚举命中 4.x 版本族（真实能力，不猜代际；
+                                     // 结论可信度见 fsr4ProbeMode——回退口径下可能失真）
     bool nvidiaHardware = false;     // NVIDIA 硬件（DLSS 前提；vendor==0x10DE）
     bool dlssRuntimePresent = false; // Streamline interposer + nvngx_dlss 可加载
+    /// fsr4Available 的探测口径三态（TASK-B-FSR-02；与 C ABI ZrUpscalerCaps.
+    /// fsr4ProbeMode 语义一一对应）：
+    ///   0 = 真实设备探测（FFX provider 枚举拿到了真实 ID3D12Device*，结论可信）
+    ///   1 = 保守回退（建备失败走了 device=null 枚举——FFX 的 null 枚举返回截断
+    ///       列表，fsr4Available 可能失真，消费方必须按"未检测"处理）
+    ///   2 = 未探测（provider 枚举未执行——典型：FFX 运行时缺席；或未来实现的
+    ///       早退路径。此时 fsr4Available 恒 false，不代表硬件不支持）
+    uint32_t fsr4ProbeMode = 2;
 };
 
 /// 能力矩阵判定（默认表 supported 谓词；单测直接断言各代际 → 期望后端）
@@ -260,8 +269,10 @@ bool ZupDlssRuntimeProbe();
 const char* ZupDlssRuntimeVersion();
 
 /// 能力探测（DXGI 首个非软件适配器 + 三条运行时探测；FSR4 的 provider 枚举
-/// 在该适配器上建短命 ID3D12Device 传真设备——用完即释，调用方无需设备；
-/// 建备失败/无硬件回退 null 枚举的保守口径）。outCaps 为 null 时静默返回 false。
+/// 在该适配器上建短命 ID3D12Device 传真设备——用完即释，调用方无需设备）。
+/// fsr4ProbeMode 如实记录探测口径：建真设备成功→0；建备失败/无硬件回退 null
+/// 枚举→1；FFX 运行时缺席（provider 枚举未执行）→2。outCaps 为 null 时静默
+/// 返回 false。
 bool ZupProbeDeviceCaps(UpscalerDeviceCaps* outCaps);
 
 /// 超分链：注册后端表 → 能力自动选优 → 生命周期状态机

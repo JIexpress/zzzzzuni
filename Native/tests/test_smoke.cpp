@@ -15,9 +15,10 @@
 #include "zrhi/zrhi.h"
 #include "zupscaler/zupscaler.h"
 
-TEST_CASE("C ABI: ZR_ApiVersion 返回 1")
+TEST_CASE("C ABI: ZR_ApiVersion 返回 2")
 {
-    CHECK(ZR_ApiVersion() == 1u);
+    // v2（TASK-B-FSR-02）：ZrUpscalerCaps 末尾追加 fsr4ProbeMode。
+    CHECK(ZR_ApiVersion() == 2u);
 }
 
 TEST_CASE("C ABI: ZR_GetVersion 返回 \"0.1.0\"")

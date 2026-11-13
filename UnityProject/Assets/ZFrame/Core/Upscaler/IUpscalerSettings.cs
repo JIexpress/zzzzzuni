@@ -46,7 +46,10 @@ namespace ZFrame.Core
         /// <summary>FFX 运行时 dll 可加载且导出齐全（FSR 3.x 的前置）。</summary>
         public bool FsrRuntimePresent;
 
-        /// <summary>provider 枚举命中 4.x（FSR 4.1 的前置；核显通常为 false）。</summary>
+        /// <summary>
+        /// provider 枚举命中 4.x（FSR 4.1 的前置；核显通常为 false）。
+        /// 结论可信度须结合 <see cref="Fsr4ProbeMode"/> 判读——回退口径下可能失真。
+        /// </summary>
         public bool Fsr4Available;
 
         /// <summary>Streamline 运行时 + NVIDIA 硬件齐备（DLSS 5 的前置）。</summary>
@@ -57,5 +60,16 @@ namespace ZFrame.Core
 
         /// <summary>解析后的生效后端（1..5；Auto 时按能力选优）。</summary>
         public int ActiveBackend;
+
+        /// <summary>
+        /// Fsr4Available 的探测口径三态（B-FSR-02，镜像原生 ZrUpscalerCaps.fsr4ProbeMode）：
+        /// 0 = 真实设备探测（provider 枚举拿到真 ID3D12Device*，结论可信）；
+        /// 1 = 保守回退（建备失败走 device=null 枚举——FFX 的 null 枚举返回截断列表，
+        ///     结果可能失真，UI 必须标"未检测"）；
+        /// 2 = 未探测（provider 枚举未执行——典型：FFX 运行时缺席；此时
+        ///     Fsr4Available 恒 false，不代表硬件不支持）。
+        /// 未知值（未来版本扩展）一律按"未检测"处理，不得当作 0。
+        /// </summary>
+        public uint Fsr4ProbeMode;
     }
 }

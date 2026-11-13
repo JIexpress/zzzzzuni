@@ -4,6 +4,8 @@
 // 首选后端编号见 Native/zplugin/zplugin.h：0=Auto、1=Bilinear、3=FSR3、4=FSR4、5=DLSS；
 // Auto 语义由原生 UpscalerChain 按能力矩阵选优，本层只透传，不做二次决策。
 // UI 侧的 Enum 索引↔preferred 映射与能力门控标注在 ZFrame.View 的 UpscalerSettingOptions。
+// B-FSR-02：QueryCaps 额外透传 fsr4ProbeMode（C ABI v2，36B caps）——探测口径
+// 三态（0=真设备/1=null 回退/2=未探测），供 UI 把"未检测"与"本机不支持"分开陈述。
 
 using System;
 using System.Runtime.InteropServices;
@@ -109,6 +111,9 @@ namespace ZFrame.Render
                     DlssAvailable = native.DlssAvailable != 0u,
                     PreferredBackend = unchecked((int)native.PreferredBackend),
                     ActiveBackend = unchecked((int)native.ActiveBackend),
+                    // 探测口径三态透传（B-FSR-02）：0=真设备/1=null 回退/2=未探测；
+                    // UI 侧三态文案映射见 UpscalerSettingOptions.BuildFsr4StatusText
+                    Fsr4ProbeMode = native.Fsr4ProbeMode,
                 };
             }
             catch (Exception e) when (e is DllNotFoundException || e is EntryPointNotFoundException)

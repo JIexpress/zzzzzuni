@@ -161,7 +161,9 @@ namespace ZFrame.View
                     apply: value => PipelineManager.SetTier((QualityTier)(int)value)),
                 // 超分 — LIVE (TASK-B-R6-03): Enum 索引经 UpscalerSettingOptions 映射为
                 // 原生 ZrUpscalerPreferred 真调 C ABI（Auto 语义由原生 Chain 选优）；
-                // 选项文案按 QueryCaps 能力门控标注（不支持的厂商项追加"（本机不支持）"）。
+                // 选项文案按 QueryCaps 真实结论标注（B-FSR-02 三态诚实化：FSR4 行按
+                // 运行时缺失/未检测/本机不支持/可用分别陈述；服务缺席标"未检测"，
+                // 不许无来源地宣称"本机不支持"）。
                 SettingDefinition.EnumSetting(
                     "video.upscaler", "超分", UpscalerSettingOptions.DefaultOptionIndex,
                     UpscalerSettingOptions.BuildOptionLabels(),

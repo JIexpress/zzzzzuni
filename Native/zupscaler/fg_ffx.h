@@ -158,9 +158,11 @@ public:
     FrameGenerator(const FrameGenerator&) = delete;
     FrameGenerator& operator=(const FrameGenerator&) = delete;
 
-    /// 能力探测：加载 FG dll → ffxQuery 枚举 FRAMEGENERATION provider（device 可为
-    /// null，FFX 返回与真机一致的保守列表）。探测后即释放；静默（verbose 证据行
-    /// 由窗口程序负责）。
+    /// 能力探测：加载 FG dll → ffxQuery 枚举 FRAMEGENERATION provider。device 可为
+    /// null（无硬件回退），但 FFX 对 null 设备的枚举返回截断列表——同族行为已在
+    /// UPSCALER 族实测证伪"null 与真机一致"（RX 9060 XT 2026-11-13：null=2 vs 真设备
+    /// =4 含 4.1.2，见 TASK-B-FSR-01）；FRAMEGENERATION 族未做双设备对照，null 口径
+    /// 的结论只能当"未检测"。探测后即释放；静默（verbose 证据行由窗口程序负责）。
     static FrameGenProbe QuerySupport(void* nativeDevice);
 
     /// 创建 FG 效果上下文（desc 链：FrameGeneration → Version → BackendDX12）。

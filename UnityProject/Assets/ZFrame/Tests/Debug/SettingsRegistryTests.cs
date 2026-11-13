@@ -134,8 +134,9 @@ namespace ZFrame.Debug.Tests
             Assert.AreEqual("超分", upscaler.DisplayName);
             Assert.AreEqual(0, (int)upscaler.DefaultValue, "default = 自动");
             Assert.AreEqual(5, upscaler.EnumOptions.Length, "自动/关/FSR 3.1/FSR 4.1/DLSS 5");
-            // 无服务注册的 EditMode 态 = 能力未知 → 厂商项全部标注（详见 UpscalerSettingsTests）。
-            StringAssert.EndsWith("（本机不支持）", upscaler.EnumOptions[2]);
+            // 无服务注册的 EditMode 态 = 根本没测 → 厂商项标"未检测"而非"不支持"
+            // （B-FSR-02 三态诚实化，详见 UpscalerSettingsTests）。
+            StringAssert.EndsWith("未检测（原生内核未启用）", upscaler.EnumOptions[2]);
         }
 
         [Test]

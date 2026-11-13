@@ -12,7 +12,9 @@
 //      截断列表——对端机 RX 9060 XT 实测（2026-11-13）：null=2 条（3.1.5/
 //      2.3.4）vs 真设备=4 条（含 4.1.2），B-R6-02 的 FSR4 假阴性即此根因。
 //      建备失败（无硬件/CI）→ 回退 device=nullptr 枚举，行为与 B-R6-02 一致
-//      （保守结论：fsr4Available=false 不误报）。
+//      （fsr4Available=false 不误报）。探测口径三态记录在 fsr4ProbeMode
+//      （0=真设备/1=null 回退/2=未探测，TASK-B-FSR-02）——回退口径下
+//      fsr4Available 可能失真，消费方必须按"未检测"处理。
 //   3) Streamline 运行时探测（dll 可加载性）→ dlssRuntimePresent
 //
 // 注意：真实设备上 FSR4 的最终结论仍以 UpscalerChain 初始化时（带真实
@@ -87,6 +89,17 @@ bool ZupProbeDeviceCaps(UpscalerDeviceCaps* outCaps)
     outCaps->fsr4Available = outCaps->fsrRuntimePresent && ZupFsr4Probe(probeDevice);
     if (probeDevice != nullptr) {
         probeDevice->Release();
+    }
+    // fsr4ProbeMode（TASK-B-FSR-02）：如实记录 fsr4Available 的探测口径——
+    //   0 = provider 枚举拿到了真实设备（建备成功，结论可信）
+    //   1 = 建备失败/无硬件，走了 device=null 枚举（FFX null 枚举返回截断列表，
+    //       结论可能失真，消费方按"未检测"处理）
+    //   2 = provider 枚举根本未执行（FFX 运行时缺席；结构体零初始化默认也是 2，
+    //       保证"没测过"不会被误读成"真设备探测可信"）
+    if (outCaps->fsrRuntimePresent == 0u) {
+        outCaps->fsr4ProbeMode = 2u;
+    } else {
+        outCaps->fsr4ProbeMode = (probeDevice != nullptr) ? 0u : 1u;
     }
     outCaps->nvidiaHardware = (outCaps->vendorId == 0x10DEu);
     outCaps->dlssRuntimePresent = ZupDlssRuntimeProbe();

@@ -5,7 +5,8 @@
 //   1. ZR_Upscaler_SetPreferred：越界拒绝（负值/超上界）+ 合法值全接受
 //   2. ZR_Upscaler_QueryCaps：空指针 / structSize 不符 → 明确错误码
 //   3. ZR_Upscaler_QueryCaps 成功路径：字段填满、preferred 回读一致、
-//      active 落在合法后端区间（1..5）
+//      active 落在合法后端区间（1..5）、fsr4ProbeMode 探测口径透传自洽
+//      （B-FSR-02）
 //   4. ZR_Upscaler_GetActive：Auto 模式下按能力选优，恒在 1..5
 //
 // 注意：C ABI 内部状态是进程级单例，本文件所有用例结束都把偏好复位到 AUTO，
@@ -88,6 +89,17 @@ TEST_CASE("ZR_Upscaler_QueryCaps: successful fill matches preferred/active")
     CHECK(caps.fsrRuntimePresent <= 1u);
     CHECK(caps.fsr4Available <= 1u);
     CHECK(caps.dlssAvailable <= 1u);
+    // fsr4ProbeMode（B-FSR-02）经 C ABI 如实透传：值域 0/1/2；未探测（2）不许
+    // 伴随阳性；与内部 UpscalerDeviceCaps 的同名字段语义一致（upscaler_caps.cpp）
+    CHECK(caps.fsr4ProbeMode <= 2u);
+    if (caps.fsr4ProbeMode == 2u) {
+        CHECK(caps.fsr4Available == 0u);
+    }
+    if (caps.fsrRuntimePresent == 0u) {
+        CHECK(caps.fsr4ProbeMode == 2u); // provider 枚举未执行 = 未探测
+    } else if (caps.vendorId == 0u) {
+        CHECK(caps.fsr4ProbeMode == 1u); // 无适配器 → null 回退口径
+    }
     // 非 N 卡机器上 DLSS 必为不可用（门控含 nvidiaHardware）
     if (caps.vendorId != 0x10DEu) {
         CHECK(caps.dlssAvailable == 0u);

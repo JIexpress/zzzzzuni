@@ -58,6 +58,14 @@ namespace ZFrame.Render.Tests
             Assert.GreaterOrEqual(caps.ActiveBackend, 1, "生效后端应解析到 1..5");
             Assert.LessOrEqual(caps.ActiveBackend, 5);
             Assert.IsTrue(settings.IsAvailable);
+
+            // B-FSR-02：fsr4ProbeMode 经 36B caps（C ABI v2）如实透传——
+            // 值域 0/1/2；未探测口径（2）不许伴随 FSR4 阳性结论。
+            Assert.LessOrEqual(caps.Fsr4ProbeMode, 2u, "探测口径应为 0/1/2 三态之一");
+            if (caps.Fsr4ProbeMode == 2u)
+            {
+                Assert.IsFalse(caps.Fsr4Available, "未探测口径下不许报 FSR4 可用");
+            }
         }
 
         [Test]

@@ -10,10 +10,11 @@ namespace ZFrame.Render.Tests
     public class ZrPluginTests
     {
         [Test]
-        public void EnsureLoaded_ReturnsApiVersion1()
+        public void EnsureLoaded_ReturnsApiVersion2()
         {
+            // v2（TASK-B-FSR-02）：ZrUpscalerCaps 末尾追加 fsr4ProbeMode（36B）。
             ZrPluginInfo info = ZrPlugin.EnsureLoaded();
-            Assert.AreEqual(1u, info.ApiVersion, "C ABI 版本应为 1");
+            Assert.AreEqual(2u, info.ApiVersion, "C ABI 版本应为 2");
         }
 
         [Test]

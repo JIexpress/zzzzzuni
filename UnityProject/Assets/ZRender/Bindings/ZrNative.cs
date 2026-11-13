@@ -181,8 +181,9 @@ namespace ZFrame.Render.Bindings
     }
 
     /// <summary>
-    /// 原生 ZrUpscalerCaps（32B，全定宽；布局须与 zplugin.h 一致）。
+    /// 原生 ZrUpscalerCaps（36B @ABI v2，全定宽；布局须与 zplugin.h 一致）。
     /// 调用方须先把 <see cref="ZrUpscalerCapsNative.StructSize"/> 填为 sizeof（版本化约定），再调 QueryCaps。
+    /// ABI 历史：v1 = 前 8 字段（32B）；v2（B-FSR-02）= 末尾追加 Fsr4ProbeMode。
     /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public struct ZrUpscalerCapsNative
@@ -195,6 +196,13 @@ namespace ZFrame.Render.Bindings
         public uint DlssAvailable;
         public uint PreferredBackend;
         public uint ActiveBackend;
+        /// <summary>
+        /// Fsr4Available 的探测口径三态（B-FSR-02）：0=真实设备探测（可信）；
+        /// 1=保守回退（建备失败走 device=null 枚举，结果可能失真——消费方按
+        /// "未检测"处理）；2=未探测（provider 枚举未执行，典型：FFX 运行时缺席，
+        /// 此时 Fsr4Available 恒 0）。未知值一律按"未检测"处理，不得当作 0。
+        /// </summary>
+        public uint Fsr4ProbeMode;
     }
 
     /// <summary>

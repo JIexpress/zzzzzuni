@@ -27,7 +27,7 @@ extern "C" {
 
 uint32_t ZR_ApiVersion(void)
 {
-    return 1u;
+    return 2u; // B-FSR-02：ZrUpscalerCaps 末尾追加 fsr4ProbeMode（36B）
 }
 
 const char* ZR_GetVersion(void)
@@ -275,6 +275,7 @@ int ZR_Upscaler_QueryCaps(ZrUpscalerCaps* outCaps)
         = (g_upscalerCaps.nvidiaHardware && g_upscalerCaps.dlssRuntimePresent) ? 1u : 0u;
     outCaps->preferredBackend = static_cast<uint32_t>(g_upscalerPreferred);
     outCaps->activeBackend = static_cast<uint32_t>(active);
+    outCaps->fsr4ProbeMode = g_upscalerCaps.fsr4ProbeMode; // 探测口径三态透传（B-FSR-02）
     ::ReleaseSRWLockExclusive(&g_upscalerLock);
     return ZR_UPSCALER_OK;
 }

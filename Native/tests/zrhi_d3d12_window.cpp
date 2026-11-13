@@ -9908,12 +9908,16 @@ static int RunFsrMode(FsrMode mode)
     // 为不可用（假阴性）。
     // DLSS 能力 = N 卡 + Streamline 运行时（本机恒 false）
     caps.fsr4Available = caps.fsrRuntimePresent && zr::ZupFsr4Probe(device->D3D12Device());
+    // B-FSR-02：本模式手持真实 ID3D12Device 做枚举——探测口径如实记 0（真设备，
+    // 可信）；运行时缺席则 provider 枚举未执行 = 2。不填会把真设备口径错标成
+    // "未探测"（默认值）。
+    caps.fsr4ProbeMode = caps.fsrRuntimePresent ? 0u : 2u;
     caps.nvidiaHardware = (caps.vendorId == 0x10DEu);
     caps.dlssRuntimePresent = zr::ZupDlssRuntimeProbe();
     std::printf("zrhi_d3d12_window: --fsr caps: vendor=0x%04X device=0x%04X "
-                "fsrRuntime=%d fsr4Available=%d nvidia=%d dlssRuntime=%d\n",
+                "fsrRuntime=%d fsr4Available=%d fsr4ProbeMode=%u nvidia=%d dlssRuntime=%d\n",
         caps.vendorId, caps.deviceId, caps.fsrRuntimePresent ? 1 : 0,
-        caps.fsr4Available ? 1 : 0, caps.nvidiaHardware ? 1 : 0,
+        caps.fsr4Available ? 1 : 0, caps.fsr4ProbeMode, caps.nvidiaHardware ? 1 : 0,
         caps.dlssRuntimePresent ? 1 : 0);
     {
         // provider 枚举对照（B-FSR-01）：null 设备返回截断列表（B-R6-02 的历史
@@ -10377,10 +10381,11 @@ static int RunFsrMode(FsrMode mode)
                 kFsr31PngPair, pngOk ? 1 : 0);
         }
         std::printf("D3D12 FSR4 UNAVAILABLE (reason=FSR4 provider 4.x not enumerated "
-                    "(needs discrete RX 7000/RX 9000); bilinear=%.3f fsr3=%.3f ms3=%.3f "
+                    "(fsrRuntime=%d; needs discrete RX 7000/RX 9000 per FFX SDK v2.3.0 docs); "
+                    "bilinear=%.3f fsr3=%.3f ms3=%.3f "
                     "msBilinear=%.3f removed=%d errors=%u)\n",
-            off.edge, fsr3.edge, fsr3.gpuMs, off.gpuMs, noDeviceRemoval ? 0 : 1,
-            infoQueueErrors);
+            caps.fsrRuntimePresent ? 1 : 0, off.edge, fsr3.edge, fsr3.gpuMs, off.gpuMs,
+            noDeviceRemoval ? 0 : 1, infoQueueErrors);
         return 2;
     }
 

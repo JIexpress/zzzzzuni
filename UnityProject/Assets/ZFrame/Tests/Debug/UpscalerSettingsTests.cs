@@ -90,12 +90,18 @@ namespace ZFrame.Debug.Tests
         // ---------- 能力门控标注 ----------
 
         [Test]
-        public void Labels_WithoutService_AllVendorOptionsMarkedUnsupported()
+        public void Labels_WithoutService_AllVendorOptionsMarkedUnprobed()
         {
-            // 能力未知（服务未注册 / 原生不可用）时厂商项全部标注——
-            // 不许让用户选一个必然失败的项还不提示。
+            // 服务未注册 = 根本没测（B-FSR-02）：厂商项一律标"未检测（原生内核未启用）"，
+            // 不许无来源地宣称"本机不支持"。
             CollectionAssert.AreEqual(
-                new[] { "自动", "关", "FSR 3.1（本机不支持）", "FSR 4.1（本机不支持）", "DLSS 5（本机不支持）" },
+                new[]
+                {
+                    "自动", "关",
+                    "FSR 3.1：未检测（原生内核未启用）",
+                    "FSR 4.1：未检测（原生内核未启用）",
+                    "DLSS 5：未检测（原生内核未启用）",
+                },
                 UpscalerSettingOptions.BuildOptionLabels((IUpscalerSettings)null));
         }
 
@@ -111,6 +117,7 @@ namespace ZFrame.Debug.Tests
                     FsrRuntimePresent = true,
                     Fsr4Available = false,
                     DlssAvailable = false,
+                    Fsr4ProbeMode = 0u, // 真设备探测口径——"本机不支持"的唯一合法来源
                 },
             };
 
@@ -120,7 +127,7 @@ namespace ZFrame.Debug.Tests
         }
 
         [Test]
-        public void Labels_FullCapability_NoAnnotations()
+        public void Labels_FullCapability_Fsr4MarkedAvailable()
         {
             var stub = new StubUpscalerSettings
             {
@@ -134,23 +141,123 @@ namespace ZFrame.Debug.Tests
                 },
             };
 
+            // FSR4 可用 → "（可用）"后缀（B-FSR-02：provider 版本串的 C ABI 读口
+            // 暂缺，如实标"可用"，不编造版本号）。
             CollectionAssert.AreEqual(
-                new[] { "自动", "关", "FSR 3.1", "FSR 4.1", "DLSS 5" },
+                new[] { "自动", "关", "FSR 3.1", "FSR 4.1（可用）", "DLSS 5" },
                 UpscalerSettingOptions.BuildOptionLabels(stub));
         }
 
         [Test]
-        public void Labels_ServicePresentButNativeUnavailable_AllVendorOptionsMarked()
+        public void Labels_ServicePresentButNativeUnavailable_AllVendorOptionsMarkedUnprobed()
         {
             var stub = new StubUpscalerSettings
             {
                 Available = false,
-                Caps = default, // Available=false
+                Caps = default, // Available=false → 根本没测，不许宣称"不支持"
             };
 
             CollectionAssert.AreEqual(
-                new[] { "自动", "关", "FSR 3.1（本机不支持）", "FSR 4.1（本机不支持）", "DLSS 5（本机不支持）" },
+                new[]
+                {
+                    "自动", "关",
+                    "FSR 3.1：未检测（原生内核未启用）",
+                    "FSR 4.1：未检测（原生内核未启用）",
+                    "DLSS 5：未检测（原生内核未启用）",
+                },
                 UpscalerSettingOptions.BuildOptionLabels(stub));
+        }
+
+        // ---------- FSR4 三态文案映射（B-FSR-02，表驱动） ----------
+
+        /// <summary>FSR4 三态映射表的一行：输入 caps 关键位 + 期望状态文本 + 期望完整标签。</summary>
+        private sealed class Fsr4Case
+        {
+            public readonly bool Available;
+            public readonly bool FsrRuntimePresent;
+            public readonly bool Fsr4Available;
+            public readonly uint ProbeMode;
+            public readonly string ExpectedStatus;
+            public readonly string ExpectedLabel;
+
+            public Fsr4Case(bool available, bool fsrRuntimePresent, bool fsr4Available,
+                uint probeMode, string expectedStatus, string expectedLabel)
+            {
+                Available = available;
+                FsrRuntimePresent = fsrRuntimePresent;
+                Fsr4Available = fsr4Available;
+                ProbeMode = probeMode;
+                ExpectedStatus = expectedStatus;
+                ExpectedLabel = expectedLabel;
+            }
+        }
+
+        /// <summary>
+        /// 三态 + 兜底映射表（TASK-B-FSR-02 简报第 2 点）：
+        /// fsrRuntimePresent=0 → 运行时缺失；probeMode!=0 且 fsr4=0 → 未检测（探测回退）；
+        /// probeMode=0 且 fsr4=0 → 本机不支持；fsr4=1 → 可用（版本读口暂缺）；
+        /// 未知 probeMode 兜底 → 未检测；服务缺席 → 未检测（原生内核未启用）。
+        /// </summary>
+        private static readonly Fsr4Case[] Fsr4Table =
+        {
+            // 服务缺席（根本没测）：优先于一切，不许宣称"不支持"
+            new Fsr4Case(false, false, false, 0u,
+                UpscalerSettingOptions.UnprobedNoNativeText,
+                "FSR 4.1：未检测（原生内核未启用）"),
+            // fsr4Available=1 → 可用（真实命中；探测口径不影响阳性陈述）
+            new Fsr4Case(true, true, true, 0u,
+                UpscalerSettingOptions.Fsr4AvailableText, "FSR 4.1（可用）"),
+            // 运行时缺失：比探测口径更具体的真实原因，优先于"未检测/不支持"
+            new Fsr4Case(true, false, false, 0u,
+                UpscalerSettingOptions.Fsr4RuntimeMissingText,
+                "FSR 4.1：运行时缺失（FFX DLL 未找到）"),
+            new Fsr4Case(true, false, false, 1u,
+                UpscalerSettingOptions.Fsr4RuntimeMissingText,
+                "FSR 4.1：运行时缺失（FFX DLL 未找到）"),
+            // probeMode=1（null 回退）且 fsr4=0 → 未检测（结果可能失真）
+            new Fsr4Case(true, true, false, 1u,
+                UpscalerSettingOptions.Fsr4UnprobedText,
+                "FSR 4.1：未检测（探测回退，结果不可信）"),
+            // probeMode=2（未探测）且 fsr4=0 → 未检测
+            new Fsr4Case(true, true, false, 2u,
+                UpscalerSettingOptions.Fsr4UnprobedText,
+                "FSR 4.1：未检测（探测回退，结果不可信）"),
+            // probeMode=0（真设备探测可信）且 fsr4=0 → 本机不支持（唯一合法"不支持"）
+            new Fsr4Case(true, true, false, 0u,
+                UpscalerSettingOptions.Fsr4UnsupportedText, "FSR 4.1（本机不支持）"),
+            // 未知 probeMode 兜底：!=0 一律按"未检测"处理，不得当作 0
+            new Fsr4Case(true, true, false, 99u,
+                UpscalerSettingOptions.Fsr4UnprobedText,
+                "FSR 4.1：未检测（探测回退，结果不可信）"),
+            new Fsr4Case(true, true, false, uint.MaxValue,
+                UpscalerSettingOptions.Fsr4UnprobedText,
+                "FSR 4.1：未检测（探测回退，结果不可信）"),
+        };
+
+        [Test]
+        public void Fsr4Status_TableDriven_ThreeStatesAndFallbacks()
+        {
+            foreach (Fsr4Case entry in Fsr4Table)
+            {
+                var caps = new UpscalerCapsInfo
+                {
+                    Available = entry.Available,
+                    FsrRuntimePresent = entry.FsrRuntimePresent,
+                    Fsr4Available = entry.Fsr4Available,
+                    Fsr4ProbeMode = entry.ProbeMode,
+                };
+
+                Assert.AreEqual(entry.ExpectedStatus,
+                    UpscalerSettingOptions.BuildFsr4StatusText(caps),
+                    $"状态文本映射错误（available={entry.Available} runtime={entry.FsrRuntimePresent} "
+                    + $"fsr4={entry.Fsr4Available} probeMode={entry.ProbeMode}）");
+
+                // 经 BuildOptionLabels 全链路核对 FSR4 行标签（下标 3）
+                var stub = new StubUpscalerSettings { Available = entry.Available, Caps = caps };
+                string[] labels = UpscalerSettingOptions.BuildOptionLabels(stub);
+                Assert.AreEqual(entry.ExpectedLabel, labels[UpscalerSettingOptions.OptionFsr4],
+                    $"FSR4 标签映射错误（probeMode={entry.ProbeMode}）");
+            }
         }
 
         // ---------- apply 链路（Enum → 映射 → IUpscalerSettings） ----------
@@ -209,7 +316,7 @@ namespace ZFrame.Debug.Tests
         [Test]
         public void Registry_UpscalerRow_IsLiveEnum_DefaultAuto_WithGatedLabels()
         {
-            // 无服务注册（EditMode 默认态）：厂商项全部标注，确定性可断言。
+            // 无服务注册（EditMode 默认态）= 根本没测：厂商项标"未检测"，确定性可断言。
             SettingsRegistry registry = SettingsRegistry.BuildDefaults();
 
             Assert.IsTrue(registry.TryGetDefinition("video.upscaler", out SettingDefinition upscaler));
@@ -218,7 +325,8 @@ namespace ZFrame.Debug.Tests
             Assert.IsNotNull(upscaler.Apply, "超分必须真调 IUpscalerSettings.TrySetPreferred（B-R6-03 实接）");
             Assert.AreEqual(0, (int)upscaler.DefaultValue, "默认 = 自动");
             Assert.AreEqual(5, upscaler.EnumOptions.Length);
-            StringAssert.EndsWith("（本机不支持）", upscaler.EnumOptions[3], "能力未知时 FSR 4.1 应标注");
+            StringAssert.EndsWith("未检测（原生内核未启用）", upscaler.EnumOptions[3],
+                "无服务 = 没测过，FSR 4.1 必须标未检测而非不支持（B-FSR-02）");
         }
 
         [Test]
@@ -233,6 +341,7 @@ namespace ZFrame.Debug.Tests
                     FsrRuntimePresent = true,
                     Fsr4Available = false,
                     DlssAvailable = false,
+                    Fsr4ProbeMode = 0u, // 真设备探测口径 → 允许"本机不支持"
                 },
             };
             Services.Register<IUpscalerSettings>(stub);
