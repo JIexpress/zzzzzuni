@@ -143,6 +143,12 @@ results.push({
 function main() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const fileName = 'env-' + stamp + '.json';
+  // 文件名白名单：仅字母/数字/_/- 与单点扩展名结构——天然不含路径分隔符与连续点，
+  // 杜绝 ../ 与分隔符注入；再对最终路径做 out 目录边界断言（Mimosa 复查 2026-11-14）
+  if (!/^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)+$/.test(fileName)) {
+    throw new Error('输出文件名不合白名单，拒绝写文件: ' + fileName);
+  }
   const payload = {
     probedAt: new Date().toISOString(),
     host: process.platform + ' ' + process.arch + ' node ' + process.version,
@@ -153,7 +159,11 @@ function main() {
       missing: results.filter((r) => r.status === 'MISSING').length,
     },
   };
-  const outFile = path.join(OUT_DIR, 'env-' + stamp + '.json');
+  const outRoot = OUT_DIR + path.sep;               // 常量根
+  const outFile = outRoot + fileName;               // 纯字符串拼接（basename 已过白名单）
+  if (!outFile.startsWith(outRoot)) {
+    throw new Error('输出路径越出探针 out 目录，拒绝写文件');
+  }
   fs.writeFileSync(outFile, JSON.stringify(payload, null, 2), 'utf8');
 
   for (const r of results) {
