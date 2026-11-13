@@ -533,6 +533,42 @@ target_link_libraries(zrhi_shared_pitch_probe PRIVATE d3d12 dxgi)
 add_dependencies(zrhi_shared_pitch_probe zrender)
 set_target_properties(zrhi_shared_pitch_probe PROPERTIES FOLDER "ZRender/Tests")
 
+# ---- TASK-B-PROBE-01：FSR4 两机探针（真设备/null 对照可复核工具）---------------
+# 回答"这台机器的 FSR 4.1 到底支不支持，证据是什么"——第三人可复核、第二台机器
+# 可复跑；同时是 B-FSR-01 修复的阳性对照工具（对端 RX 9060 XT 上 null=2 vs 真设备
+# =4 含 4.1.2 应能复现）。链接 zupscaler（ZupFsrEnumerateProviders + FG
+# QuerySupport）与 zplugin（ZR_Upscaler_QueryCaps C ABI 只读消费）；真设备建备
+# （DXGI→D3D12CreateDevice，12.0→11.1→11.0）与 B-FSR-01 修法同源。
+# 不进 ctest、不进 zrender_test（真机数据采集，验收/补验流程手动运行；探针不进
+# zrender.dll）。JSON 落 Tools/Probes/out/（文件名白名单+out 边界断言照
+# Tools/Probes/env-probe.js 口径）。POST_BUILD 拷 4 个 FFX 运行时 dll 到 exe
+# 目录——两机可跑：对端重建，或拷 exe+DLL 集到同目录直接运行（跑法见
+# Tools/Probes/README.md）。与窗口程序同类：仅 Release 默认构建。
+add_executable(fsr4_probe tests/fsr4_probe.cpp)
+target_link_libraries(fsr4_probe
+    PRIVATE
+        zkernel
+        zrhi
+        zrender_core
+        zupscaler
+        zplugin
+        d3d12
+        dxgi
+)
+set_target_properties(fsr4_probe PROPERTIES
+    FOLDER "ZRender/Tests"
+    EXCLUDE_FROM_DEFAULT_BUILD YES
+    EXCLUDE_FROM_DEFAULT_BUILD_RELEASE NO
+)
+add_custom_command(TARGET fsr4_probe POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/ffx-fsr/bin/amd_fidelityfx_upscaler_dx12.dll
+        ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/ffx-fsr/bin/amd_fidelityfx_loader_dx12.dll
+        ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/ffx-fsr/bin/amd_fidelityfx_framegeneration_dx12.dll
+        ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/ffx-fsr/bin/amd_ags_x64.dll
+        $<TARGET_FILE_DIR:fsr4_probe>
+    COMMENT "copy FFX runtime dlls (upscaler + loader + framegeneration + ags) next to fsr4_probe.exe")
+
 # ---- TASK-B-R9-01 阶段 0：DXGI 交换链探测 hook（spike，默认不构建）-----------
 # 目的：实证 Unity 2022.3/D3D12 走哪条 DXGI 交换链创建路径（只记录不替换）。
 # 门禁结论为 STOP 时这些目标不进入产品构建：全部 EXCLUDE_FROM_DEFAULT_BUILD，

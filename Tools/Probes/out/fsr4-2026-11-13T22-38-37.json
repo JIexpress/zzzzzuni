@@ -1,0 +1,108 @@
+{
+  "probedAt": "2026-11-13T22:38:37Z",
+  "probe": "fsr4-probe",
+  "task": "TASK-B-PROBE-01",
+  "outMode": "repo-root",
+  "outFile": "C:\\Users\\1\\Desktop\\zcode\\GameFramework\\Tools\\Probes\\out\\fsr4-2026-11-13T22-38-37.json",
+  "host": {
+    "computerName": "DESKTOP-08EO3II",
+    "adapter": "AMD Radeon 780M Graphics",
+    "adapterFound": true,
+    "vendorId": "0x1002",
+    "deviceId": "0x15BF",
+    "dedicatedVideoMemoryMB": 408,
+    "adapterCount": 2,
+    "realDeviceCreated": true,
+    "featureLevel": "12.0",
+    "exePath": "C:\\Users\\1\\Desktop\\zcode\\GameFramework\\Native\\build\\bin\\Release\\fsr4_probe.exe",
+    "ffxDllsPresent": 4,
+    "ffxDllsNextToExe": {
+      "amd_fidelityfx_upscaler_dx12.dll": true,
+      "amd_fidelityfx_loader_dx12.dll": true,
+      "amd_fidelityfx_framegeneration_dx12.dll": true,
+      "amd_ags_x64.dll": true
+    }
+  },
+  "engine": {
+    "apiVersion": 3,
+    "zrVersion": "0.1.0"
+  },
+  "caps": {
+    "source": "ZR_Upscaler_QueryCaps",
+    "code": 0,
+    "structSize": 36,
+    "vendorId": "0x1002",
+    "deviceId": "0x15BF",
+    "fsrRuntimePresent": 1,
+    "fsr4Available": 0,
+    "fsr4ProbeMode": 0,
+    "probeModeMeaning": "0=real-device(trusted) 1=null-fallback(may be wrong) 2=not-probed",
+    "dlssAvailable": 0,
+    "preferredBackend": 0,
+    "activeBackend": 3
+  },
+  "providers": {
+    "family": "UPSCALER",
+    "source": "ZupFsrEnumerateProviders (capacity 8)",
+    "nullDevice": {
+      "count": 2,
+      "versions": [
+        { "id": "0xF5A5CA1E00C01005", "name": "3.1.5" },
+        { "id": "0xF5A5CA1E00803004", "name": "2.3.4" }
+      ]
+    },
+    "realDevice": {
+      "count": 2,
+      "versions": [
+        { "id": "0xF5A5CA1E00C01005", "name": "3.1.5" },
+        { "id": "0xF5A5CA1E00803004", "name": "2.3.4" }
+      ]
+    }
+  },
+  "fg": {
+    "family": "FRAMEGENERATION",
+    "source": "zr::FrameGenerator::QuerySupport (fg_ffx.h surface)",
+    "nullDevice": {
+      "support": "Available",
+      "supportValue": 3,
+      "returnCode": "OK",
+      "returnCodeValue": 0,
+      "providerName": "3.1.6"
+    },
+    "realDevice": {
+      "support": "Available",
+      "supportValue": 3,
+      "returnCode": "OK",
+      "returnCodeValue": 0,
+      "providerName": "3.1.6"
+    }
+  },
+  "comparison": {
+    "upscalerNullCount": 2,
+    "upscalerRealCount": 2,
+    "upscalerCountsEqual": true,
+    "upscalerVersionListsEqual": true,
+    "fourDotXInNullList": false,
+    "fourDotXInRealList": false,
+    "fgSupportEqual": true,
+    "fsr4Available": 0,
+    "fsr4ProbeMode": 0,
+    "shape": "negative-control"
+  },
+  "selfCheck": {
+    "probeModeConsistent": true,
+    "fsr4AvailableMatchesRealList": true,
+    "fsr4Checkable": true,
+    "fgSupportValuesKnown": true
+  },
+  "positiveControl": {
+    "status": "MISSING",
+    "reason": "本机硬件/运行时组合无 FSR4 provider（真设备枚举无 4.x）。阳性对照（null=2 vs real=4 含 4.1.2）需 RDNA4/RX 9000 级硬件——按 B-FSR-01 主控裁决在对端机 RX 9060 XT 补验：步骤见 Tools/Probes/README.md fsr4-probe 节，JSON 回传存档"
+  },
+  "missing": [
+  ],
+  "references": [
+    { "label": "B-FSR-01 本机负对照存档（780M，2026-11-14 01:17）", "value": "null=real=2 (3.1.5/2.3.4)，fsr4Available=0，probeMode=0", "source": "Docs/Logs/TASK-B-FSR-01.md §5" },
+    { "label": "阳性对照（RX 9060 XT，2026-11-13 实测）", "value": "null=2 vs 真设备=4 含 4.1.2", "source": "Docs/Planning/ZRender-改进计划-2026-11-13.md §3-P0" }
+  ]
+}
