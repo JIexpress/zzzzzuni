@@ -188,7 +188,7 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | B-FSR-01 | B/FSR | P0修复:FSR4探测传空设备假阴性——枚举适配器后建真设备再问(改进计划P0/08对照#16) | done(验收PASS:11P+1MISSING按裁决,0FAIL;350用例全绿;负对照成立=硬件真相;阳性移交B-PROBE-01对端补验) | Docs/Logs/TASK-B-FSR-01.md | ae03f62 |
 | B-FSR-02 | B/FSR | P1能力三态诚实化(probeMode)+全仓写死能力表面审计(demo/设置页/失实注释)(改进计划P1) | done(验收PASS V1-V10;ApiVersion2;审计15项8改7核;真机probeMode=0实证) | Docs/Logs/TASK-B-FSR-02.md | ce4bdf4 |
 | B-PROBE-01 | B/PROBE | fsr4-probe探针:真设备/null对照可复核工具+本机存档(改进计划§5) | todo | Docs/Logs/TASK-B-PROBE-01.md | |
-| B-PROBE-02 | B/PROBE | linear-bridge探针:ZRender vs URP同机位亮度差数字化(改进计划§5) | todo | Docs/Logs/TASK-B-PROBE-02.md | |
+| B-PROBE-02 | B/PROBE | linear-bridge探针:ZRender vs URP同机位亮度差数字化(改进计划§5) | done(验收PASS L1-L6;方向性发现:桥输出较URP亮12.5%复合差,'略暗'形容词被实测推翻;逐位可复现) | Docs/Logs/TASK-B-PROBE-02.md | 72126a0 |
 | A-CONF-01 | A/CONF | Config CSV→C#行类型代码生成器(08对照#11半项补全) | done(验收PASS V1-V10;四通道;EditMode 1167全绿;架构26/0;08对照#11改判已实现) | Docs/Logs/TASK-A-CONF-01.md | d15faad |
 | A-CONF-02 | A/CONF | 表类薄壳+注册行自动化(连表类也零手写;A-CONF-01遗留§6.1) | todo | (简报待写) | |
 | X-NAMES-01 | X/HYG | 资产命名规则扩容(T_/ENV_ 前缀)或 T_ENV_*.png 改名——清 6 处存量红灯(A-CONT-01 42f5a26 引入) | done(验收PASS N1-N5;naming段0违规;负例不放宽) | Docs/Logs/TASK-X-NAMES-01.md | 42e981f |

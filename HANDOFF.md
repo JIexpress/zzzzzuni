@@ -75,7 +75,7 @@
 
 代价与边界（如实）：
 - **P4 灯光未逐场景重标定**：`m_LightsUseLinearIntensity` 随迁移翻 1，画面整体略亮——这是"接受新基准"，不是"调完"。某场景偏亮/偏暗就单独调该场景 `Light.intensity`。
-- **ZRender 桥**在 Linear 下改用 UNORM 视图（`CreateExternalTexture(linear:true)`），dxgi 报错消失；代价是这条**非活跃**管线（活跃的是 URP）画面比原生窗口直出略暗。可消除该代价的 typeless 方案实测触发设备移除，留作 P1-b。
+- **ZRender 桥**在 Linear 下改用 UNORM 视图（`CreateExternalTexture(linear:true)`），dxgi 报错消失；代价是这条**非活跃**管线（活跃的是 URP）画面与原生直出存在亮度差。**2026-11-14 B-PROBE-02 实测（72126a0）：桥输出较 URP 直出亮 12.5%（luma 61.22→68.88）——"略暗"形容词被推翻**；差值是复合差（原生 Lambert+环境 0.45/sRGB 基色当线性 vs URP PBR+环境 0.12），背景逐字节相同（p50=0）；换视图前须先拆着色/颜色语义项（P1-b 前置）。数字+差值图：`Tools/Probes/out/linear-bridge-*.json`（探针 `ZRender>Probes>Linear Bridge Compare`，两次独立跑逐位可复现）。可消除该代价的 typeless 方案实测触发设备移除，留作 P1-b。
 - 迁移工具 `Assets/Game/Editor/ColorPipelineSetup.cs` 保留为幂等重放入口，带 `ZF_COLOR_MIGRATION_OK=1` 闸门。
 
 ⚠ **踩坑记录（咬了两次）**：切色彩空间后的**第一次运行不可信**——首张截图全黑、首轮粒子像素用例假红（0.0003 vs 门限 0.0040），复跑即恢复。任何色彩空间/管线切换的证据都必须复跑一次再判定。
