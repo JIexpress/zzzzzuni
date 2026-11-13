@@ -189,7 +189,9 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | B-FSR-02 | B/FSR | P1能力三态诚实化(probeMode)+全仓写死能力表面审计(demo/设置页/失实注释)(改进计划P1) | done(验收PASS V1-V10;ApiVersion2;审计15项8改7核;真机probeMode=0实证) | Docs/Logs/TASK-B-FSR-02.md | ce4bdf4 |
 | B-PROBE-01 | B/PROBE | fsr4-probe探针:真设备/null对照可复核工具+本机存档(改进计划§5) | todo | Docs/Logs/TASK-B-PROBE-01.md | |
 | B-PROBE-02 | B/PROBE | linear-bridge探针:ZRender vs URP同机位亮度差数字化(改进计划§5) | todo | Docs/Logs/TASK-B-PROBE-02.md | |
-| A-CONF-01 | A/CONF | Config CSV→C#行类型代码生成器(08对照#11半项补全) | doing(施工完成,验收中;EditMode 1167全绿) | Docs/Logs/TASK-A-CONF-01.md | |
+| A-CONF-01 | A/CONF | Config CSV→C#行类型代码生成器(08对照#11半项补全) | done(验收PASS V1-V10;四通道;EditMode 1167全绿;架构26/0;08对照#11改判已实现) | Docs/Logs/TASK-A-CONF-01.md | d15faad |
+| A-CONF-02 | A/CONF | 表类薄壳+注册行自动化(连表类也零手写;A-CONF-01遗留§6.1) | todo | (简报待写) | |
+| X-NAMES-01 | X/HYG | 资产命名规则扩容(T_/ENV_ 前缀)或 T_ENV_*.png 改名——清 6 处存量红灯(A-CONT-01 42f5a26 引入) | todo | (简报待写) | |
 | B-KERNEL-01 | B/KERNEL | 组件定位周期实测断言+文档BMI2/POPCNT表述纠正(08对照#7) | todo | Docs/Logs/TASK-B-KERNEL-01.md | |
 | B-VIS-01 | B/VIS | 多视图共享可见性核实:B-R4-02交付范围审计,裁决是否需补实现(08对照#4) | done(裁决A:需求已满足,VisibilitySet一次录入六视图消费;注记:真frustum剔除缺→B-VIS-02) | Docs/Logs/TASK-B-VIS-01.md | (本提交) |
 | B-VIS-02 | B/VIS | 真视锥剔除纯函数CullToViewMask+帧内录入/消费计数断言(不挡路,核实任务衍生加固) | todo | Docs/Logs/TASK-B-VIS-02.md | |
