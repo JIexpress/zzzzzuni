@@ -1,4 +1,4 @@
-Id,Hp,Speed,Damage
+Id:string,Hp:int[1..10000],Speed:float[0..100],Damage:int[0..1000]
 slime,30,2.5,5
 goblin,60,3.75,12
 orc,150,1.8,25

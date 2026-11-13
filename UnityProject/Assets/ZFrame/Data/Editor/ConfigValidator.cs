@@ -128,29 +128,45 @@ namespace ZFrame.Data.ConfigEditor
                     continue;
                 }
 
-                var range = FindRange(prop);
-                if (range != null)
+                if (TryGetRange(prop, out var min, out var max))
                 {
-                    result.Add((prop, (range.min, range.max)));
+                    result.Add((prop, (min, max)));
                 }
             }
 
             return result;
         }
 
-        private static RangeAttribute FindRange(PropertyInfo prop)
+        /// <summary>
+        /// Shared [Range] lookup (property first, then backing field) for the
+        /// validator and the CSV exporter's annotated header. Returns false
+        /// when the property carries no Range.
+        /// </summary>
+        internal static bool TryGetRange(PropertyInfo prop, out double min, out double max)
         {
+            min = 0;
+            max = 0;
             foreach (var attr in prop.GetCustomAttributes(typeof(RangeAttribute), true))
             {
                 if (attr is RangeAttribute onProperty)
                 {
-                    return onProperty;
+                    min = Convert.ToDouble(onProperty.min, System.Globalization.CultureInfo.InvariantCulture);
+                    max = Convert.ToDouble(onProperty.max, System.Globalization.CultureInfo.InvariantCulture);
+                    return true;
                 }
             }
 
             var backing = prop.DeclaringType?.GetField(
                 $"<{prop.Name}>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic);
-            return backing?.GetCustomAttribute<RangeAttribute>();
+            var range = backing?.GetCustomAttribute<RangeAttribute>();
+            if (range == null)
+            {
+                return false;
+            }
+
+            min = Convert.ToDouble(range.min, System.Globalization.CultureInfo.InvariantCulture);
+            max = Convert.ToDouble(range.max, System.Globalization.CultureInfo.InvariantCulture);
+            return true;
         }
 
         private static Type FindRowType(Type tableType)

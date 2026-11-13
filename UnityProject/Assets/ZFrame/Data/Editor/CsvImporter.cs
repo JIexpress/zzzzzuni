@@ -17,8 +17,10 @@ namespace ZFrame.Data.ConfigEditor
     /// the ScriptableObject. Errors are collected and reported once at the
     /// end — a bad row never aborts the pass.
     ///
-    /// Supported column types: int / float / bool / string. The header's
-    /// first column must be "Id".
+    /// Header cells may be bare ("Hp", matched to the row property by name)
+    /// or annotated ("Hp:int[1..10000]", schema format of the code generator;
+    /// the annotation type must match the property). Supported column types:
+    /// int / float / bool / string. The header's first column must be "Id".
     /// </summary>
     public static class CsvImporter
     {
@@ -49,9 +51,12 @@ namespace ZFrame.Data.ConfigEditor
             }
 
             var header = parsed[0];
-            if (!string.Equals(header[0], "Id", StringComparison.Ordinal))
+            if (!ConfigRowSchema.TryParseHeaderCell(header[0], out var idCell, out var idError)
+                || !string.Equals(idCell.Name, "Id", StringComparison.Ordinal))
             {
-                report.Errors.Add($"表头首列必须为 Id，实际为 '{header[0]}'");
+                report.Errors.Add(
+                    $"表头首列必须为 Id（或 Id:string），实际为 '{header[0]}'"
+                    + (idError != null ? $"（{idError}）" : ""));
                 return report;
             }
 
@@ -60,11 +65,25 @@ namespace ZFrame.Data.ConfigEditor
             var props = new List<PropertyInfo>();
             for (int c = 1; c < header.Length; c++)
             {
-                var prop = rowType.GetProperty(header[c],
+                if (!ConfigRowSchema.TryParseHeaderCell(header[c], out var cell, out var cellError))
+                {
+                    report.Errors.Add($"表头列 '{header[c]}' 非法: {cellError}");
+                    continue;
+                }
+
+                var prop = rowType.GetProperty(cell.Name,
                     BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
                 if (prop == null || !prop.CanRead || !prop.CanWrite)
                 {
-                    report.Errors.Add($"表头列 '{header[c]}' 在 {rowType.Name} 上无对应可写字段");
+                    report.Errors.Add($"表头列 '{cell.Name}' 在 {rowType.Name} 上无对应可写字段");
+                    continue;
+                }
+
+                if (cell.HasType && prop.PropertyType != ConfigColumnTypeUtil.ToClrType(cell.Type))
+                {
+                    report.Errors.Add(
+                        $"表头列 '{cell.Name}' 标注类型为 {ConfigColumnTypeUtil.ToSchemaToken(cell.Type)}"
+                        + $"，与 {rowType.Name}.{prop.Name}（{prop.PropertyType.Name}）不一致");
                     continue;
                 }
 

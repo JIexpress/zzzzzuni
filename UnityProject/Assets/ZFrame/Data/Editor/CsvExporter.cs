@@ -12,6 +12,9 @@ namespace ZFrame.Data.ConfigEditor
     /// ConfigTable -> CSV exporter. Core serialization is pure
     /// (<see cref="BuildCsv{TRow}"/>); the file wrapper writes UTF-8
     /// (no BOM) with LF line endings — matches the repo file conventions.
+    /// The header carries the code-generator schema annotations
+    /// (<c>Name:type[min,max]</c>), so export -> import is lossless and the
+    /// committed csv stays the single schema source of truth.
     /// </summary>
     public static class CsvExporter
     {
@@ -52,7 +55,7 @@ namespace ZFrame.Data.ConfigEditor
             return props;
         }
 
-        /// <summary>Core export: table -> csv text (header + one line per row).</summary>
+        /// <summary>Core export: table -> csv text (annotated header + one line per row).</summary>
         public static string BuildCsv<TRow>(ConfigTable<TRow> table) where TRow : ConfigRow
         {
             var props = SerializableProps(typeof(TRow));
@@ -60,7 +63,7 @@ namespace ZFrame.Data.ConfigEditor
             var header = new string[props.Count];
             for (int i = 0; i < props.Count; i++)
             {
-                header[i] = props[i].Name;
+                header[i] = AnnotatedHeaderCell(props[i]);
             }
 
             sb.Append(CsvUtility.JoinLine(header)).Append('\n');
@@ -94,6 +97,35 @@ namespace ZFrame.Data.ConfigEditor
             File.WriteAllText(csvPath, BuildCsv(table), new UTF8Encoding(false));
             UnityEditor.AssetDatabase.Refresh();
             UnityEngine.Debug.Log($"[CsvExporter] exported {table.name} ({table.Rows.Count} rows) -> {csvPath}");
+        }
+
+        /// <summary>
+        /// Schema annotation of one header cell, derived from the property:
+        /// "Hp" -> "Hp:int", plus "[min..max]" when the property (or its
+        /// backing field) carries a [Range]. Unknown CLR types export as
+        /// string (the importer treats unlisted types as verbatim text).
+        /// </summary>
+        private static string AnnotatedHeaderCell(PropertyInfo prop)
+        {
+            var typeToken = prop.PropertyType == typeof(int) ? "int"
+                : prop.PropertyType == typeof(float) ? "float"
+                : prop.PropertyType == typeof(bool) ? "bool"
+                : "string";
+            if ((prop.PropertyType == typeof(int) || prop.PropertyType == typeof(float))
+                && ConfigValidator.TryGetRange(prop, out var min, out var max))
+            {
+                return $"{prop.Name}:{typeToken}[{FormatRangeNumber(min)}..{FormatRangeNumber(max)}]";
+            }
+
+            return $"{prop.Name}:{typeToken}";
+        }
+
+        /// <summary>Invariant, shortest stable form for a range bound (1 -> "1", 0.5 -> "0.5").</summary>
+        private static string FormatRangeNumber(double value)
+        {
+            return Math.Floor(value) == value
+                ? ((long)value).ToString(System.Globalization.CultureInfo.InvariantCulture)
+                : value.ToString("0.0######", System.Globalization.CultureInfo.InvariantCulture);
         }
     }
 }

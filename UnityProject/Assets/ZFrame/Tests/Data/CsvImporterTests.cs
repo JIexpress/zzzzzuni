@@ -166,5 +166,63 @@ namespace ZFrame.Data.Tests
                 "Assets/Configs/CSV/../CFG_EnemyTable.asset",
                 CsvExporter.TableAssetPathFor("Assets/Configs/CSV/enemy.csv"));
         }
+
+        // ---- 注解表头（TASK-A-CONF-01 代码生成 schema 格式，与裸表头并存）----
+
+        [Test]
+        public void ImportRows_AnnotatedHeader_ImportsByStrippedNames()
+        {
+            var table = ScriptableObject.CreateInstance<EnemyConfigTable>();
+            var csv = "Id:string,Hp:int[1..10000],Speed:float[0..100],Damage:int[0..1000]\nslime,30,2.5,5\n";
+
+            var report = CsvImporter.ImportRows(csv, table);
+
+            Assert.IsTrue(report.Ok, string.Join("; ", report.Errors));
+            Assert.AreEqual(1, table.Rows.Count);
+            Assert.AreEqual("slime", table.Rows[0].Id);
+            Assert.AreEqual(30, table.Rows[0].Hp);
+            Assert.AreEqual(2.5f, table.Rows[0].Speed, 1e-5f);
+            Assert.AreEqual(5, table.Rows[0].Damage);
+        }
+
+        [Test]
+        public void ImportRows_AnnotatedTypeMismatch_IsReported()
+        {
+            var table = ScriptableObject.CreateInstance<EnemyConfigTable>();
+            var report = CsvImporter.ImportRows("Id:string,Hp:float\nslime,2.5\n", table);
+
+            Assert.IsFalse(report.Ok);
+            StringAssert.Contains("Hp", report.Errors[0]);
+            Assert.AreEqual(1, table.Rows.Count, "坏列按既有导入语义收集错误后仍落表（其余列用默认值）");
+        }
+
+        [Test]
+        public void ImportRows_BadAnnotation_IsReported()
+        {
+            var table = ScriptableObject.CreateInstance<EnemyConfigTable>();
+            var report = CsvImporter.ImportRows("Id,Hp:inat\nslime,30\n", table);
+
+            Assert.IsFalse(report.Ok);
+            StringAssert.Contains("Hp", report.Errors[0]);
+        }
+
+        [Test]
+        public void BuildCsv_EmitsAnnotatedHeader_RoundtripKeepsSchema()
+        {
+            var source = MakeTable(new EnemyConfigRow { Id = "slime", Hp = 30, Speed = 2.5f, Damage = 5 });
+
+            var csv = CsvExporter.BuildCsv(source);
+            StringAssert.StartsWith(
+                "Id:string,Hp:int[1..10000],Speed:float[0..100],Damage:int[0..1000]",
+                csv,
+                "导出的表头就是代码生成 schema（CSV 是唯一 schema 源）");
+
+            var roundTripped = ScriptableObject.CreateInstance<EnemyConfigTable>();
+            var report = CsvImporter.ImportRows(csv, roundTripped);
+
+            Assert.IsTrue(report.Ok, string.Join("; ", report.Errors));
+            Assert.AreEqual(30, roundTripped.Rows[0].Hp);
+            Assert.AreEqual(2.5f, roundTripped.Rows[0].Speed, 1e-5f);
+        }
     }
 }
