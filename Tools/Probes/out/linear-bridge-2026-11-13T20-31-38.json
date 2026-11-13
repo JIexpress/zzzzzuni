@@ -1,0 +1,137 @@
+{
+  "probeId": "linear-bridge",
+  "probedAt": "2026-11-13T20:31:39.7911887Z",
+  "repoHead": {
+    "ref": "refs/heads/main",
+    "sha": "06f347862272624f0d0d0091aa4c9ad64da7ff1f",
+    "short": "06f3478"
+  },
+  "repro": "Unity.exe -batchmode -projectPath <UnityProject> -executeMethod ZFrame.Render.Probes.LinearBridgeProbe.RunFromCommandLine -logFile Tools/Probes/out/linear-bridge-run.log（勿带 -quit）",
+  "host": {
+    "unityVersion": "2022.3.62f3c1",
+    "colorSpace": "Linear",
+    "graphicsDeviceType": "Direct3D12",
+    "graphicsDeviceName": "AMD Radeon 780M Graphics",
+    "graphicsDeviceVersion": "Direct3D 12 [level 12.1]",
+    "graphicsMemorySizeMB": 7778,
+    "processorType": "AMD Ryzen 7 7840HS w/ Radeon 780M Graphics ",
+    "os": "Windows 11  (10.0.26200) 64bit",
+    "qualityLevel": "Medium",
+    "activePipeline": "URP_Medium"
+  },
+  "plugin": {
+    "status": "MISSING",
+    "reason": "zrender.dll 未找到：请先运行 Tools/build_native.ps1 生成并拷贝到 Assets/Plugins/ZRender/。"
+  },
+  "scene": {
+    "name": "(procedural temp scene, --parity contract constants)",
+    "resolution": [1280, 720],
+    "camera": {
+      "position": [0, 1.6, -4],
+      "rotationEuler": [0, 0, 0],
+      "fovY": 60,
+      "near": 0.3,
+      "far": 60,
+      "clear": "SolidColor",
+      "backgroundColor": [0.05, 0.1, 0.15]
+    },
+    "objects": [
+      {
+        "name": "Ground",
+        "primitive": "Plane(scale2 = 20x20)",
+        "material": "URP Lit",
+        "baseColor": [0.5, 0.5, 0.5],
+        "smoothness": 0.1
+      },
+      {
+        "name": "CubeA",
+        "primitive": "Cube @ (0,0.5,0)",
+        "material": "URP Lit",
+        "baseColor": [0.9, 0.85, 0.75],
+        "smoothness": 0.5
+      },
+      {
+        "name": "CubeB",
+        "primitive": "Cube @ (1.8,0.5,0.8)",
+        "material": "URP Unlit",
+        "baseColor": [0.9, 0.3, 0.25]
+      }
+    ],
+    "urpLight": {
+      "travelDirection": [-0.5, -1, -0.3],
+      "color": [1, 0.96, 0.9],
+      "intensity": 1.2,
+      "shadows": "None（探针口径）"
+    },
+    "ambient": "Flat 0.12（--parity 契约）",
+    "shadows": "Off（探针口径：桥路径 scene_draw.hlsl 无阴影；URP 关阴影对齐两路）",
+    "nativeFixedLight": {
+      "lightDir": [0.5, 0.8, 0.6],
+      "lightColor": [1, 0.95, 0.9, 1],
+      "ambient": [0.45, 0.47, 0.52],
+      "source": "zrhi_d3d12_unity_target.cpp:1100-1121 + kSceneHlsl（探针不改原生侧）"
+    },
+    "nativeClearColor": [0.05, 0.1, 0.15],
+    "backgroundNote": "URP 背景取原生清屏色同值；各管线按自身语义清屏，背景区贡献恒定差（用 centerCrop 与 p50 分开读）"
+  },
+  "capture": {
+    "urp": {
+      "rt": "ARGB32 sRGB 读写 + 24d",
+      "semantic": "URP 直出的最终显示值（sRGB 编码域）",
+      "frames": "1 暖启动 + 1 取帧"
+    },
+    "zrBridge": {
+      "rt": "ARGB32 Linear 读写",
+      "semantic": "共享纹理原始字节直通（UNORM 外部视图按线性采样 + 生产 ZRender/Blit 材质直通贴屏——与生产桥显示路径同构；等价于原生共享纹理字节）",
+      "externalTexture": "BGRA32 linear:true（与 ZRenderPipeline.cs:243 同参）",
+      "frames": "3 帧（末帧返回后 readable=上一帧，帧首 fence 已等完）",
+      "sharedTargetSize": "1280x720（探针定尺寸，与 URP 帧同分辨率）"
+    }
+  },
+  "stages": [
+    {
+      "name": "scene.build",
+      "status": "OK",
+      "detail": "临时场景（退出即弃）：3 个 renderer + 方向光"
+    },
+    {
+      "name": "urp.render",
+      "status": "OK",
+      "detail": "meanLuma=61.22"
+    },
+    {
+      "name": "zrbridge.gate",
+      "status": "OK",
+      "detail": "Direct3D12"
+    },
+    {
+      "name": "zrbridge.plugin",
+      "status": "MISSING",
+      "detail": "zrender.dll 不可用: DllNotFoundException: zrender.dll 未找到：请先运行 Tools/build_native.ps1 生成并拷贝到 Assets/Plugins/ZRender/。"
+    }
+  ],
+  "urpPath": {
+    "status": "OK",
+    "rt": "ARGB32 sRGB 读写 + 24d（显示域：URP 最终输出）",
+    "meanLuma": 61.2226,
+    "meanR": 59.9341,
+    "meanG": 61.2107,
+    "meanB": 65.1344,
+    "png": "C:\\Users\\1\\Desktop\\zcode\\GameFramework\\Tools\\Probes\\out\\linear-bridge-2026-11-13T20-31-38-urp.png"
+  },
+  "zrBridgePath": {
+    "status": "MISSING",
+    "reason": "zrender.dll 不可用: DllNotFoundException: zrender.dll 未找到：请先运行 Tools/build_native.ps1 生成并拷贝到 Assets/Plugins/ZRender/。"
+  },
+  "nativeStats": null,
+  "sceneStats": null,
+  "metrics": {
+    "status": "MISSING",
+    "reason": "ZRender 桥帧缺，无指标"
+  },
+  "diffPng": null,
+  "outputs": ["C:\\Users\\1\\Desktop\\zcode\\GameFramework\\Tools\\Probes\\out\\linear-bridge-2026-11-13T20-31-38-urp.png"],
+  "status": "MISSING",
+  "reasons": ["zrbridge: zrender.dll 不可用: DllNotFoundException: zrender.dll 未找到：请先运行 Tools/build_native.ps1 生成并拷贝到 Assets/Plugins/ZRender/。"],
+  "summary": "MISSING：zrbridge: zrender.dll 不可用: DllNotFoundException: zrender.dll 未找到：请先运行 Tools/build_native.ps1 生成并拷贝到 Assets/Plugins/ZRender/。"
+}

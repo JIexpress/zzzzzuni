@@ -1,0 +1,19 @@
+{
+    "name": "ZFrame.Render.Probes",
+    "rootNamespace": "ZFrame.Render.Probes",
+    "references": [
+        "ZFrame.Render.Bindings",
+        "Unity.RenderPipelines.Universal.Runtime"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

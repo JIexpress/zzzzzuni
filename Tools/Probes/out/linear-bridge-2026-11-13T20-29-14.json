@@ -1,0 +1,213 @@
+{
+  "probeId": "linear-bridge",
+  "probedAt": "2026-11-13T20:29:16.1244887Z",
+  "repoHead": {
+    "ref": "refs/heads/main",
+    "sha": "06f347862272624f0d0d0091aa4c9ad64da7ff1f",
+    "short": "06f3478"
+  },
+  "repro": "Unity.exe -batchmode -projectPath <UnityProject> -executeMethod ZFrame.Render.Probes.LinearBridgeProbe.RunFromCommandLine -logFile Tools/Probes/out/linear-bridge-run.log（勿带 -quit）",
+  "host": {
+    "unityVersion": "2022.3.62f3c1",
+    "colorSpace": "Linear",
+    "graphicsDeviceType": "Direct3D12",
+    "graphicsDeviceName": "AMD Radeon 780M Graphics",
+    "graphicsDeviceVersion": "Direct3D 12 [level 12.1]",
+    "graphicsMemorySizeMB": 7778,
+    "processorType": "AMD Ryzen 7 7840HS w/ Radeon 780M Graphics ",
+    "os": "Windows 11  (10.0.26200) 64bit",
+    "qualityLevel": "Medium",
+    "activePipeline": "URP_Medium"
+  },
+  "plugin": {
+    "apiVersion": 3,
+    "version": "0.1.0",
+    "buildInfo": "zrender 0.1.0 | compiler=MSVC 19.44 | backend=placeholder | modules: kernel=0.1.0 rhi=0.1.0 render=0.1.0 upscaler=0.1.0 plugin=0.1.0 | built Nov 14 2026 03:58:11"
+  },
+  "scene": {
+    "name": "(procedural temp scene, --parity contract constants)",
+    "resolution": [1280, 720],
+    "camera": {
+      "position": [0, 1.6, -4],
+      "rotationEuler": [0, 0, 0],
+      "fovY": 60,
+      "near": 0.3,
+      "far": 60,
+      "clear": "SolidColor",
+      "backgroundColor": [0.05, 0.1, 0.15]
+    },
+    "objects": [
+      {
+        "name": "Ground",
+        "primitive": "Plane(scale2 = 20x20)",
+        "material": "URP Lit",
+        "baseColor": [0.5, 0.5, 0.5],
+        "smoothness": 0.1
+      },
+      {
+        "name": "CubeA",
+        "primitive": "Cube @ (0,0.5,0)",
+        "material": "URP Lit",
+        "baseColor": [0.9, 0.85, 0.75],
+        "smoothness": 0.5
+      },
+      {
+        "name": "CubeB",
+        "primitive": "Cube @ (1.8,0.5,0.8)",
+        "material": "URP Unlit",
+        "baseColor": [0.9, 0.3, 0.25]
+      }
+    ],
+    "urpLight": {
+      "travelDirection": [-0.5, -1, -0.3],
+      "color": [1, 0.96, 0.9],
+      "intensity": 1.2,
+      "shadows": "None（探针口径）"
+    },
+    "ambient": "Flat 0.12（--parity 契约）",
+    "shadows": "Off（探针口径：桥路径 scene_draw.hlsl 无阴影；URP 关阴影对齐两路）",
+    "nativeFixedLight": {
+      "lightDir": [0.5, 0.8, 0.6],
+      "lightColor": [1, 0.95, 0.9, 1],
+      "ambient": [0.45, 0.47, 0.52],
+      "source": "zrhi_d3d12_unity_target.cpp:1100-1121 + kSceneHlsl（探针不改原生侧）"
+    },
+    "nativeClearColor": [0.05, 0.1, 0.15],
+    "backgroundNote": "URP 背景取原生清屏色同值；各管线按自身语义清屏，背景区贡献恒定差（用 centerCrop 与 p50 分开读）"
+  },
+  "capture": {
+    "urp": {
+      "rt": "ARGB32 sRGB 读写 + 24d",
+      "semantic": "URP 直出的最终显示值（sRGB 编码域）",
+      "frames": "1 暖启动 + 1 取帧"
+    },
+    "zrBridge": {
+      "rt": "ARGB32 Linear 读写",
+      "semantic": "共享纹理原始字节直通（UNORM 外部视图按线性采样 + 生产 ZRender/Blit 材质直通贴屏——与生产桥显示路径同构；等价于原生共享纹理字节）",
+      "externalTexture": "BGRA32 linear:true（与 ZRenderPipeline.cs:243 同参）",
+      "frames": "3 帧（末帧返回后 readable=上一帧，帧首 fence 已等完）",
+      "sharedTargetSize": "1280x720（探针定尺寸，与 URP 帧同分辨率）"
+    }
+  },
+  "stages": [
+    {
+      "name": "scene.build",
+      "status": "OK",
+      "detail": "临时场景（退出即弃）：3 个 renderer + 方向光"
+    },
+    {
+      "name": "urp.render",
+      "status": "OK",
+      "detail": "meanLuma=61.22"
+    },
+    {
+      "name": "zrbridge.gate",
+      "status": "OK",
+      "detail": "Direct3D12"
+    },
+    {
+      "name": "zrbridge.plugin",
+      "status": "OK",
+      "detail": "api=3 version=0.1.0"
+    },
+    {
+      "name": "zrbridge.attach",
+      "status": "OK",
+      "detail": "宿主设备已包装"
+    },
+    {
+      "name": "zrbridge.target",
+      "status": "OK",
+      "detail": "1280x720 BGRA8 ×2 槽"
+    },
+    {
+      "name": "zrbridge.external",
+      "status": "OK",
+      "detail": "2 槽外部纹理（BGRA32 linear:true）"
+    },
+    {
+      "name": "zrbridge.submit",
+      "status": "OK",
+      "detail": "3 帧 × 3 绘制（mesh 种类=3，uploadFailures=0 drawFailures=0）"
+    },
+    {
+      "name": "zrbridge.readback",
+      "status": "OK",
+      "detail": "readableSlot=1 meanLuma=68.88"
+    }
+  ],
+  "urpPath": {
+    "status": "OK",
+    "rt": "ARGB32 sRGB 读写 + 24d（显示域：URP 最终输出）",
+    "meanLuma": 61.2226,
+    "meanR": 59.9341,
+    "meanG": 61.2107,
+    "meanB": 65.1344,
+    "png": "C:\\Users\\1\\Desktop\\zcode\\GameFramework\\Tools\\Probes\\out\\linear-bridge-2026-11-13T20-29-14-urp.png"
+  },
+  "zrBridgePath": {
+    "status": "OK",
+    "rt": "ARGB32 Linear 读写（共享纹理原始字节直通）",
+    "externalTexture": "BGRA32 linear:true（UNORM 视图，与 ZRenderPipeline.cs:243 同参）",
+    "blitShader": "Resources/ZRenderBlit（_FlipY=1 默认，与生产一致）",
+    "meanLuma": 68.877,
+    "meanR": 64.4919,
+    "meanG": 69.395,
+    "meanB": 76.6583,
+    "png": "C:\\Users\\1\\Desktop\\zcode\\GameFramework\\Tools\\Probes\\out\\linear-bridge-2026-11-13T20-29-14-zrbridge.png"
+  },
+  "nativeStats": {
+    "renderFrameCount": 3,
+    "width": 1280,
+    "height": 720,
+    "readbackCount": 1,
+    "centerRGBA": [13, 26, 38, 255],
+    "sharedHandle": 14228
+  },
+  "sceneStats": {
+    "drawCount": 3,
+    "meshCount": 3,
+    "uploadCount": 3,
+    "sceneFrameCount": 3
+  },
+  "metrics": {
+    "status": "OK",
+    "domain": "Rec.709 luma（0-255 字节域）：0.2126R+0.7152G+0.0722B",
+    "percentileMethod": "nearest-rank ceil(p*N)-1，作用于 |Δ| 分布",
+    "deltaSign": "Δ = ZRender 桥帧 - URP 帧（正 = 桥更亮）",
+    "frame": {
+      "pixels": 921600,
+      "meanLumaUrp": 61.2226,
+      "meanLumaZr": 68.877,
+      "meanSignedDelta": 7.6544,
+      "meanAbsDelta": 10.8882,
+      "brightnessDeltaPct": 12.5025,
+      "p50AbsDelta": 0,
+      "p95AbsDelta": 57.8464,
+      "p99AbsDelta": 77.8596,
+      "pctPixelsAbsDeltaOver2": 39.4703
+    },
+    "centerCrop": {
+      "pixels": 230400,
+      "meanLumaUrp": 49.4426,
+      "meanLumaZr": 53.6426,
+      "meanSignedDelta": 4.2,
+      "meanAbsDelta": 12.1444,
+      "brightnessDeltaPct": 8.4948,
+      "p50AbsDelta": 0,
+      "p95AbsDelta": 77.8596,
+      "p99AbsDelta": 77.8596,
+      "pctPixelsAbsDeltaOver2": 30.2778,
+      "region": [320, 180, 640, 360]
+    }
+  },
+  "diffPng": {
+    "path": "C:\\Users\\1\\Desktop\\zcode\\GameFramework\\Tools\\Probes\\out\\linear-bridge-2026-11-13T20-29-14-diff.png",
+    "gain": 4,
+    "encoding": "灰度 = min(255, |Δluma| * gain)（帧级）"
+  },
+  "outputs": ["C:\\Users\\1\\Desktop\\zcode\\GameFramework\\Tools\\Probes\\out\\linear-bridge-2026-11-13T20-29-14-urp.png", "C:\\Users\\1\\Desktop\\zcode\\GameFramework\\Tools\\Probes\\out\\linear-bridge-2026-11-13T20-29-14-zrbridge.png", "C:\\Users\\1\\Desktop\\zcode\\GameFramework\\Tools\\Probes\\out\\linear-bridge-2026-11-13T20-29-14-diff.png"],
+  "status": "OK",
+  "reasons": [],
+  "summary": "ZRender 桥输出较 URP 直出 亮 12.5%（均值 luma URP=61.22 ZR=68.88；|Δ| p95=57.85 p99=77.86，0-255 域）"
+}
