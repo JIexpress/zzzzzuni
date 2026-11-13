@@ -4,6 +4,8 @@
 
 | 日期 | 任务 | 结果 | commit |
 |---|---|---|---|
+| 2026-11-14 | B-PLANET-06 SetWorld+SampleHeight | done：验收PASS(D1-D10)；快照 SRWLOCK+纯函数无锁采样；def 48→50；**12864 个 chunk 顶点采样 0 失配**(float 位形 memcmp,验收修正口径)；并发 38400 次零撕裂；367 用例/821,749 全绿；溢出封口延后(B-PLANET-09+) | 63fa2f4 |
+| 2026-11-14 | X-ARCH-01 架构矩阵补登记 | done：捎带验收 PASS(主控显式委托)；ZFrame.Render.Probes EditorOnly 条目；arch 27/0；EditMode 1182/0 恢复(B-PROBE-02 债) | c9a7d0c |
 | 2026-11-14 | B-PROBE-02 linear-bridge 探针 | done：验收PASS(L1-L6)；**方向性发现：桥输出较 URP 直出亮 12.5%**(61.22→68.88)——复合差(原生 Lambert+环境 0.45/sRGB 当线性 vs URP PBR+环境 0.12)，背景逐字节相同；HANDOFF"略暗"形容词被实测推翻；两次独立跑四项数字逐位一致；MISSING 分支有牙；JSON+3PNG 入 Tools/Probes/out | 72126a0 |
 | 2026-11-14 | B-PLANET-05 SetCameraOrigin 实现 | done：验收PASS(C1-C7)；§3.3 协议(NaN/Inf 拒绝状态保持/持久/初始零/末次生效)；def 46→48(dumpbin 实证)；五组 doctest+61 断言(行星量级 memcmp 逐位)；359 用例+EditMode 1182 全绿；状态落点私有静态(04 接管迁移) | 3d3ac1c |
 | 2026-11-14 | B-PLANET-03 行星数学生产化 | done：验收PASS(Z1-Z6,独立worktree基线)；§①③④→Native/zplanet/(469行纯标准库)；§②留tests(shim逐字节一致)；逐位回归(5433行/1791断言归一化diff空)；白名单零越界；354全绿；发现基线SIGSEGV→X-DIAG-02 登记 | 11a477f |

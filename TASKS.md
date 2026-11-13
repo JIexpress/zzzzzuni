@@ -192,6 +192,7 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | A-CONF-01 | A/CONF | Config CSV→C#行类型代码生成器(08对照#11半项补全) | done(验收PASS V1-V10;四通道;EditMode 1167全绿;架构26/0;08对照#11改判已实现) | Docs/Logs/TASK-A-CONF-01.md | d15faad |
 | A-CONF-02 | A/CONF | 表类薄壳+注册行自动化(连表类也零手写;A-CONF-01遗留§6.1) | todo | (简报待写) | |
 | X-NAMES-01 | X/HYG | 资产命名规则扩容(T_/ENV_ 前缀)或 T_ENV_*.png 改名——清 6 处存量红灯(A-CONT-01 42f5a26 引入) | done(验收PASS N1-N5;naming段0违规;负例不放宽) | Docs/Logs/TASK-X-NAMES-01.md | 42e981f |
+| X-ARCH-01 | X/HYG | 架构矩阵补登记ZFrame.Render.Probes(B-PROBE-02债;验收捎带制) | done(捎带验收PASS;arch 27/0;EditMode 1182/0) | Docs/Logs/TASK-X-ARCH-01.md | c9a7d0c |
 | B-KERNEL-01 | B/KERNEL | 组件定位周期实测断言+文档BMI2/POPCNT表述纠正(08对照#7) | done(验收PASS K1-K7变异亲做;实测4~5/5,目标3未达如实记;353全绿) | Docs/Logs/TASK-B-KERNEL-01.md | fcbcb95 |
 | B-PLANET-02 | B/PLANET | 行星ABI头落地(zplugin.h+def+ApiVersion 2→3+Bindings声明+ERR_ARGS注释同步) | done(验收PASS P1-P7;§14↔头文件零签名偏离;接口冻结) | Docs/Logs/TASK-B-PLANET-02.md | f5e6aa1 |
 | B-VIS-01 | B/VIS | 多视图共享可见性核实:B-R4-02交付范围审计,裁决是否需补实现(08对照#4) | done(裁决A:需求已满足,VisibilitySet一次录入六视图消费;注记:真frustum剔除缺→B-VIS-02) | Docs/Logs/TASK-B-VIS-01.md | (本提交) |
@@ -201,7 +202,7 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | B-PLANET-03 | B/PLANET | 行星数学生产化(planet_math §①③④提升,语义零改动) | done(验收PASS Z1-Z6,独立worktree基线逐位回归;Native/zplanet/ 在库) | Docs/Logs/TASK-B-PLANET-03.md | 11a477f |
 | B-PLANET-04 | B/PLANET | chunk通道生产实现(句柄表/生成/上传/RenderFrame集成/剔除移植/着色器) | todo | (简报待写) | |
 | B-PLANET-05 | B/PLANET | SetCameraOrigin+round-trip doctest | done(验收PASS C1-C7;def 46→48 dumpbin实证;五组doctest全绿) | Docs/Logs/TASK-B-PLANET-05.md | 3d3ac1c |
-| B-PLANET-06 | B/PLANET | SetWorld+SampleHeight(含与chunk顶点逐位一致断言) | todo | (简报待写) | |
+| B-PLANET-06 | B/PLANET | SetWorld+SampleHeight(含与chunk顶点逐位一致断言) | done(验收PASS D1-D10;12864顶点0失配;并发38400次零撕裂;def 48→50) | Docs/Logs/TASK-B-PLANET-06.md | 63fa2f4 |
 | B-PLANET-07 | B/PLANET | Unity托管桥(流式管理器+WorldOrigin接线;首个生产消费者) | todo | (简报待写) | |
 | B-PLANET-08 | B/PLANET | 接缝专项(float缝宽实测+neighborMask行为定版) | todo | (简报待写) | |
 | B-PLANET-09 | B/PLANET | planet-budget探针(1080p/接缝/贴地扫描/双机) | todo | (简报待写) | |
