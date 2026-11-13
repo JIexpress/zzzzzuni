@@ -9557,6 +9557,190 @@ static int RunPlanet3Mode()
         }
     }
 
+    // ---- 5.5) TASK-B-PLANET-08：共享边贴地像素检查（GPU 口径；只报告，不改判定）----
+    // 口径：相机 2m 悬停在近档 (16,16)/(17,16) 共享东西缘的若干顶点正上方，天顶
+    // 向下（near=0.5m，像素足迹 ≈4.8mm/px）。共享边双侧 float 拷贝若逐位重合，
+    // 两侧网格在该缘水密衔接、缝内无清屏色；存在缝则缝内漏出清屏色（Cull None
+    // 下裙边侧立不占投影宽、缝底无几何、远面被 far=800km 裁剪）。逐采样顶点以
+    // CPU float 域复刻两侧渲染位置（口径同 doctest 渲染口径：t=float(anchor−cam)、
+    // viewPos=float(local+t)）并经同一 float 矩阵链（MatMultiply 与 dll 同算法）
+    // 投影，输出「预期缝宽 px」与回读扫描「清屏色异常 px」对照。证据图：
+    // Docs/Parity/planet3_seam_closeup.png。判据仍以 doctest CPU 数字为准——
+    // 本段只回答「GPU 端到端是否与 CPU 复刻一致（缝可见/不可见）」。
+    {
+        const int32_t p3Stride = 63;
+        const int32_t p3Total = static_cast<int32_t>(kP3Cells) * p3Stride;
+        auto anchorOf = [&](uint32_t cx) -> zplanet::Vec3d {
+            const int32_t gU = zplanet::ChunkVertexIndex(
+                static_cast<int32_t>(cx), p3Stride / 2, p3Stride);
+            const int32_t gV = zplanet::ChunkVertexIndex(16, p3Stride / 2, p3Stride);
+            return zplanet::PlanetChunkVertexAtGlobal(
+                centerC, 0, gU, gV, p3Total, kP3Seed)
+                .posAbs;
+        };
+        const zplanet::Vec3d anchA = anchorOf(16u);
+        const zplanet::Vec3d anchB = anchorOf(17u);
+        float projSeam[16];
+        MatPerspectiveFovLH(3.14159265f / 3.0f,
+            static_cast<float>(kP3Width) / static_cast<float>(kP3Height), 0.5f, 800000.0f,
+            projSeam);
+        // mvp·(local,1) → 像素坐标（列向量约定、D3D 视口 y 向下）
+        auto projectPixel = [](const float mvp[16], const float lpos[3], double w,
+                               double h, double* outX, double* outY) {
+            const float clipX = mvp[0] * lpos[0] + mvp[1] * lpos[1] + mvp[2] * lpos[2]
+                + mvp[3];
+            const float clipY = mvp[4] * lpos[0] + mvp[5] * lpos[1] + mvp[6] * lpos[2]
+                + mvp[7];
+            const float clipW = mvp[12] * lpos[0] + mvp[13] * lpos[1] + mvp[14] * lpos[2]
+                + mvp[15];
+            const float ndcX = clipX / clipW;
+            const float ndcY = clipY / clipW;
+            *outX = (static_cast<double>(ndcX) * 0.5 + 0.5) * w;
+            *outY = (0.5 - static_cast<double>(ndcY) * 0.5) * h;
+        };
+        constexpr uint32_t kSeamSamples[9] = {4u, 12u, 20u, 28u, 32u, 36u, 44u, 52u, 60u};
+        std::vector<uint8_t> pixels(static_cast<size_t>(kP3Width) * kP3Height * 4u);
+        std::vector<uint8_t> bestPng;
+        uint32_t bestClear = 0u;
+        uint32_t seamFramesOk = 0u;
+        std::printf("  seam pass (GPU 口径, 2m nadir, footprint≈4.81mm/px):\n");
+        std::printf("    k  expect_mm  expect_px  clear_win  run_row  clear_total   pxA(px)   pyA(px)\n");
+        for (const uint32_t k : kSeamSamples) {
+            const zplanet::PlanetChunkVertex ev = zplanet::PlanetChunkVertexAtGlobal(
+                centerC, 0, 17 * p3Stride, 16 * p3Stride + static_cast<int32_t>(k),
+                p3Total, kP3Seed);
+            const zplanet::Vec3d camK = zplanet::VecAdd(centerC,
+                zplanet::VecScale(ev.normal, zplanet::kPlanetRadiusM + ev.heightM + 2.0));
+            const float downF[3] = {static_cast<float>(-ev.normal.x),
+                static_cast<float>(-ev.normal.y), static_cast<float>(-ev.normal.z)};
+            const float upHint[3] = {0.0f, 1.0f, 0.0f}; // face0 t2（缘沿 v → 屏内竖直线）
+            float viewK[16];
+            zplanetapp::PlanetMatLookAtLH(downF, upHint, viewK);
+            float vpK[16];
+            MatMultiply(projSeam, viewK, vpK);
+            // CPU float 域两侧渲染位置（口径同 doctest 渲染口径）
+            const float la[3] = {static_cast<float>(ev.posAbs.x - anchA.x),
+                static_cast<float>(ev.posAbs.y - anchA.y),
+                static_cast<float>(ev.posAbs.z - anchA.z)};
+            const float lb[3] = {static_cast<float>(ev.posAbs.x - anchB.x),
+                static_cast<float>(ev.posAbs.y - anchB.y),
+                static_cast<float>(ev.posAbs.z - anchB.z)};
+            const float ta[3] = {static_cast<float>(anchA.x - camK.x),
+                static_cast<float>(anchA.y - camK.y), static_cast<float>(anchA.z - camK.z)};
+            const float tb[3] = {static_cast<float>(anchB.x - camK.x),
+                static_cast<float>(anchB.y - camK.y), static_cast<float>(anchB.z - camK.z)};
+            float modelA[16];
+            float modelB[16];
+            MatTranslation(ta[0], ta[1], ta[2], modelA);
+            MatTranslation(tb[0], tb[1], tb[2], modelB);
+            float mvpA[16];
+            float mvpB[16];
+            MatMultiply(vpK, modelA, mvpA); // 与 dll MatMultiply 同算法同输入 → 逐位同
+            MatMultiply(vpK, modelB, mvpB);
+            float vaR[3] = {};
+            float vbR[3] = {};
+            for (int c = 0; c < 3; ++c) {
+                vaR[c] = la[c] + ta[c]; // float32 加法（VS mul(model,·) 平移口径）
+                vbR[c] = lb[c] + tb[c];
+            }
+            const double dx = static_cast<double>(vaR[0]) - static_cast<double>(vbR[0]);
+            const double dy = static_cast<double>(vaR[1]) - static_cast<double>(vbR[1]);
+            const double dz = static_cast<double>(vaR[2]) - static_cast<double>(vbR[2]);
+            const double seamM = std::sqrt(dx * dx + dy * dy + dz * dz);
+            double pxa = 0.0;
+            double pya = 0.0;
+            double pxb = 0.0;
+            double pyb = 0.0;
+            projectPixel(mvpA, la, static_cast<double>(kP3Width),
+                static_cast<double>(kP3Height), &pxa, &pya);
+            projectPixel(mvpB, lb, static_cast<double>(kP3Width),
+                static_cast<double>(kP3Height), &pxb, &pyb);
+            // 渲染 + 回读（frameCount=48 起，偶 → 本帧写槽 0，回读即本帧）
+            setCameraOrigin(camK.x, camK.y, camK.z);
+            setCamera(viewK, projSeam);
+            beginScene();
+            const bool frameOk = (renderFrame() == ZR_UNITY_OK)
+                && (readPixels(pixels.data(), kP3Width * 4u, nullptr, nullptr)
+                    == ZR_UNITY_OK);
+            uint32_t clearTotal = 0u;
+            uint32_t clearWin = 0u;
+            uint32_t runRow = 0u;
+            if (frameOk) {
+                const int32_t rowLo = std::max(0,
+                    static_cast<int32_t>(std::min(pya, pyb)) - 2);
+                const int32_t rowHi = std::min(static_cast<int32_t>(kP3Height) - 1,
+                    static_cast<int32_t>(std::max(pya, pyb)) + 2);
+                const int32_t colLo = std::max(0,
+                    static_cast<int32_t>(std::min(pxa, pxb)) - 3);
+                const int32_t colHi = std::min(static_cast<int32_t>(kP3Width) - 1,
+                    static_cast<int32_t>(std::max(pxa, pxb)) + 3);
+                for (uint32_t y = 0u; y < kP3Height; ++y) {
+                    uint32_t run = 0u;
+                    for (uint32_t x = 0u; x < kP3Width; ++x) {
+                        const uint8_t* px = pixels.data()
+                            + (static_cast<size_t>(y) * kP3Width + x) * 4u;
+                        const bool isClear
+                            = std::abs(static_cast<int>(px[2]) - static_cast<int>(kClearRGB[0]))
+                                    <= 6
+                                && std::abs(static_cast<int>(px[1])
+                                       - static_cast<int>(kClearRGB[1]))
+                                    <= 6
+                                && std::abs(static_cast<int>(px[0])
+                                       - static_cast<int>(kClearRGB[2]))
+                                    <= 6;
+                        if (isClear) {
+                            ++clearTotal;
+                            ++run;
+                            if (run > runRow) {
+                                runRow = run;
+                            }
+                        } else {
+                            run = 0u;
+                        }
+                        if (isClear && static_cast<int32_t>(y) >= rowLo
+                            && static_cast<int32_t>(y) <= rowHi
+                            && static_cast<int32_t>(x) >= colLo
+                            && static_cast<int32_t>(x) <= colHi) {
+                            ++clearWin;
+                        }
+                    }
+                }
+                if (k == 32u) {
+                    bestPng.assign(pixels.begin(), pixels.end()); // 证据帧（离线列剖面）
+                }
+                if (clearTotal > bestClear) {
+                    bestClear = clearTotal;
+                }
+            }
+            std::printf("    %2u  %8.3f  %8.3f  %9u  %7u  %11u  %8.2f  %8.2f  %s\n", k,
+                seamM * 1000.0, std::fabs(pxa - pxb), clearWin, runRow, clearTotal,
+                pxa, pya, frameOk ? "" : "(frame FAILED)");
+            if (frameOk) {
+                ++seamFramesOk;
+            }
+        }
+        if (!bestPng.empty()) {
+            std::filesystem::create_directories("Docs/Parity");
+            std::vector<uint8_t> rgb(bestPng.size() / 4u * 3u);
+            for (uint32_t y = 0u; y < kP3Height; ++y) {
+                for (uint32_t x = 0u; x < kP3Width; ++x) {
+                    const uint8_t* px = bestPng.data()
+                        + (static_cast<size_t>(y) * kP3Width + x) * 4u;
+                    uint8_t* o = rgb.data() + (static_cast<size_t>(y) * kP3Width + x) * 3u;
+                    o[0] = px[2];
+                    o[1] = px[1];
+                    o[2] = px[0];
+                }
+            }
+            const bool pngWritten = WritePng24("Docs/Parity/planet3_seam_closeup.png",
+                rgb.data(), kP3Width, kP3Height, kP3Width * 3u);
+            std::printf("    seam closeup png(k=32): %s\n",
+                pngWritten ? "Docs/Parity/planet3_seam_closeup.png" : "FAILED");
+        }
+        std::printf("    seam pass done: frames_ok=%u/9（只报告不改判定；判据以 doctest "
+                    "CPU 数字为准）\n",
+            seamFramesOk);
+    }
     // ---- 6) 终态统计与判定 --------------------------------------------------------------
     if (getStats(&stats) == ZR_PLANET_OK) {
         std::printf("zrhi_d3d12_window: --planet3 stats: live=%u create=%llu destroy=%llu "

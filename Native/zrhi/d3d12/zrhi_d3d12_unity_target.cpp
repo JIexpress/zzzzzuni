@@ -718,6 +718,7 @@ uint64_t g_lodChangeTotal = 0u;
 uint32_t g_drawnLast = 0u;
 uint32_t g_culledLast = 0u;
 uint32_t g_seamFails = 0u;
+uint64_t g_seamChecks = 0u; // 已核查共享边数（邻居命中缘；G4-R1 门的 doctest 观测面）
 double g_lastFrameMs = 0.0;
 double g_frameMsSum = 0.0;
 uint32_t g_frameMsCount = 0u;
@@ -861,13 +862,19 @@ uint32_t GenerateChunkVerts(uint32_t faceId, uint32_t cx, uint32_t cy, uint32_t 
 
 // ---- 运行期共享边核查（B-TECH-04 seams 口径移植；seamCheckFails 诊断计数）----------
 //
-// 范围（v1 如实登记）：仅近档（tier 1）构建时核查——近档是缝宽敏感档；远档共享边
-// 的逐位一致由构造性路由保证并有 test_planet.cpp doctest 锁定（§5.1 同档共享边
-// 同全局整数索引 → 同一 double 表达式）。近档构建每帧量级 ~百，O(8192) 邻居查找
-// 可忽略；远档全量首帧 6144 次构建若逐次全表扫会引入秒级首帧开销，故不查。
+// 范围（G4-R1 门，TASK-B-PLANET-08 主控裁决落地）：仅近档（tier 1）核查。沿革
+// 如实登记：G4 改判后本函数曾被上传/档位路径对全档位调用（远档含内）；B-PLANET-07
+// 实测每块固定税 ~150µs（4×O(8192) 邻居表扫 + 命中后逐顶点 double 重算比对），
+// 6144 全量远档首帧外推 ≈0.92s 渲染线程 CPU，托管预算只能钳制不能消除 → 采纳
+// 3 行门方案：远档跳过。远档共享边的逐位一致由构造性路由保证（同全局整数索引 →
+// 同一 double 表达式，test_planet.cpp doctest + B-PLANET-08 测量探针全缘全顶点
+// 复认），跨档/面界由裙边遮蔽（B-TECH-04 口径）。近档是缝宽敏感档，核查保留。
 void SeamCheckNear(uint32_t faceId, uint32_t cx, uint32_t cy, uint32_t cellsPerEdge,
     uint32_t tier)
 {
+    if (tier == 0u) {
+        return; // G4-R1 门：远档跳过（理由与证据链见上注）
+    }
     const uint32_t res = TierRes(tier);
     const int32_t stride = static_cast<int32_t>(res) - 1;
     const int32_t total = static_cast<int32_t>(cellsPerEdge) * stride;
@@ -895,6 +902,7 @@ void SeamCheckNear(uint32_t faceId, uint32_t cx, uint32_t cy, uint32_t cellsPerE
         if (other == nullptr) {
             return;
         }
+        ++g_seamChecks; // 邻居命中、即将逐顶点比对（G4-R1 门行为锁定的观测面）
         // 缘上第 k 个共享顶点：我方 = first + k·delta，邻方同 delta（两侧沿同一条
         // 缘推进——共享边的全局索引逐 k 恒等，构造性一致，memcmp 应全绿）
         for (uint32_t k = 0; k < res; ++k) {
@@ -1938,6 +1946,7 @@ void TestResetForUnitTests(void)
     planet_detail::g_drawnLast = 0u;
     planet_detail::g_culledLast = 0u;
     planet_detail::g_seamFails = 0u;
+    planet_detail::g_seamChecks = 0u;
     planet_detail::g_lastFrameMs = 0.0;
     planet_detail::g_frameMsSum = 0.0;
     planet_detail::g_frameMsCount = 0u;
@@ -1949,6 +1958,78 @@ void TestResetForUnitTests(void)
     planet_detail::g_frame.drawCount = 0u;
     planet_detail::g_frame.culledCount = 0u;
     ::ReleaseSRWLockExclusive(&planet_detail::g_lock);
+}
+
+uint32_t TestNeighborMaskForUnitTests(uint64_t handle)
+{
+    // 仅 doctest 使用（TASK-B-PLANET-08）：读回槽位当前记录的 neighborMask——
+    // v1「校验+记录」的记录面可观测化（GetStats 无掩码字段、ZrPlanetStats 布局
+    // 冻结不可扩），使 doctest 能锁定 ChunkCreate/SetLod 两条写入路径的记录行为。
+    // 与 TestResetForUnitTests 同策：不进 zrender.def 导出表，生产行为零改动。
+    const uint32_t slotIdx = static_cast<uint32_t>(handle & 0xFFFFFFFFull);
+    const uint32_t generation = static_cast<uint32_t>(handle >> 32);
+    if (slotIdx >= planet_detail::kMaxChunks || generation == 0u) {
+        return 0u;
+    }
+    ::AcquireSRWLockShared(&planet_detail::g_lock);
+    const planet_detail::PlanetChunkSlot& slot = planet_detail::g_slots[slotIdx];
+    const uint32_t mask = ((slot.state != planet_detail::kSlotEmpty
+                               && slot.generation == generation)
+            ? slot.neighborMask
+            : 0u);
+    ::ReleaseSRWLockShared(&planet_detail::g_lock);
+    return mask;
+}
+
+uint64_t TestSeamChecksForUnitTests(void)
+{
+    // 仅 doctest 使用（TASK-B-PLANET-08/G4-R1）：读回累计已核查共享边数——
+    // 「远档门跳过 / 近档仍核查」行为锁定的观测面（seamCheckFails 只反映失配，
+    // 无法区分「查了全绿」与「没查」）。
+    ::AcquireSRWLockShared(&planet_detail::g_lock);
+    const uint64_t checks = planet_detail::g_seamChecks;
+    ::ReleaseSRWLockShared(&planet_detail::g_lock);
+    return checks;
+}
+
+uint32_t TestPromoteUploadsForUnitTests(void)
+{
+    // 仅 doctest 使用（TASK-B-PLANET-08/G4-R1）：把 PENDING_UPLOAD 槽位推进到
+    // LIVE（appliedLod = desiredLod），模拟上传边界的状态效果。无 GPU——VB 恒
+    // 无效，SeamCheckNear 只读槽位元数据不触 VB，doctest 才能直驱 seam 核查路径
+    //（否则该路径只在 RenderFrame 内可达，doctest 进程不可观测）。
+    ::AcquireSRWLockExclusive(&planet_detail::g_lock);
+    uint32_t promoted = 0u;
+    for (uint32_t s = 0; s < planet_detail::kMaxChunks; ++s) {
+        planet_detail::PlanetChunkSlot& slot = planet_detail::g_slots[s];
+        if (slot.state == planet_detail::kSlotPendingUpload) {
+            slot.state = planet_detail::kSlotLive;
+            slot.appliedLod = slot.desiredLod;
+            ++promoted;
+        }
+    }
+    ::ReleaseSRWLockExclusive(&planet_detail::g_lock);
+    return promoted;
+}
+
+uint32_t TestGenerateChunkVertsForUnitTests(uint32_t faceId, uint32_t cx, uint32_t cy,
+    uint32_t cellsPerEdge, uint32_t tier, const double originAbs[3],
+    std::vector<uint8_t>& out)
+{
+    // 仅 doctest 使用（TASK-B-PLANET-08）：生产顶点生成函数的直连薄桥。
+    // planet_detail 位于匿名命名空间（内部链接），测试二进制无法直连其符号，
+    // 故给此外部链接转发——被调方仍是生产函数本体（零复制、零漂移），测试取回
+    // 的就是 memcpy 进 GPU VB 的字节。
+    return planet_detail::GenerateChunkVerts(
+        faceId, cx, cy, cellsPerEdge, tier, originAbs, out);
+}
+
+void TestSeamCheckNearForUnitTests(uint32_t faceId, uint32_t cx, uint32_t cy,
+    uint32_t cellsPerEdge, uint32_t tier)
+{
+    // 仅 doctest 使用（TASK-B-PLANET-08/G4-R1）：SeamCheckNear 直连薄桥（同上——
+    // 匿名命名空间内部链接不可直连，经此外部符号转发到生产函数本体）。
+    planet_detail::SeamCheckNear(faceId, cx, cy, cellsPerEdge, tier);
 }
 
 } // namespace planet
