@@ -99,7 +99,23 @@ namespace ZFrame.Render
                     Rescan();
                 }
 
-                ZrSceneMath.ToNativeRowMajor(camera.worldToCameraMatrix, _view);
+                // ---- TASK-B-PLANET-07：行星通道启用帧走相机相对提交 ------------------------
+                // SetCamera 收 viewRel（纯旋转，平移恰为 0——构造唯一在 WorldOriginMath，
+                // 由 WorldOriginPlanetLink 每帧发布、这里消费）；物件世界矩阵同步相机相对化
+                // （ZrSceneMath.ToCameraRelativeWorld），保证场景路径与行星 chunk 在同一
+                // double 域原点语义下都落位正确（chunk 模型平移由原生 float(anchor−cam) 承载）。
+                // 通道关闭/本帧无 viewRel（接线方缺席）：回退全量视图旧路径（行为与
+                // B-UNITY-03 逐字一致，场景物件不受影响）。
+                bool planetRelative = ZrPlanetChannel.TryConsumeCameraRelativeView(out Matrix4x4 viewRel);
+                if (planetRelative)
+                {
+                    ZrSceneMath.ToNativeRowMajor(viewRel, _view);
+                }
+                else
+                {
+                    ZrSceneMath.ToNativeRowMajor(camera.worldToCameraMatrix, _view);
+                }
+                Vector3 cameraUnityPosition = planetRelative ? camera.transform.position : Vector3.zero;
 
                 // renderIntoTexture=false：目标是我们自己的纹理，最终由 ZRenderBlit 上屏。
                 // GetGPUProjectionMatrix 会把 Unity 的 GL 约定（z∈[-1,1]）转成平台约定，
@@ -166,7 +182,14 @@ namespace ZFrame.Render
                         continue;
                     }
 
-                    ZrSceneMath.ToNativeRowMajor(renderer.localToWorldMatrix, _world);
+                    Matrix4x4 worldMatrix = renderer.localToWorldMatrix;
+                    if (planetRelative)
+                    {
+                        // viewRel 帧：世界矩阵平移列相机相对化（行主序平移量在下标 3/7/11）。
+                        worldMatrix = ZrSceneMath.ToCameraRelativeWorld(worldMatrix, cameraUnityPosition);
+                    }
+
+                    ZrSceneMath.ToNativeRowMajor(worldMatrix, _world);
                     FillColor(renderer, _rgba);
                     if (ZrUnitySceneNative.DrawMesh(handle, _world, _rgba) != ZrUnitySceneNative.Ok)
                     {

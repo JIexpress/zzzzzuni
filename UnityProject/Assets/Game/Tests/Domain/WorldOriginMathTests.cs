@@ -213,5 +213,99 @@ namespace Game.Domain.Tests
             Assert.AreEqual(0.0078125, WorldOriginMath.FloatUlpAt(100000.0), 1e-12);
             Assert.AreEqual(0.0625, WorldOriginMath.FloatUlpAt(1000000.0), 1e-12);
         }
+
+        // ---- TASK-B-PLANET-07：viewRel 纯旋转构造（行星通道唯一边界延伸）----
+
+        /// <summary>构造 T(t)·R 的合成视图矩阵：旋转取一个确定性的正交基（绕 Y 转 30°）。</summary>
+        private static Matrix4x4 MakeViewWithTranslation(float tx, float ty, float tz)
+        {
+            Quaternion rotation = Quaternion.Euler(0f, 30f, 0f);
+            Matrix4x4 view = Matrix4x4.TRS(new Vector3(tx, ty, tz), rotation, Vector3.one).inverse;
+            return view;
+        }
+
+        [Test]
+        public void ToCameraRelativeView_ZeroesTranslation_KeepsRotationBitwise()
+        {
+            Matrix4x4 view = MakeViewWithTranslation(9010000f, -2500.5f, 3.25f);
+            Matrix4x4 viewRel = WorldOriginMath.ToCameraRelativeView(view);
+
+            // 平移列恰好为 0（不残留 9010km 爬升段幅值——ULP(9.01e6)=1m 的抖动源）。
+            Assert.AreEqual(0f, viewRel.m03, "平移列 m03 必须归零");
+            Assert.AreEqual(0f, viewRel.m13, "平移列 m13 必须归零");
+            Assert.AreEqual(0f, viewRel.m23, "平移列 m23 必须归零");
+            Assert.AreEqual(1f, viewRel.m33, "m33（w 行）必须保持 1");
+
+            // 旋转部分逐位不变（上 3×4 的其余元素）。
+            for (int row = 0; row < 3; row++)
+            {
+                for (int column = 0; column < 3; column++)
+                {
+                    Assert.AreEqual(view[row, column], viewRel[row, column],
+                        $"旋转元素 [{row},{column}] 必须逐位保持");
+                }
+            }
+        }
+
+        [Test]
+        public void ToCameraRelativeView_TransformsDirectionsIdentically()
+        {
+            Matrix4x4 view = MakeViewWithTranslation(-1234.5f, 0.25f, 98765f);
+            Matrix4x4 viewRel = WorldOriginMath.ToCameraRelativeView(view);
+
+            // 方向向量（w=0）在两个矩阵下逐位一致——视图只差平移，旋转不动。
+            Vector3[] directions =
+            {
+                new Vector3(1f, 0f, 0f),
+                new Vector3(0f, 1f, 0f),
+                new Vector3(0f, 0f, 1f),
+                new Vector3(0.3f, -0.8f, 0.5f),
+            };
+            foreach (Vector3 direction in directions)
+            {
+                Vector4 extended = new Vector4(direction.x, direction.y, direction.z, 0f);
+                Vector4 expected = view * extended;
+                Vector4 actual = viewRel * extended;
+                Assert.AreEqual(expected.x, actual.x, "方向 x 分量必须逐位一致");
+                Assert.AreEqual(expected.y, actual.y, "方向 y 分量必须逐位一致");
+                Assert.AreEqual(expected.z, actual.z, "方向 z 分量必须逐位一致");
+                Assert.AreEqual(expected.w, actual.w, "方向 w 分量必须逐位一致");
+            }
+        }
+
+        [Test]
+        public void ToCameraRelativeView_PointTransform_DiffersExactlyByRemovedTranslation()
+        {
+            Matrix4x4 view = MakeViewWithTranslation(4321.5f, -8.25f, 15000f);
+            Matrix4x4 viewRel = WorldOriginMath.ToCameraRelativeView(view);
+
+            Vector4 point = new Vector4(12.5f, 7f, -10f, 1f);
+            Vector4 full = view * point;
+            Vector4 relative = viewRel * point;
+
+            // 恒等式：全量视图的点变换 = 纯旋转视图的点变换 + 被移除的平移列
+            // （TRS().inverse 的平移列是 Rᵀ·(−pos)，不是 −pos——所以从矩阵本身读取）。
+            Vector3 removed = view.GetColumn(3);
+            Assert.AreEqual(full.x, relative.x + removed.x, 1e-3f, "x 恒等式");
+            Assert.AreEqual(full.y, relative.y + removed.y, 1e-3f, "y 恒等式");
+            Assert.AreEqual(full.z, relative.z + removed.z, 1e-3f, "z 恒等式");
+        }
+
+        [Test]
+        public void ToCameraRelativeView_Idempotent_AlreadyRelativeStaysPut()
+        {
+            Matrix4x4 view = MakeViewWithTranslation(5000f, 0f, 0f);
+            Matrix4x4 once = WorldOriginMath.ToCameraRelativeView(view);
+            Matrix4x4 twice = WorldOriginMath.ToCameraRelativeView(once);
+
+            for (int row = 0; row < 4; row++)
+            {
+                for (int column = 0; column < 4; column++)
+                {
+                    Assert.AreEqual(once[row, column], twice[row, column],
+                        $"重复归零必须幂等 [{row},{column}]");
+                }
+            }
+        }
     }
 }

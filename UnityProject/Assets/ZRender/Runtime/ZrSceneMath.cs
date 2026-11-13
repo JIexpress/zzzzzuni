@@ -17,6 +17,22 @@ namespace ZFrame.Render
     /// <summary>场景桥的纯数学部分：矩阵主序、投影归一化、顶点打包、剔除包装。</summary>
     internal static class ZrSceneMath
     {
+        /// <summary>
+        /// TASK-B-PLANET-07：行星通道启用帧的物件世界矩阵相机相对化——
+        /// world' = T(−cam)·world（只有平移列变化）。当 SetCamera 收到 viewRel
+        /// （纯旋转，平移恰为 0）时，物件平移必须由世界矩阵自己减掉相机 Unity 坐标
+        /// （物件与相机都在原点附近，幅值 ≤4km，ULP 0.488mm——A-WORLD-01 §6.4-4 容差
+        /// 口径），否则物件会被平移 R^T·cam 出画面。平移列 = 世界位置 − 相机位置：
+        /// localToWorld 的平移列恒等于物件世界位置（任意父子层级），T(−cam) 只改它。
+        /// </summary>
+        internal static Matrix4x4 ToCameraRelativeWorld(Matrix4x4 localToWorld, Vector3 cameraUnityPosition)
+        {
+            localToWorld.m03 -= cameraUnityPosition.x;
+            localToWorld.m13 -= cameraUnityPosition.y;
+            localToWorld.m23 -= cameraUnityPosition.z;
+            return localToWorld;
+        }
+
         /// <summary>本引擎的顶点布局：pos3f + normal3f + uv2f = 8 float。</summary>
         internal const int VertexStrideFloats = 8;
 

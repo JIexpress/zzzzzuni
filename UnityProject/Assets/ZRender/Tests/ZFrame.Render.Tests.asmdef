@@ -5,6 +5,8 @@
         "ZFrame.Core",
         "ZFrame.Render",
         "ZFrame.Render.Bindings",
+        "Game.Domain",
+        "Game.View",
         "Unity.RenderPipelines.Universal.Runtime"
     ],
     "includePlatforms": [

@@ -79,6 +79,31 @@ namespace Game.Domain.World
                 originOffset.Z + unityPosition.z);
 
         /// <summary>
+        /// TASK-B-PLANET-07：行星通道专用的相机相对视图（viewRel，纯旋转——平移分量恰好为 0）。
+        ///
+        /// 这是 A-WORLD-01 顺序铁律在行星接线上的延伸（P2-行星ABI设计.md §3.1：托管侧新
+        /// 边界点必须并入 <see cref="WorldOriginMath"/> 同一处）：
+        /// 相机的绝对平移**绝不进 float 视图矩阵**——它经 <c>ZR_Unity_SetCameraOrigin(double)</c>
+        /// 以 double 直传原生，由原生在 double 域计算 chunk 模型平移
+        /// <c>float(anchorAbs − camAbs)</c>（设计稿 §3.2/D3）。若把相机平移（重定位爬升段
+        /// 可达 9010km）float 化后塞回视图，ULP(幅值)≈1m 的抖动会原封不动回到画面。
+        ///
+        /// 实现上这意味着「double 域构造后一次 cast」的行星版等价形态：视图的平移列
+        /// 直接归零（一次都不 cast），只保留 worldToCameraMatrix 的旋转部分——旋转元素
+        /// 由相机四元数（局部量）决定，与相机离原点的距离无关，无大坐标量化问题。
+        /// 调用点（WorldOriginPlanetLink）**禁止**在本函数之外自建行星视图，保证
+        /// 「平移归零」只有一份实现（变异点：任何把平移列留下/塞值的改法都会被
+        /// WorldOriginPlanetViewTests 的方向不变性 + 平移恒零断言钉红）。
+        /// </summary>
+        public static UnityEngine.Matrix4x4 ToCameraRelativeView(UnityEngine.Matrix4x4 worldToCamera)
+        {
+            worldToCamera.m03 = 0f;
+            worldToCamera.m13 = 0f;
+            worldToCamera.m23 = 0f;
+            return worldToCamera;
+        }
+
+        /// <summary>
         /// 幅值 <paramref name="meters"/> 处 float 的 ULP（相邻可表示值的间距）——
         /// 顶点抖动的量化下限。100km 处 = 2^-7 = 7.8125mm（V6 的证据函数）。
         /// </summary>
