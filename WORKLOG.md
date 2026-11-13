@@ -4,6 +4,7 @@
 
 | 日期 | 任务 | 结果 | commit |
 |---|---|---|---|
+| 2026-11-14 | B-PLANET-03 行星数学生产化 | done：验收PASS(Z1-Z6,独立worktree基线)；§①③④→Native/zplanet/(469行纯标准库)；§②留tests(shim逐字节一致)；逐位回归(5433行/1791断言归一化diff空)；白名单零越界；354全绿；发现基线SIGSEGV→X-DIAG-02 登记 | 11a477f |
 | 2026-11-14 | X-NAMES-01 命名规则扩容 | done：验收PASS(N1-N5)；TextureDomains={ENV} 域段注册制；naming 段 0 违规(6 处红灯清零)；负例不放宽；+12 用例；EditMode 1182 全绿 | 42e981f |
 | 2026-11-14 | B-PLANET-02 行星 ABI 头落地 | done：验收PASS(P1-P7)；§14 汇编入 zplugin.h(:412-560,零签名偏离)；ApiVersion 2→3 六消费方同步；ZrPlanetNative 门面+门控；def 零 diff；原生 354/EditMode 1182 全绿；接口冻结,B-PLANET-04/05/06 可按头开工 | f5e6aa1 |
 | 2026-11-14 | B-KERNEL-01 周期实测断言 | done：验收PASS(K1-K7,变异亲做恰1红)；实测 a1 4~5/a2 5/a3 17 cycles/op(Zen4)——设计目标约3未达如实记录；变异逐位循环80~90证断言有牙；PEXT存在未实装→BMI2表述6文件纠正；无POPCNT SKIP+MISSING；353用例全绿；08对照#7 未验证→已验证 | fcbcb95 |

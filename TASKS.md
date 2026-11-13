@@ -198,7 +198,7 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | B-VIS-02 | B/VIS | 真视锥剔除纯函数CullToViewMask+帧内录入/消费计数断言(不挡路,核实任务衍生加固) | todo | Docs/Logs/TASK-B-VIS-02.md | |
 | B-PLANET-01 | B/PLANET | P2拆解+行星ABI设计稿(double原点/chunk句柄/LOD邻居/高度采样)(改进计划P2) | done(验收FAIL一轮→修订R1→复验PASS;F1-F7全落地;46导出裁决正确;D8接受) | Docs/Logs/TASK-B-PLANET-01.md | 80d82bc |
 | B-PLANET-02 | B/PLANET | 行星ABI头落地(zplugin.h+def+ApiVersion 2→3+Bindings声明+ERR_ARGS注释同步) | todo | (简报待写) | |
-| B-PLANET-03 | B/PLANET | 行星数学生产化(planet_math §①③④提升,语义零改动) | todo | (简报待写) | |
+| B-PLANET-03 | B/PLANET | 行星数学生产化(planet_math §①③④提升,语义零改动) | done(验收PASS Z1-Z6,独立worktree基线逐位回归;Native/zplanet/ 在库) | Docs/Logs/TASK-B-PLANET-03.md | 11a477f |
 | B-PLANET-04 | B/PLANET | chunk通道生产实现(句柄表/生成/上传/RenderFrame集成/剔除移植/着色器) | todo | (简报待写) | |
 | B-PLANET-05 | B/PLANET | SetCameraOrigin+round-trip doctest | todo | (简报待写) | |
 | B-PLANET-06 | B/PLANET | SetWorld+SampleHeight(含与chunk顶点逐位一致断言) | todo | (简报待写) | |
@@ -208,3 +208,4 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | B-PLANET-10 | B/PLANET | abi-precision探针(四点ULP双口径) | todo | (简报待写) | |
 | B-PLANET-11 | B/PLANET | 编辑器内验收集成(三档截图/1km行走/账目断言) | todo | (简报待写) | |
 | B-PLANET-12 | B/PLANET | IL2CPP+Android各一次(Android按D8裁决=托管等效实现) | todo | (简报待写) | |
+| X-DIAG-02 | X/DIAG | test_zfg_env.cpp:117 `-s` 全量跑 SIGSEGV(B-PLANET-03 发现,基线即有)——定位根因并修 | todo | (简报待写) | |
