@@ -10,6 +10,10 @@
 #include "zrhi/d3d12/zrhi_d3d12_unity_target.h" // TASK-B-UNITY-02（同上）
 #include "zrhi/zrhi.h"
 #include "zupscaler/zupscaler.h"
+// TASK-B-PLANET-06：采样与 chunk 顶点同源的生产头（§6.1/D7——PlanetTerrainHeightM
+// 语义零改动；header-only，消费经 zplugin 既有 PUBLIC include 根 Native/，
+// planet_math.h:8-9 注明的两种合法消费方式之一，零 CMake 增量）
+#include "zplanet/planet_math.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -587,6 +591,100 @@ int ZR_Unity_GetCameraOrigin(double* outOrigin)
     outOrigin[1] = g_planetCameraOrigin[1];
     outOrigin[2] = g_planetCameraOrigin[2];
     return ZR_UNITY_OK;
+}
+
+// ---- TASK-B-PLANET-06：行星上下文快照 + 高度采样（zplugin.h 行星声明块组 2/组 4）----
+//
+// 协议（设计稿 Docs/Planning/P2-行星ABI设计.md §6.1，权威文本 §14 组 2/组 4）：
+//   - SetWorld：进程级单行星上下文快照（seed + centerAbs），SRWLOCK 独占锁替换。
+//     校验序 = NULL → ABI → NONFINITE：structSize 不符时布局未知，不得解引用
+//     centerAbs，故 ABI 先于 NONFINITE；拒绝时不触碰既有快照。错误码适用面
+//    （§4.5 七码组核对）：NULL/ABI/NONFINITE 三码——半径不入参（R = kPlanetRadiusM
+//     锁定于 planet_math.h）、seed 为 uint32 全域合法，故 RANGE/HANDLE/FULL/STATE
+//     不适用于本函数。v1 契约：初始化期调用，单行星静态语义（无清除路径；
+//     多行星上下文明确不做，设计稿 §12-11）。
+//   - SampleHeight：同步纯函数（D7——异步回填明确不做），任意线程可调：
+//     共享锁内拷贝快照后无锁计算（§8 表锁协议）。dir = normalize(pos − C)，
+//     h = PlanetTerrainHeightM(seed, dir)——与 chunk 顶点生成同一生产头纯函数
+//    （§6.3「同一函数同一值」）。校验序 = NULL → NONFINITE（纯输入域检查）→
+//     STATE（上下文前置）→ RANGE（|pos−C| = 0 方向退化）——退化判据依赖中心 C，
+//     只能在 STATE 之后成立（zplugin.h 组 4 注释按码罗列，非优先级序）。
+//     normalize 的 double 舍入会带来 1-2 ULP 方向漂移（d·R 与 sqrt(Σ(d·R)²) 各自
+//     正确舍入所致，构造性不可避免），经 float 输出粒度（ULP(2.4km) = 0.244mm）
+//     完全吸收——实测 40896 样本零失配、最大高度漂移 3.5e-10 m，见任务日志。
+//   - 状态落点：zplugin 进程级静态（与 g_planetCameraOrigin 同口径，无 GPU 触点）。
+//     归属核对：GetStats/ClearAll 属 §14 组 3（chunk 句柄生命周期），归
+//     B-PLANET-04——不在本任务组 2/组 4 职责内（§14/§6.1 核对结论，见任务日志）。
+
+namespace {
+
+struct PlanetWorldSnapshot {
+    bool set = false;                      // SetWorld 成功过（v1 无清除路径）
+    uint32_t seed = 0u;                    // 地形噪声种子（chunk 生成与 SampleHeight 共用）
+    double centerAbs[3] = {0.0, 0.0, 0.0}; // 行星中心绝对坐标（米）
+};
+
+SRWLOCK g_planetWorldLock = SRWLOCK_INIT;
+PlanetWorldSnapshot g_planetWorld;
+
+} // namespace
+
+int ZR_Planet_SetWorld(const ZrPlanetWorld* world)
+{
+    if (world == nullptr) {
+        return ZR_PLANET_ERR_NULL;
+    }
+    if (world->structSize != sizeof(ZrPlanetWorld)) {
+        return ZR_PLANET_ERR_ABI; // 布局未知，不得解引用 centerAbs
+    }
+    if (!std::isfinite(world->centerAbs[0]) || !std::isfinite(world->centerAbs[1])
+        || !std::isfinite(world->centerAbs[2])) {
+        return ZR_PLANET_ERR_NONFINITE; // 拒绝时保持既有快照不变
+    }
+    ::AcquireSRWLockExclusive(&g_planetWorldLock);
+    g_planetWorld.seed = world->seed;
+    g_planetWorld.centerAbs[0] = world->centerAbs[0];
+    g_planetWorld.centerAbs[1] = world->centerAbs[1];
+    g_planetWorld.centerAbs[2] = world->centerAbs[2];
+    g_planetWorld.set = true;
+    ::ReleaseSRWLockExclusive(&g_planetWorldLock);
+    return ZR_PLANET_OK;
+}
+
+int ZR_Planet_SampleHeight(double x, double y, double z, float* outHeightM)
+{
+    if (outHeightM == nullptr) {
+        return ZR_PLANET_ERR_NULL;
+    }
+    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) {
+        return ZR_PLANET_ERR_NONFINITE;
+    }
+    // 共享锁内拷贝快照（32B 量级），随后无锁计算——任意线程并发的锁协议（§8）
+    bool worldSet = false;
+    uint32_t seed = 0u;
+    double centerAbs[3] = {0.0, 0.0, 0.0};
+    ::AcquireSRWLockShared(&g_planetWorldLock);
+    worldSet = g_planetWorld.set;
+    if (worldSet) {
+        seed = g_planetWorld.seed;
+        centerAbs[0] = g_planetWorld.centerAbs[0];
+        centerAbs[1] = g_planetWorld.centerAbs[1];
+        centerAbs[2] = g_planetWorld.centerAbs[2];
+    }
+    ::ReleaseSRWLockShared(&g_planetWorldLock);
+    if (!worldSet) {
+        return ZR_PLANET_ERR_STATE;
+    }
+    const double dx = x - centerAbs[0];
+    const double dy = y - centerAbs[1];
+    const double dz = z - centerAbs[2];
+    const double len = std::sqrt(dx * dx + dy * dy + dz * dz);
+    if (len == 0.0) {
+        return ZR_PLANET_ERR_RANGE; // pos 与中心重合，方向退化
+    }
+    const double h = zplanet::PlanetTerrainHeightM(seed, dx / len, dy / len, dz / len);
+    *outHeightM = static_cast<float>(h);
+    return ZR_PLANET_OK;
 }
 
 } // extern "C"

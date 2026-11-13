@@ -14,6 +14,10 @@
 ; TASK-B-UNITY-05 新增：整面回读一导出（真实脚印 + 本侧状态转换）。
 ; TASK-B-PLANET-05 新增：行星相机原点两导出（Set/GetCameraOrigin；首个行星导出落
 ; def——B-PLANET-02 口径"def 随实现任务追加"自此开始；后续行星导出随 04/06 追加）。
+; TASK-B-PLANET-06 新增：行星上下文 + 高度采样两导出（SetWorld 快照 + SampleHeight
+; 纯函数同步采样，消费 zplanet 生产头 PlanetTerrainHeightM）。zplugin.h 组 3 的
+; chunk 生命周期导出（ChunkCreate/ChunkDestroy/ChunkSetOrigin/SetLod/GetStats/
+; ClearAll）属 B-PLANET-04，届时按头文件组序插在本组两符号之间。
 LIBRARY zrender
 EXPORTS
     ZR_ApiVersion
@@ -52,6 +56,8 @@ EXPORTS
     ZR_Unity_GetSceneStats
     ZR_Unity_SetCameraOrigin
     ZR_Unity_GetCameraOrigin
+    ZR_Planet_SetWorld
+    ZR_Planet_SampleHeight
     ZK_WorldCreate
     ZK_WorldDestroy
     ZK_RegisterComponent
