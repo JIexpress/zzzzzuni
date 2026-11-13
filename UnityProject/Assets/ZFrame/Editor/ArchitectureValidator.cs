@@ -64,6 +64,16 @@ namespace ZFrame.Editor
                 {
                     AllowedReferences = new[] { "ZFrame.Core", "ZFrame.Render.Bindings" },
                 },
+                // TASK-X-ARCH-01（B-PROBE-02 债补登记）：渲染探针程序集，Editor-only
+                // （includePlatforms=Editor），仅用于诊断输出，不接运行时流程。
+                // AllowedReferences 逐项对齐 ZFrame.Render.Probes.asmdef 的实际 references：
+                // ZFrame.Render.Bindings（绑定层）+ Unity.RenderPipelines.Universal.Runtime
+                // （URP 运行时数据读取），autoReferenced=false 不对外扩散。
+                ["ZFrame.Render.Probes"] = new AsmdefRule
+                {
+                    AllowedReferences = new[] { "ZFrame.Render.Bindings", "Unity.RenderPipelines.Universal.Runtime" },
+                    EditorOnly = true,
+                },
                 // NOTE: 当尚不存在的程序集（如 ZFrame.Render.Editor / Game.Editor）
                 // 落地时，必须同步在此处补条目 —— 单测会校验矩阵条目数与实际 asmdef 数一致。
                 ["Game.Domain"] = new AsmdefRule
