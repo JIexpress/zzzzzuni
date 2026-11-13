@@ -4,6 +4,7 @@
 
 | 日期 | 任务 | 结果 | commit |
 |---|---|---|---|
+| 2026-11-14 | B-VIS-01 共享可见性核实 | done：裁决 A——VisibilitySet viewMask 一次录入/六视图消费(test_shadows 0x1F 断言)；外部审计"未找到"不成立；诚实注记:真 frustum 剔除缺→B-VIS-02 登记 | (本提交) |
 | 2026-11-14 | G-158 交接材料入仓+双机分工 | done：Docs/Planning 四文档+Tools/Probes(env-probe 两机自适应+两机证据存档)+看板新增 9 行(引擎补全轮)；本机探针首跑 10 项取到/3 项 MISSING 如实记录 | (本提交) |
 | 2026-11-09 | A-AI-05 NPC 自主模式+预约态 | held（暂缓）：简报已写、零半成品代码；用户进入正式开发后置，恢复按简报 §五派施工 | — |
 | 2026-11-09 | A-AI-04 可供性接场景 | done：SceneAffordances 真实锚点 + AffordanceSeeker 走过去占用；验收 PASS 7/7，1140+110 | 89f3497 |
