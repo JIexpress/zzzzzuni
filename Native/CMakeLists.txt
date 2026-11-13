@@ -355,6 +355,7 @@ add_executable(zrender_test
     tests/test_devconsole_auth.cpp # TASK-X-SEC-01（token 常量时间比较/限流窗口/形态校验）
     tests/test_rg_export_path.cpp # TASK-X-SEC-01（rg.export 根白名单/`..`/绝对路径/junction 逃逸）
     tests/test_planet.cpp # TASK-B-TECH-03（浮点原点重定位/球面重力积分/重定位阈值；TASK-B-PLANET-03 起 §①③④ 指生产头 zplanet/planet_math.h，§② 重力经 tests shim）
+    tests/test_planet_channel.cpp # TASK-B-PLANET-04（chunk 通道六导出：校验链/代际防误用/满容量/延迟释放/SetLod 下一帧/账目对账/ClearAll + 内嵌 planet2.hlsl 逐字节比对 + 单 chunk 生成耗时基准）
     # zfgprobe 的 hook/wrap/dll 三个编译单元并入测试目标（TASK-R10-05 B-3/B-7 需要
     # 直接驱动 HookCreateSwapChainForHwnd / WrapShutdown / ZFG_FgShutdown）。
     # 注意：zfg_dxgi_proxy.cpp **有意不并入**——其 ForwardArgs 会把测试进程内的
@@ -409,7 +410,13 @@ target_link_libraries(zrender_test
         zrender_core
         zupscaler
         zplugin
-        zplanet # TASK-B-PLANET-03：行星数学生产头 include 根（仅测试 exe 消费；zrender/zplugin 零依赖不变）
+        # TASK-B-PLANET-03/04 口径（主控裁决②如实描述）：zplanet 是 header-only
+        # INTERFACE 目标，只承载 include 根 Native/（planet_math.h 仅标准库依赖）。
+        # zplugin 与 zrhi（unity_target 行星通道）经各自既有的 PUBLIC include 根
+        # 消费该纯头，依赖方向是"生产头纯文本消费"——不构成 zplugin→zrhi/zrender
+        # 内部模块耦合，也无需显式 link（include 根已由 foreach 覆盖）；此处挂接
+        # 仅为测试 exe 直含生产头的显式声明（B-PLANET-03 既有口径延续）。
+        zplanet
 )
 set_target_properties(zrender_test PROPERTIES FOLDER "ZRender/Tests")
 
@@ -478,6 +485,9 @@ add_executable(zrhi_d3d12_window tests/zrhi_d3d12_window.cpp)
 # TASK-B-R8-02：--fg 模式（FrameGenerator + FG 代理交换链）；--fg 直含
 # ffx_api_dx12.h（表面格式映射）→ 显式给 ffx include 目录（zupscaler 的 PRIVATE
 # 不传播）；构建后补拷 FG 组件 dll 与 AGS 库（FG 运行时依赖）。
+# TASK-B-PLANET-04：--planet3 模式运行期 LoadLibrary zrender.dll 走生产导出面
+# （zrhi_unity_bridge 同策）→ 构建序上先确保 dll 新鲜。
+add_dependencies(zrhi_d3d12_window zrender)
 target_include_directories(zrhi_d3d12_window PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/ffx-fsr/api/include)
 target_link_libraries(zrhi_d3d12_window PRIVATE zrhi zrender_core zupscaler zplugin d3d12 dxgi)

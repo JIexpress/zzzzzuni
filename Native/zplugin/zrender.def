@@ -15,9 +15,10 @@
 ; TASK-B-PLANET-05 新增：行星相机原点两导出（Set/GetCameraOrigin；首个行星导出落
 ; def——B-PLANET-02 口径"def 随实现任务追加"自此开始；后续行星导出随 04/06 追加）。
 ; TASK-B-PLANET-06 新增：行星上下文 + 高度采样两导出（SetWorld 快照 + SampleHeight
-; 纯函数同步采样，消费 zplanet 生产头 PlanetTerrainHeightM）。zplugin.h 组 3 的
-; chunk 生命周期导出（ChunkCreate/ChunkDestroy/ChunkSetOrigin/SetLod/GetStats/
-; ClearAll）属 B-PLANET-04，届时按头文件组序插在本组两符号之间。
+; 纯函数同步采样，消费 zplanet 生产头 PlanetTerrainHeightM）。
+; TASK-B-PLANET-04 新增：chunk 句柄生命周期六导出（ChunkCreate/ChunkDestroy/
+; ChunkSetOrigin/SetLod/GetStats/ClearAll）——按 zplugin.h 头文件组序插在组 2
+; （SetWorld）与组 4（SampleHeight）之间。导出总数 50 → 56。
 LIBRARY zrender
 EXPORTS
     ZR_ApiVersion
@@ -57,6 +58,12 @@ EXPORTS
     ZR_Unity_SetCameraOrigin
     ZR_Unity_GetCameraOrigin
     ZR_Planet_SetWorld
+    ZR_Planet_ChunkCreate
+    ZR_Planet_ChunkDestroy
+    ZR_Planet_ChunkSetOrigin
+    ZR_Planet_SetLod
+    ZR_Planet_GetStats
+    ZR_Planet_ClearAll
     ZR_Planet_SampleHeight
     ZK_WorldCreate
     ZK_WorldDestroy

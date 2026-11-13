@@ -23,6 +23,12 @@
 
 #include <cstdint>
 
+// TASK-B-PLANET-04：行星通道 API 消费 zplugin.h 的 POD 定宽结构（ZrPlanetChunkDesc /
+// ZrPlanetStats / ZrPlanetWorld——B-PLANET-02 冻结布局）。仅头文件类型消费、零链接
+// 依赖：zrhi 不调用 zplugin 的导出函数（方向始终是 zplugin 薄转发 → 本模块），
+// include 不构成模块耦合（与 zrhi→zrender_core 的既有方向性约束同类）。
+#include "zplugin/zplugin.h"
+
 namespace zr {
 namespace unity_target {
 
@@ -197,6 +203,64 @@ bool HasTarget(void);
 /// tests/test_zrhi_unity_target 与 Native/shaders/first_draw.hlsl 做逐字节比对，
 /// 守住"嵌入式副本不得与仓库里的 shader 漂移"）。outSize 写入字节数（不含 NUL）。
 const char* EmbeddedFirstDrawHlsl(uint32_t* outSize);
+
+/// 诊断/单测用（TASK-B-PLANET-04）：内嵌 planet2.hlsl 源码指针（不出 ABI，
+/// 与 Native/shaders/planet2.hlsl 做逐字节比对——first_draw 同规矩）。
+const char* EmbeddedPlanet2Hlsl(uint32_t* outSize);
+
+// ---- TASK-B-PLANET-04：行星 chunk 通道（句柄表 + 顶点生成 + GPU 生命周期）--------
+//
+// 设计依据：Docs/Planning/P2-行星ABI设计.md §4（生命周期状态机）/§4.5（校验链）、
+// §7（内存所有权/泄漏防护四层）、§8（线程/延迟一帧）。这些函数是 zplugin.cpp 六导出
+// （ChunkCreate/ChunkDestroy/ChunkSetOrigin/SetLod/GetStats/ClearAll）的实现落点，
+// 同时承接 SetCameraOrigin 存储的 B-PLANET-05→04 接管迁移（zplugin 侧变为薄转发，
+// ABI 语义不变）——zrhi 不反向依赖 zplugin，因此渲染线程可读的状态必须落在本模块。
+//
+// 状态机（每槽位）：EMPTY → PENDING_UPLOAD（顶点已生成待上传） → LIVE →
+// PENDING_FREE（句柄已失效、VB 保留到下帧，期间仍被绘制——先画后删） → EMPTY。
+// GPU 上传/释放/档位应用只在渲染线程 RenderFrame 边界（§8 延迟一帧）。
+namespace planet {
+
+/// 设置行星上下文镜像（seed + 行星中心，米）。由 ZR_Planet_SetWorld 校验通过后
+/// 调用（zplugin 持有 B-PLANET-06 权威快照，本模块持有渲染线程用的镜像副本——
+/// LOD 重建在 RenderFrame 内重生成顶点时需要 seed/center）。v1 初始化期调用。
+int SetWorldContext(uint32_t seed, const double centerAbs[3]);
+
+/// 设置相机绝对原点（行星中心系，米）。B-PLANET-05 存储接管后的唯一落点；
+/// zplugin 的 Set/Get 薄转发至此。渲染线程在 RenderFrame 读它算 chunk 模型平移
+/// （double 域相减后一次 cast，§3.2/D3）。
+void SetCameraOrigin(double x, double y, double z);
+
+/// 取相机绝对原点（outOrigin 写 3 元素；调用方保证非空——zplugin 已校验）。
+void GetCameraOrigin(double* outOrigin);
+
+/// 创建 chunk（zplugin 已过 NULL/ABI/RANGE/NONFINITE/STATE 校验链）：
+/// 顶点在锁外按规范路由生成（§8），独占锁内占槽发布（FULL 在此裁决）。
+/// 成功写 *outHandle 并返回 ZR_PLANET_OK。
+int ChunkCreate(const ZrPlanetChunkDesc& desc, uint64_t* outHandle);
+
+/// 销毁 chunk：句柄立即失效（代际+1，独占锁内）；VB 下一 RenderFrame 释放
+/// （期间仍绘制一帧——先画后删）。无效/重复句柄返回 ZR_PLANET_ERR_HANDLE。
+int ChunkDestroy(uint64_t handle);
+
+/// 更新锚点绝对坐标。顶点不重算（局部坐标相对锚点不变，§4.3）。
+int ChunkSetOrigin(uint64_t handle, double x, double y, double z);
+
+/// 设置期望 LOD 档位与邻居掩码（zplugin 已过 RANGE 校验）。下一 RenderFrame 应用。
+int SetLod(uint64_t handle, uint32_t lodLevel, uint32_t neighborMask);
+
+/// 取统计快照（共享锁；账目恒等式 createTotal − destroyTotal == liveChunks 全程成立
+/// ——ClearAll/桥级释放按销毁记账保持恒等，§7.3）。
+int GetStats(ZrPlanetStats* out);
+
+/// 一次性清空全部 chunk（句柄全失效 + 渲染线程排队释放；销毁记账保恒等）。
+void ClearAll(void);
+
+/// 测试钩子（不出 def；doctest 进程级单例复位——与 ZR_Upscaler 测试复位同策）：
+/// 清空全部 chunk/统计/上下文镜像（不动相机原点——B-PLANET-05 用例自管理）。
+void TestResetForUnitTests(void);
+
+} // namespace planet
 
 } // namespace unity_target
 } // namespace zr

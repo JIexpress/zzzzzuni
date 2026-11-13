@@ -551,7 +551,7 @@ int ZR_Unity_GetSceneStats(ZrUnitySceneStats* out)
     return ZR_UNITY_OK;
 }
 
-// ---- TASK-B-PLANET-05：行星相机原点（zplugin.h 行星声明块组 1，B-PLANET-02 冻结签名）----
+// ---- TASK-B-PLANET-05（B-PLANET-04 接管消费）：行星相机原点 --------------------
 //
 // 协议（设计稿 Docs/Planning/P2-行星ABI设计.md §3.3，权威文本 §14 组 1）：
 //   - SetCameraOrigin：NaN/Inf 任一分量 → ZR_UNITY_ERR_ARGS（zplugin.h ZR_UNITY_ERR_ARGS
@@ -563,22 +563,18 @@ int ZR_Unity_GetSceneStats(ZrUnitySceneStats* out)
 //   - 线程（设计稿 §8）：渲染线程（与既有 ZR_Unity_* 同约束），锁 = 无（单线程
 //     约定下读写不竞争）——与 zplugin 既有 g_rhiBackend / 网格句柄表同口径。
 //
-// 状态落点：zplugin 进程级静态（无 GPU 触点，设计稿 §8 表；不进 zr::unity_target
-// ——那是 D3D12 目标模块，原点不属于它）。本任务只做存取 + 读回；RenderFrame 的
-// 消费（chunk 模型平移 double 域相减后一次 cast）属 TASK-B-PLANET-04。
-
-namespace {
-double g_planetCameraOrigin[3] = {0.0, 0.0, 0.0}; // 行星中心系绝对坐标（米）
-} // namespace
+// 存储迁移（B-PLANET-04 主控裁决①接管消费）：原点静态从本 TU 迁至
+// zr::unity_target::planet（RenderFrame 的 chunk 模型平移消费者所在侧——zrhi
+// 不反向依赖 zplugin，渲染线程可读的状态必须落在消费侧）。本 TU 保留薄转发 +
+// 校验：NaN/Inf 拒绝、初始 (0,0,0)、跨帧持久、同帧最后生效逐字不变（既有
+// doctest round-trip/持久性用例的观测面完全一致——迁移不改 ABI 行为）。
 
 int ZR_Unity_SetCameraOrigin(double x, double y, double z)
 {
     if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) {
         return ZR_UNITY_ERR_ARGS; // NaN/Inf 任一分量拒绝；状态保持上一次成功值
     }
-    g_planetCameraOrigin[0] = x;
-    g_planetCameraOrigin[1] = y;
-    g_planetCameraOrigin[2] = z;
+    zr::unity_target::planet::SetCameraOrigin(x, y, z);
     return ZR_UNITY_OK;
 }
 
@@ -587,9 +583,7 @@ int ZR_Unity_GetCameraOrigin(double* outOrigin)
     if (outOrigin == nullptr) {
         return ZR_UNITY_ERR_NULL;
     }
-    outOrigin[0] = g_planetCameraOrigin[0];
-    outOrigin[1] = g_planetCameraOrigin[1];
-    outOrigin[2] = g_planetCameraOrigin[2];
+    zr::unity_target::planet::GetCameraOrigin(outOrigin);
     return ZR_UNITY_OK;
 }
 
@@ -612,7 +606,10 @@ int ZR_Unity_GetCameraOrigin(double* outOrigin)
 //     normalize 的 double 舍入会带来 1-2 ULP 方向漂移（d·R 与 sqrt(Σ(d·R)²) 各自
 //     正确舍入所致，构造性不可避免），经 float 输出粒度（ULP(2.4km) = 0.244mm）
 //     完全吸收——实测 40896 样本零失配、最大高度漂移 3.5e-10 m，见任务日志。
-//   - 状态落点：zplugin 进程级静态（与 g_planetCameraOrigin 同口径，无 GPU 触点）。
+//   - 状态落点：zplugin 进程级静态（B-PLANET-06 权威快照，SampleHeight 的锁协议
+//     不变）。B-PLANET-04 追加：快照成功后向 zr::unity_target::planet 推送渲染侧
+//     镜像副本（seed/center——chunk 顶点生成与 LOD 重建在 RenderFrame 边界重算
+//     时需要；两份快照同一次调用内先后写入，v1 初始化期契约下无漂移窗口）。
 //     归属核对：GetStats/ClearAll 属 §14 组 3（chunk 句柄生命周期），归
 //     B-PLANET-04——不在本任务组 2/组 4 职责内（§14/§6.1 核对结论，见任务日志）。
 
@@ -648,7 +645,96 @@ int ZR_Planet_SetWorld(const ZrPlanetWorld* world)
     g_planetWorld.centerAbs[2] = world->centerAbs[2];
     g_planetWorld.set = true;
     ::ReleaseSRWLockExclusive(&g_planetWorldLock);
+    // B-PLANET-04：渲染侧镜像（seed/center）——顶点生成与 LOD 重建在 RenderFrame
+    // 边界消费；校验已全部通过，镜像写入无独立失败路径。
+    zr::unity_target::planet::SetWorldContext(world->seed, world->centerAbs);
     return ZR_PLANET_OK;
+}
+
+// ---- TASK-B-PLANET-04：chunk 句柄生命周期六导出（zplugin.h 行星声明块组 3）----
+//
+// 分工（设计稿 §4.5 校验链 + §8 线程表）：本 TU 做**纯输入域**校验（NULL/ABI/
+// RANGE/NONFINITE——不触任何可变状态）与 STATE 前置（B-PLANET-06 权威快照），
+// 槽位/FULL/代际/顶点生成/GPU 队列全部在 zr::unity_target::planet（渲染线程
+// 可读侧——zrhi 不反向依赖 zplugin）。校验序 = 表序（§4.5）：NULL → ABI →
+// RANGE → NONFINITE → STATE →（通道内）FULL。
+//
+// RANGE 桶的 cx/cy 越界检查说明：设计稿 §4.5 表未逐项列出，zplugin.h desc 注释
+// 已声明 "cx/cy：面内 chunk 格 u（0..cellsPerEdge-1）"——越界即按 RANGE 桶拒绝
+// （头部注释声明的合法域的执行，非协议新增）。
+//
+// 账目恒等式（§7.3②）：createTotal − destroyTotal == liveChunks 全程成立——
+// ClearAll/桥级兜底按销毁记账（通道内实现），GetStats 断言由 doctest 锁定。
+
+int ZR_Planet_ChunkCreate(const ZrPlanetChunkDesc* desc, uint64_t* outHandle)
+{
+    if (desc == nullptr || outHandle == nullptr) {
+        return ZR_PLANET_ERR_NULL;
+    }
+    if (desc->structSize != static_cast<uint32_t>(sizeof(ZrPlanetChunkDesc))) {
+        return ZR_PLANET_ERR_ABI;
+    }
+    if (desc->faceId > 5u || desc->lodLevel > 1u || desc->cellsPerEdge == 0u
+        || desc->cellsPerEdge > 4096u || desc->cx >= desc->cellsPerEdge
+        || desc->cy >= desc->cellsPerEdge
+        || (desc->neighborMask & 0xF0u) != 0u // 高 4 位保留必须 0（§14 组 3）
+        || desc->reserved0 != 0u) {
+        return ZR_PLANET_ERR_RANGE;
+    }
+    if (!std::isfinite(desc->originAbs[0]) || !std::isfinite(desc->originAbs[1])
+        || !std::isfinite(desc->originAbs[2])) {
+        return ZR_PLANET_ERR_NONFINITE;
+    }
+    {
+        ::AcquireSRWLockShared(&g_planetWorldLock);
+        const bool worldSet = g_planetWorld.set;
+        ::ReleaseSRWLockShared(&g_planetWorldLock);
+        if (!worldSet) {
+            return ZR_PLANET_ERR_STATE; // §4.5：SetWorld 前置
+        }
+    }
+    return zr::unity_target::planet::ChunkCreate(*desc, outHandle);
+}
+
+int ZR_Planet_ChunkDestroy(uint64_t handle)
+{
+    // 显式错误码风格（D4——chunk 是流式动态资源，重复释放/代际不符必须可检测）；
+    // 无纯输入域校验（uint64 全域合法），代际裁决在通道内。
+    return zr::unity_target::planet::ChunkDestroy(handle);
+}
+
+int ZR_Planet_ChunkSetOrigin(uint64_t handle, double x, double y, double z)
+{
+    // 校验序（§4.3 注释序）：NONFINITE（纯输入域）→ HANDLE（状态域）——
+    // 与 SampleHeight 的"纯输入域先于状态域"先例一致。
+    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) {
+        return ZR_PLANET_ERR_NONFINITE;
+    }
+    return zr::unity_target::planet::ChunkSetOrigin(handle, x, y, z);
+}
+
+int ZR_Planet_SetLod(uint64_t handle, uint32_t lodLevel, uint32_t neighborMask)
+{
+    // RANGE（纯输入域）→ HANDLE（状态域）；§14 组 3：lodLevel>1 或 neighborMask
+    // 高 4 位非 0 → RANGE。
+    if (lodLevel > 1u || (neighborMask & 0xF0u) != 0u) {
+        return ZR_PLANET_ERR_RANGE;
+    }
+    return zr::unity_target::planet::SetLod(handle, lodLevel, neighborMask);
+}
+
+int ZR_Planet_GetStats(ZrPlanetStats* out)
+{
+    if (out == nullptr) {
+        return ZR_PLANET_ERR_NULL;
+    }
+    return zr::unity_target::planet::GetStats(out);
+}
+
+void ZR_Planet_ClearAll(void)
+{
+    // 场景卸载/Play 退出兜底（§7.3 第 3 层）：句柄全失效 + 渲染线程排队释放。
+    zr::unity_target::planet::ClearAll();
 }
 
 int ZR_Planet_SampleHeight(double x, double y, double z, float* outHeightM)

@@ -34,7 +34,9 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <vector>
 
+#include "zplanet/planet_math.h" // TASK-B-PLANET-04：chunk 顶点规范路由 + 噪声高程（生产头，仅标准库）
 #include "zrender/rg_render_graph.h"
 #include "zrhi/d3d12/zrhi_d3d12_device.h"
 
@@ -211,6 +213,138 @@ float4 PsMain(PsIn input) : SV_Target
 }
 )ZRSCENEHLSL";
 
+// -----------------------------------------------------------------------------
+// 嵌入式行星着色器（TASK-B-PLANET-04）：逐字等于 Native/shaders/planet2.hlsl
+// （B-TECH-04 交付的生产着色器文件——本任务把它接进生产 dll 的渲染路径）。
+// 改 shader 请改文件后再整段同步到这里；单测做两份逐字节比对（first_draw 同规矩）。
+// 生产通道 v1 只用 mode 0（地形 chunk）；mode 1（大气天穹）保留给窗口验证程序
+// 的天穹路径——天穹网格不经 chunk ABI，属演示层。
+// -----------------------------------------------------------------------------
+const char kPlanet2Hlsl[] = R"ZRPLANET2HLSL(// =============================================================================
+// planet2.hlsl —— TASK-B-TECH-04 行星尺度第二阶段着色（--planet2 模式）
+//
+// 与 planet.hlsl（B-TECH-03 --planet）独立：本文件服务 cube-sphere chunk 地形
+// （两档 LOD 网格 + 裙边）与大气天穹渐变。两种绘制模式由 b0.params.x 选择
+// （单 PSO 多用途，与窗口程序 CPU 侧 Planet2DrawConstants 一一对应）：
+//   mode 0 地形 chunk：顶点 uv.x = 噪声高程（m，±2400）——高度带色（谷绿→
+//         岩棕→雪白）+ 等高线（params.w = 间距 m）+ 距离雾（目标色 = 当前
+//         海拔的地平线色——贴地蓝天/高空黑的一致衔接）+ 掠射大气边缘光
+//         （limb 增亮，随海拔因子增强——远观行星的蓝色镶边）。
+//   mode 1 大气天穹：相机中心单位球（缩放经 model 承载）；视线方向相对
+//         渲染空间 up（b0.upVec.xyz）做天顶/地平线两色插值，两色由 CPU 按
+//         相机海拔（对数插值，1km 全强 → 2 万 km 全黑）预混后传入——着色器
+//         只做方向渐变（天穹渐变的"方向"半边）。
+//
+// 光照：固定方向光（与 planet.hlsl 同一 kSunDir）lambert + 环境；地形法线
+// 来自 CPU 端噪声高度场中心差分（建筑在 chunk 构建期，非着色器）。
+//
+// 根签名（rootCbvCount = 1）：b0 CBufPlanet2（208B）：
+//   row_major float4x4 mvp        // clip = mvp·pos
+//   row_major float4x4 model      // 渲染空间变换（chunk: T(锚点−相机)；
+//                                 // 天穹: T·S(穹半径)——顶点为单位球）
+//   float4 params                 // x=模式 y=雾距离(m,≤0关) z=海拔因子
+//                                 //   t(0=贴地→1=2万km) w=等高线间距(m)
+//   float4 fogColor               // 当前海拔的地平线雾色
+//   float4 zenithColor            // 当前海拔的天顶色
+//   float4 horizonColor           // 当前海拔的地平线色
+//   float4 upVec                  // xyz=渲染空间相机 up（天穹渐变轴）
+//
+// 顶点输入（v1 固定布局，与 ZrD3D12_GraphicsInputLayout 一致，stride 32B）：
+//   POSITION float3（chunk: 相对锚点含地形位移；天穹: 单位球）| NORMAL float3
+//   （地形: 噪声差分法线；天穹: 球方向）| TEXCOORD0 float2（地形 uv.x=高程 m）
+//
+// 编译：运行时 D3DCompile（FXC，vs_5_0 / ps_5_0 → DXBC），入口 VsMain / PsMain。
+// =============================================================================
+
+cbuffer CBufPlanet2 : register(b0)
+{
+    row_major float4x4 mvp;
+    row_major float4x4 model;
+    float4 params;
+    float4 fogColor;
+    float4 zenithColor;
+    float4 horizonColor;
+    float4 upVec;
+};
+
+// 指向太阳的方向（与 planet.hlsl 一致——两模式光照语义连续）
+static const float3 kSunDir = normalize(float3(0.42, 0.62, 0.66));
+// 高程色带常量（与 planet_math.h kTerrainMaxAmpM = 2400 对齐）
+static const float kTerrainAmp = 2400.0;
+static const float kAmbient = 0.22;
+
+struct VsIn
+{
+    float3 pos : POSITION;
+    float3 normal : NORMAL;
+    float2 uv : TEXCOORD0;
+};
+
+struct PsIn
+{
+    float4 clip : SV_POSITION;
+    float3 normal : NORMAL;
+    float2 uv : TEXCOORD0;
+    float3 viewPos : TEXCOORD1; // 渲染空间位置（相机在原点）
+};
+
+PsIn VsMain(VsIn input)
+{
+    PsIn o;
+    o.clip = mul(mvp, float4(input.pos, 1.0));
+    o.normal = input.normal;
+    o.uv = input.uv;
+    o.viewPos = mul(model, float4(input.pos, 1.0)).xyz;
+    return o;
+}
+
+float4 PsMain(PsIn input) : SV_Target
+{
+    const float dist = length(input.viewPos);
+
+    if (params.x < 0.5) {
+        // ---- 地形 chunk：高程带色 + 等高线 + 雾（目标=当前地平线色）+ limb ----
+        const float3 n = normalize(input.normal);
+        const float lambert = saturate(dot(n, kSunDir));
+        float light = kAmbient + (1.0 - kAmbient) * lambert;
+        const float h = input.uv.x;
+        // 高程带色：谷（湿绿）→ 岩（棕）→ 雪（高海拔白）
+        const float tRock = saturate((h + 300.0) / 900.0);
+        float3 col = lerp(float3(0.18, 0.30, 0.15), float3(0.42, 0.36, 0.28), tRock);
+        col = lerp(col, float3(0.86, 0.89, 0.93),
+            smoothstep(1100.0, 1800.0, h));
+        // 等高线（params.w = 间距 m；随距离淡出防摩尔纹）
+        const float contourPhase = frac(h / max(params.w, 1.0) + 0.5) - 0.5;
+        const float contourFade = 1.0 - saturate(dist / 60000.0);
+        const float contourLine = smoothstep(0.10, 0.0, abs(contourPhase) * 2.0);
+        col = lerp(col, float3(0.80, 0.86, 0.72), contourLine * 0.30 * contourFade);
+        col *= light;
+        // 掠射大气边缘（limb）：视角掠射增蓝——远观行星的蓝色镶边；贴地时
+        // 仅在海平面视线掠射处轻微出现（航空蔚蓝感），强度随海拔因子增强
+        const float3 viewDir = -normalize(input.viewPos);
+        const float rim = pow(1.0 - saturate(dot(n, viewDir)), 4.0);
+        col += float3(0.30, 0.55, 1.0) * rim * (0.25 + 0.75 * params.z) * 0.75;
+        // 距离雾：目标色 = 当前海拔地平线色（与天穹在地平线处无缝衔接）
+        const float fog = (params.y > 0.0) ? saturate(dist / params.y) : 0.0;
+        col = lerp(col, fogColor.rgb, fog * fog);
+        return float4(col, 1.0);
+    }
+
+    // ---- 大气天穹：视线方向相对 up 的天顶/地平线渐变（色已按海拔预混）----
+    const float3 dir = normalize(input.viewPos);
+    const float upH = dot(dir, normalize(upVec.xyz));
+    const float t = pow(saturate(upH), 0.65);
+    float3 col = lerp(horizonColor.rgb, zenithColor.rgb, t);
+    // 地平线下（被行星遮挡的区域）压暗——穹面只在行星轮廓外可见
+    col *= (upH < 0.0) ? 0.85 : 1.0;
+    // 太阳晕（小角度亮斑 + 宽晕；贴地明显、太空收敛为亮点）
+    const float sunDot = saturate(dot(dir, kSunDir));
+    col += float3(1.0, 0.95, 0.85)
+        * (pow(sunDot, 900.0) * 1.6 + pow(sunDot, 8.0) * 0.10 * (1.0 - params.z));
+    return float4(col, 1.0);
+}
+)ZRPLANET2HLSL";
+
 // 立方体 24 顶点（±0.5，与 Native/tests/data/cube.zmesh 同尺寸；6 面 × 4 顶点）
 const TargetVertex kCubeVertices[24] = {
     // +X
@@ -329,6 +463,27 @@ constexpr uint32_t kTargetSlots = 2u;
 /// 判定"这一帧真的被阻塞过"的阈值（毫秒）：低于它的等待只是 fence 查询开销
 constexpr double kBlockedThresholdMs = 0.05;
 
+// ---- TASK-B-PLANET-04：行星通道常量 ---------------------------------------------
+// CB 池上限 3200：B-TECH-04 实测可见峰值 2662 零截断的池口径（设计稿 §7.2）。
+constexpr uint32_t kPlanetMaxDrawItems = 3200u;
+constexpr uint32_t kPlanetResFar = 16u;  // 远档 16×16 顶点（B-TECH-04 两档口径）
+constexpr uint32_t kPlanetResNear = 64u; // 近档 64×64
+constexpr uint32_t kPlanetFarVerts = kPlanetResFar * kPlanetResFar + 4u * kPlanetResFar;
+constexpr uint32_t kPlanetNearVerts = kPlanetResNear * kPlanetResNear + 4u * kPlanetResNear;
+constexpr uint32_t kPlanetFarIndices = (kPlanetResFar - 1u) * (kPlanetResFar - 1u) * 6u
+    + 4u * (kPlanetResFar - 1u) * 6u;
+constexpr uint32_t kPlanetNearIndices = (kPlanetResNear - 1u) * (kPlanetResNear - 1u) * 6u
+    + 4u * (kPlanetResNear - 1u) * 6u;
+/// 高程带/等高线/雾的展示常量（B-TECH-04 planet2 口径原样移植——设计稿 §12-5
+/// "v1 视觉沿用高程色带+距离雾+limb"）
+constexpr double kPlanetFogGroundM = 150000.0;
+constexpr double kPlanetFogClimbM = 500000.0;
+constexpr double kPlanetClimbAltM = 2.0e7;
+constexpr double kPlanetContourM = 500.0;
+constexpr float kPlanetZenithBlue[3] = { 0.16f, 0.36f, 0.78f };
+constexpr float kPlanetHorizonBlue[3] = { 0.58f, 0.72f, 0.92f };
+constexpr float kPlanetSpace[3] = { 0.004f, 0.006f, 0.012f };
+
 struct TargetState {
     ZrD3D12Device* device = nullptr; // 包装对象（CreateFrom 产物）
     ZrImage color[kTargetSlots] {};
@@ -387,6 +542,15 @@ struct TargetState {
     uint32_t readbackCount = 0u;
     uint32_t centerRGBA[4] = {0u, 0u, 0u, 0u};
     uint32_t lastError = 0u;
+    // ---- TASK-B-PLANET-04：行星通道渲染资源（随目标一起建立/释放）----------------
+    ZrShader planetVs {};
+    ZrShader planetPs {};
+    ZrPipelineState psoPlanet {};
+    ZrBuffer planetIbFar {};  // 共享远档索引（grid+四缘裙边，全 chunk 复用）
+    ZrBuffer planetIbNear {}; // 共享近档索引（同上）
+    ZrBuffer planetCb[kPlanetMaxDrawItems] {};   // 逐绘常量池（256B/项，持久 Map）
+    void* planetCbMapped[kPlanetMaxDrawItems] = {};
+    uint32_t planetCbCount = 0u;
 };
 
 TargetState g_target;
@@ -432,6 +596,19 @@ struct FrameDraw {
     uint32_t indexCount = 0u;
 };
 
+/// 行星通道常量（208B，TASK-B-PLANET-04）——与 planet2.hlsl 的 CBufPlanet2
+/// 一一对应；CBuf static_assert 先例（B-TECH-04.md:46）：布局错位编译期即红。
+struct Planet2DrawConstants {
+    float mvp[16];        // clip = proj·view·T(float(anchor−cam))（double 域相减一次 cast）
+    float model[16];      // 渲染空间变换 = T(chunkRel)（顶点局部 float 相对锚点）
+    float params[4];      // x=模式(0 地形) y=雾距离 z=海拔因子 t w=等高线间距
+    float fogColor[4];    // 当前海拔地平线雾色（CPU 预混，B-TECH-04 口径）
+    float zenithColor[4];
+    float horizonColor[4];
+    float upVec[4];       // xyz=渲染空间相机 up（径向经 view 旋转）
+};
+static_assert(sizeof(Planet2DrawConstants) == 208, "Planet2DrawConstants must be 208 bytes");
+
 struct SceneState {
     bool cameraSet = false;
     float view[16] = {};
@@ -467,6 +644,678 @@ MeshEntry* LookupMesh(uint64_t handle)
     }
     return &entry;
 }
+
+// =============================================================================
+// TASK-B-PLANET-04：行星 chunk 通道（句柄表 + 顶点生成 + GPU 生命周期）
+//
+// 设计依据：Docs/Planning/P2-行星ABI设计.md
+//   §4.1 句柄 = 高 32 代际/低 32 槽位，0 恒无效（与 mesh 句柄同协议）；
+//   §4.4 生命周期 EMPTY → PENDING_UPLOAD → LIVE → PENDING_FREE → EMPTY；
+//        销毁句柄立即失效（代际+1，独占锁内），GPU 资源延迟一帧释放，
+//        PENDING_FREE 期间仍被绘制（先画后删，帧内一致）；
+//   §4.5 ChunkCreate 校验链（zplugin 层做纯输入域，本层做 STATE 复核 + FULL）；
+//   §7.1 所有权：chunk 顶点 CPU 副本只在 PENDING_UPLOAD 队列里活到上传边界；
+//        VB 归句柄表槽位；档位重建靠纯函数重生成（无缓存）；
+//   §7.3 泄漏防护四层：①代际防误用 ②GetStats 账目恒等式
+//        createTotal − destroyTotal == liveChunks（ClearAll/桥级释放按销毁记账，
+//        恒等式全程成立）③ClearAll bulk 释放 ④DestroyTargetObjects 随桥兜底；
+//   §8   线程：写操作主线程 SRWLOCK 独占；RenderFrame 帧首共享锁取快照
+//        （决策拷贝），GPU 上传/释放/重建/绘制全部锁外；
+//   §3.2/D3 相机相对模型矩阵：float(anchorAbs − camAbs)——double 域相减后
+//        一次 cast（planet_math.h RenderOffsetF「重定位正确路径」同构）。
+//
+// 状态落点说明（B-PLANET-05→04 接管迁移）：相机原点与 chunk 表都落在本模块——
+// zrhi 不反向依赖 zplugin（链接方向 zplugin → zrhi），渲染线程可读的状态必须
+// 在消费侧；zplugin 六导出与本组 API 之间是纯薄转发。
+// =============================================================================
+
+namespace planet_detail {
+
+constexpr uint32_t kMaxChunks = ZR_PLANET_MAX_CHUNKS; // 8192（zplugin.h §4.1 口径）
+constexpr uint32_t kVertBytes = ZR_PLANET_VERTEX_STRIDE_FLOATS * 4u; // 32B/顶点
+constexpr uint32_t kLodUnset = 0xFFFFFFFFu; // appliedLod 哨兵：VB 尚无内容
+constexpr uint32_t kNeighborReservedMask = 0xF0u; // neighborMask 高 4 位保留
+
+// 槽位状态机（§4.4）
+enum PlanetSlotState : uint32_t {
+    kSlotEmpty = 0u,
+    kSlotPendingUpload = 1u, // 顶点已生成，待渲染线程上传（下一 RenderFrame 生效）
+    kSlotLive = 2u,          // VB 已上传，可绘制
+    kSlotPendingFree = 3u,   // 句柄已失效；VB 保留到下一 RenderFrame（期间仍绘制）
+};
+
+struct PlanetChunkSlot {
+    uint32_t state = kSlotEmpty;
+    uint32_t generation = 0u;  // 从 1 起；销毁即 +1（0 = 槽从未用过，mesh 表同协议）
+    uint32_t faceId = 0u;
+    uint32_t cx = 0u;
+    uint32_t cy = 0u;
+    uint32_t cellsPerEdge = 1u;
+    uint32_t desiredLod = 0u;     // 校验过的期望档（SetLod 延迟应用）
+    uint32_t appliedLod = kLodUnset; // VB 当前内容档（未上传 = 哨兵）
+    uint32_t genTier = 0u;        // pendingVerts 生成时的档（上传前 SetLod 变档则重生成）
+    uint32_t neighborMask = 0u;   // 四缘掩码（v1 校验+记录，不改几何——设计稿 §5.2）
+    double originAbs[3] = {0.0, 0.0, 0.0}; // 锚点绝对坐标（SetOrigin 可变；顶点不重算）
+    uint64_t freeFrame = 0u;      // 进入 PENDING_FREE 时的帧号（到期才释放——先画后删）
+    ZrBuffer vb {};
+    bool vbNearSized = false;     // 近档容量启动过（退档复用不缩容，B-TECH-04 策略）
+    void* vbMapped = nullptr;     // hostVisible 持久映射（建缓冲时取得）
+    uint32_t vbBytes = 0u;        // VB 分配容量字节（vertexBytes 账目口径；升容不缩容）
+    std::vector<uint8_t> pendingVerts; // PENDING_UPLOAD 期间顶点字节（上传后清空）
+};
+
+// 进程级单例（§7.1：句柄表/上下文快照/统计全部进程级，SRWLOCK 保护）
+SRWLOCK g_lock = SRWLOCK_INIT;
+PlanetChunkSlot g_slots[kMaxChunks];
+bool g_worldSet = false;      // SetWorldContext 成功过（v1 单行星静态语义）
+uint32_t g_seed = 0u;
+double g_center[3] = {0.0, 0.0, 0.0};
+double g_camOrigin[3] = {0.0, 0.0, 0.0}; // 相机绝对原点（B-PLANET-05 接管落点）
+uint32_t g_occupied = 0u;     // PENDING_UPLOAD + LIVE + PENDING_FREE（FULL 裁决口径）
+uint64_t g_createTotal = 0u;
+uint64_t g_destroyTotal = 0u;
+uint64_t g_lodChangeTotal = 0u;
+uint32_t g_drawnLast = 0u;
+uint32_t g_culledLast = 0u;
+uint32_t g_seamFails = 0u;
+double g_lastFrameMs = 0.0;
+double g_frameMsSum = 0.0;
+uint32_t g_frameMsCount = 0u;
+
+// 帧快照（决策拷贝，§8）——静态定容，避免每帧分配
+struct PlanetFrameDraw {
+    ZrBuffer vb;
+    uint32_t tier;
+    double originAbs[3];
+};
+struct PlanetFrameSnapshot {
+    PlanetFrameDraw draws[kPlanetMaxDrawItems];
+    uint32_t drawCount = 0u;
+    uint32_t culledCount = 0u;
+    double camAbs[3] = {0.0, 0.0, 0.0};
+    double center[3] = {0.0, 0.0, 0.0};
+    bool worldSet = false;
+    bool cameraUsable = false; // g_scene.cameraSet（无相机不构 mvp，本帧不画）
+};
+PlanetFrameSnapshot g_frame;
+
+constexpr double kPi = 3.14159265358979323846;
+
+uint32_t TierVerts(uint32_t tier)
+{
+    return (tier >= 1u) ? kPlanetNearVerts : kPlanetFarVerts;
+}
+
+uint32_t TierRes(uint32_t tier)
+{
+    return (tier >= 1u) ? kPlanetResNear : kPlanetResFar;
+}
+
+uint32_t TierIndices(uint32_t tier)
+{
+    return (tier >= 1u) ? kPlanetNearIndices : kPlanetFarIndices;
+}
+
+/// chunk 弧长（米）：面坐标一格 = 2/total，赤道弧 (π/4)·R 每 1 面坐标
+///（B-TECH-04 BuildChunkVerts 同式）
+double ChunkArcM(uint32_t cellsPerEdge, uint32_t tier)
+{
+    const double total = static_cast<double>(cellsPerEdge) * static_cast<double>(TierRes(tier) - 1u);
+    return 2.0 / total * (kPi / 4.0) * zplanet::kPlanetRadiusM;
+}
+
+/// 裙边深 = 2% chunk 弧长（B-TECH-04：遮蔽跨档 T 型连接与面界缝）
+double SkirtDropM(uint32_t cellsPerEdge, uint32_t tier)
+{
+    return 0.02 * ChunkArcM(cellsPerEdge, tier);
+}
+
+// ---- 顶点生成（规范路由消费 zplanet 生产头，§4.2）--------------------------------
+//
+// 顶点布局 32B：pos3f（= float(posAbs − originAbs)，double 域相减后一次 cast）+
+// normal3f（噪声高度场中心差分，B-TECH-04 同式）+ uv2f（uv.x = 高程 m 供
+// planet2.hlsl 高程带色；uv.y 预留 0——uv 列不实装纹理坐标，设计稿 §12-5）。
+// 返回顶点数（res² + 4·res，含裙边）。
+uint32_t GenerateChunkVerts(uint32_t faceId, uint32_t cx, uint32_t cy, uint32_t cellsPerEdge,
+    uint32_t tier, const double originAbs[3], std::vector<uint8_t>& out)
+{
+    const uint32_t res = TierRes(tier);
+    const int32_t stride = static_cast<int32_t>(res) - 1;
+    const int32_t total = static_cast<int32_t>(cellsPerEdge) * stride;
+    const zplanet::Vec3d planetCenter = { g_center[0], g_center[1], g_center[2] };
+    const zplanet::CubeFaceBasis basis = zplanet::CubeFaceBasisOf(static_cast<int>(faceId));
+    const double cellArcM = ChunkArcM(cellsPerEdge, tier);
+    const double skirtDrop = SkirtDropM(cellsPerEdge, tier);
+    const uint32_t vertCount = res * res + 4u * res;
+    out.assign(static_cast<size_t>(vertCount) * kVertBytes, 0u);
+    auto* verts = reinterpret_cast<TargetVertex*>(out.data());
+    uint32_t n = 0u;
+    auto emit = [&](const zplanet::Vec3d& posAbs, const zplanet::Vec3d& normal,
+                    double heightM) {
+        TargetVertex& o = verts[n];
+        // double 域相减后一次 cast（§4.2/D3——重定位正确路径）
+        o.pos[0] = static_cast<float>(posAbs.x - originAbs[0]);
+        o.pos[1] = static_cast<float>(posAbs.y - originAbs[1]);
+        o.pos[2] = static_cast<float>(posAbs.z - originAbs[2]);
+        o.normal[0] = static_cast<float>(normal.x);
+        o.normal[1] = static_cast<float>(normal.y);
+        o.normal[2] = static_cast<float>(normal.z);
+        o.uv[0] = static_cast<float>(heightM);
+        o.uv[1] = 0.0f;
+        ++n;
+    };
+    auto emitGridVertex = [&](uint32_t i, uint32_t j) {
+        const int32_t gU = zplanet::ChunkVertexIndex(
+            static_cast<int32_t>(cx), static_cast<int32_t>(i), stride);
+        const int32_t gV = zplanet::ChunkVertexIndex(
+            static_cast<int32_t>(cy), static_cast<int32_t>(j), stride);
+        const zplanet::PlanetChunkVertex c = zplanet::PlanetChunkVertexAtGlobal(
+            planetCenter, static_cast<int>(faceId), gU, gV, total, g_seed);
+        // 地形法线：噪声高度场中心差分（±1 全局索引 = ±1 格；越界面界为纯函数
+        // 光滑延拓，无分支保确定性——B-TECH-04 同式）
+        const zplanet::PlanetChunkVertex pu = zplanet::PlanetChunkVertexAtGlobal(
+            planetCenter, static_cast<int>(faceId), gU + 1, gV, total, g_seed);
+        const zplanet::PlanetChunkVertex pd = zplanet::PlanetChunkVertexAtGlobal(
+            planetCenter, static_cast<int>(faceId), gU - 1, gV, total, g_seed);
+        const zplanet::PlanetChunkVertex pv = zplanet::PlanetChunkVertexAtGlobal(
+            planetCenter, static_cast<int>(faceId), gU, gV + 1, total, g_seed);
+        const zplanet::PlanetChunkVertex pw = zplanet::PlanetChunkVertexAtGlobal(
+            planetCenter, static_cast<int>(faceId), gU, gV - 1, total, g_seed);
+        const double sx = (pu.heightM - pd.heightM) / (2.0 * cellArcM);
+        const double sy = (pv.heightM - pw.heightM) / (2.0 * cellArcM);
+        const double d1 = zplanet::VecDot(basis.t1, c.normal);
+        const double d2 = zplanet::VecDot(basis.t2, c.normal);
+        zplanet::Vec3d t1 = zplanet::VecSub(basis.t1, zplanet::VecScale(c.normal, d1));
+        zplanet::Vec3d t2 = zplanet::VecSub(basis.t2, zplanet::VecScale(c.normal, d2));
+        t1 = zplanet::VecScale(t1, 1.0 / zplanet::VecLen(t1));
+        t2 = zplanet::VecScale(t2, 1.0 / zplanet::VecLen(t2));
+        zplanet::Vec3d nrm = zplanet::VecSub(zplanet::VecSub(c.normal,
+            zplanet::VecScale(t1, sx)), zplanet::VecScale(t2, sy));
+        nrm = zplanet::VecScale(nrm, 1.0 / zplanet::VecLen(nrm));
+        emit(c.posAbs, nrm, c.heightM);
+    };
+    for (uint32_t j = 0; j < res; ++j) {
+        for (uint32_t i = 0; i < res; ++i) {
+            emitGridVertex(i, j);
+        }
+    }
+    // 裙边：四缘顶点复制 + 沿 −球面方向下垂（缘序与 BuildTierIndices 索引走线一致：
+    // e=0 北(i=k,j=0) / 1 南(i=k,j=res−1) / 2 西(i=0,j=k) / 3 东(i=res−1,j=k)）
+    for (uint32_t e = 0; e < 4u; ++e) {
+        for (uint32_t k = 0; k < res; ++k) {
+            const uint32_t i = (e >= 2u) ? ((e == 2u) ? 0u : (res - 1u)) : k;
+            const uint32_t j = (e >= 2u) ? k : ((e == 0u) ? 0u : (res - 1u));
+            const int32_t gU = zplanet::ChunkVertexIndex(
+                static_cast<int32_t>(cx), static_cast<int32_t>(i), stride);
+            const int32_t gV = zplanet::ChunkVertexIndex(
+                static_cast<int32_t>(cy), static_cast<int32_t>(j), stride);
+            const zplanet::PlanetChunkVertex v = zplanet::PlanetChunkVertexAtGlobal(
+                planetCenter, static_cast<int>(faceId), gU, gV, total, g_seed);
+            const zplanet::Vec3d dropped = zplanet::VecSub(v.posAbs,
+                zplanet::VecScale(v.normal, skirtDrop));
+            emit(dropped, v.normal, v.heightM);
+        }
+    }
+    return n;
+}
+
+// ---- 运行期共享边核查（B-TECH-04 seams 口径移植；seamCheckFails 诊断计数）----------
+//
+// 范围（v1 如实登记）：仅近档（tier 1）构建时核查——近档是缝宽敏感档；远档共享边
+// 的逐位一致由构造性路由保证并有 test_planet.cpp doctest 锁定（§5.1 同档共享边
+// 同全局整数索引 → 同一 double 表达式）。近档构建每帧量级 ~百，O(8192) 邻居查找
+// 可忽略；远档全量首帧 6144 次构建若逐次全表扫会引入秒级首帧开销，故不查。
+void SeamCheckNear(uint32_t faceId, uint32_t cx, uint32_t cy, uint32_t cellsPerEdge,
+    uint32_t tier)
+{
+    const uint32_t res = TierRes(tier);
+    const int32_t stride = static_cast<int32_t>(res) - 1;
+    const int32_t total = static_cast<int32_t>(cellsPerEdge) * stride;
+    const zplanet::Vec3d planetCenter = { g_center[0], g_center[1], g_center[2] };
+    // 同 (faceId,cx±1/cy±1,cellsPerEdge) 的已建同档邻居（LIVE 或 PENDING_FREE——
+    // 两者 VB 内容仍在；方向对称：A 查 B 时 B 也会查 A，首帧上传序不影响覆盖）
+    auto findNeighbor = [&](int32_t nx, int32_t ny) -> const PlanetChunkSlot* {
+        if (nx < 0 || ny < 0 || nx >= static_cast<int32_t>(cellsPerEdge)
+            || ny >= static_cast<int32_t>(cellsPerEdge)) {
+            return nullptr;
+        }
+        for (uint32_t s = 0; s < kMaxChunks; ++s) {
+            const PlanetChunkSlot& o = g_slots[s];
+            if (o.faceId == faceId && o.cx == static_cast<uint32_t>(nx)
+                && o.cy == static_cast<uint32_t>(ny) && o.cellsPerEdge == cellsPerEdge
+                && o.appliedLod == tier
+                && (o.state == kSlotLive || o.state == kSlotPendingFree)) {
+                return &o;
+            }
+        }
+        return nullptr;
+    };
+    auto checkEdge = [&](const PlanetChunkSlot* other, uint32_t myFirstI, uint32_t myFirstJ,
+        uint32_t otFirstI, uint32_t otFirstJ, int32_t deltaI, int32_t deltaJ) {
+        if (other == nullptr) {
+            return;
+        }
+        // 缘上第 k 个共享顶点：我方 = first + k·delta，邻方同 delta（两侧沿同一条
+        // 缘推进——共享边的全局索引逐 k 恒等，构造性一致，memcmp 应全绿）
+        for (uint32_t k = 0; k < res; ++k) {
+            const uint32_t mi = static_cast<uint32_t>(
+                static_cast<int32_t>(myFirstI) + static_cast<int32_t>(k) * deltaI);
+            const uint32_t mj = static_cast<uint32_t>(
+                static_cast<int32_t>(myFirstJ) + static_cast<int32_t>(k) * deltaJ);
+            const uint32_t oi = static_cast<uint32_t>(
+                static_cast<int32_t>(otFirstI) + static_cast<int32_t>(k) * deltaI);
+            const uint32_t oj = static_cast<uint32_t>(
+                static_cast<int32_t>(otFirstJ) + static_cast<int32_t>(k) * deltaJ);
+            const int32_t gUm = zplanet::ChunkVertexIndex(static_cast<int32_t>(cx),
+                static_cast<int32_t>(mi), stride);
+            const int32_t gVm = zplanet::ChunkVertexIndex(static_cast<int32_t>(cy),
+                static_cast<int32_t>(mj), stride);
+            const int32_t gUo = zplanet::ChunkVertexIndex(static_cast<int32_t>(other->cx),
+                static_cast<int32_t>(oi), stride);
+            const int32_t gVo = zplanet::ChunkVertexIndex(static_cast<int32_t>(other->cy),
+                static_cast<int32_t>(oj), stride);
+            const zplanet::PlanetChunkVertex a = zplanet::PlanetChunkVertexAtGlobal(
+                planetCenter, static_cast<int>(faceId), gUm, gVm, total, g_seed);
+            const zplanet::PlanetChunkVertex b = zplanet::PlanetChunkVertexAtGlobal(
+                planetCenter, static_cast<int>(faceId), gUo, gVo, total, g_seed);
+            if (std::memcmp(&a.posAbs, &b.posAbs, sizeof(a.posAbs)) != 0) {
+                ++g_seamFails; // 每缘计 1（首个失配顶点即报，诊断口径）
+                return;
+            }
+        }
+    };
+    // 东邻 (cx+1,cy)：我方缘 (i=stride, j=k) ↔ 邻方缘 (i=0, j=k)——k 沿 v 推进
+    checkEdge(findNeighbor(static_cast<int32_t>(cx) + 1, static_cast<int32_t>(cy)),
+        res - 1u, 0u, 0u, 0u, 0, 1);
+    // 西邻 (cx−1,cy)：我方缘 (i=0, j=k) ↔ 邻方缘 (i=stride, j=k)
+    checkEdge(findNeighbor(static_cast<int32_t>(cx) - 1, static_cast<int32_t>(cy)),
+        0u, 0u, res - 1u, 0u, 0, 1);
+    // 南邻 (cx,cy+1)：我方缘 (i=k, j=stride) ↔ 邻方缘 (i=k, j=0)——k 沿 u 推进
+    checkEdge(findNeighbor(static_cast<int32_t>(cx), static_cast<int32_t>(cy) + 1),
+        0u, res - 1u, 0u, 0u, 1, 0);
+    // 北邻 (cx,cy−1)：我方缘 (i=k, j=0) ↔ 邻方缘 (i=k, j=stride)
+    checkEdge(findNeighbor(static_cast<int32_t>(cx), static_cast<int32_t>(cy) - 1),
+        0u, 0u, 0u, res - 1u, 1, 0);
+}
+
+/// 确保 chunk VB 具备 tier 容量并返回映射指针。策略照搬 B-TECH-04：远档容量启动、
+/// 进近档升容重建（销毁+新建）、退档复用不缩容。返回 nullptr = 失败。
+void* EnsureChunkVb(ZrD3D12Device* device, PlanetChunkSlot& slot, uint32_t tier)
+{
+    const uint32_t needBytes = TierVerts(tier) * kVertBytes;
+    if (slot.vb.IsValid() && (tier == 0u || slot.vbNearSized)) {
+        return slot.vbMapped; // 复用（远档够用或已近档容量——不缩容）
+    }
+    if (slot.vb.IsValid()) {
+        device->Destroy(slot.vb); // 远→近升容重建（旧 VB 只被已完成帧引用，安全）
+        slot.vb = ZrBuffer {};
+        slot.vbMapped = nullptr;
+        slot.vbBytes = 0u;
+    }
+    ZrBufferDesc desc {};
+    desc.size = needBytes;
+    desc.usage = ZrBufferUsage::Vertex;
+    desc.hostVisible = true;
+    slot.vb = device->CreateBuffer(desc);
+    if (!slot.vb.IsValid()) {
+        return nullptr;
+    }
+    IZrBuffer* iface = device->GetBuffer(slot.vb);
+    slot.vbMapped = (iface != nullptr) ? iface->Map() : nullptr;
+    slot.vbNearSized = (tier >= 1u);
+    slot.vbBytes = needBytes;
+    return slot.vbMapped;
+}
+
+// ---- RenderFrame 帧首处理（§8：上传/释放/档位应用只在渲染线程边界）----------------
+void FrameBegin(ZrD3D12Device* device)
+{
+    if (device == nullptr) {
+        return;
+    }
+    const auto t0 = std::chrono::steady_clock::now();
+    const uint64_t frameNo = g_target.frameCount; // 本帧号（未完成；freeFrame 语义见下）
+
+    // (a) 释放到期 PENDING_FREE（freeFrame < 本帧号 → 上一帧已画过，安全销毁）。
+    //     独占锁内摘 VB + 槽位归 EMPTY；锁外 device->Destroy（§8 锁内不做 GPU）。
+    {
+        std::vector<ZrBuffer> toFree;
+        {
+            ::AcquireSRWLockExclusive(&g_lock);
+            for (uint32_t s = 0; s < kMaxChunks; ++s) {
+                PlanetChunkSlot& slot = g_slots[s];
+                if (slot.state == kSlotPendingFree && slot.freeFrame < frameNo) {
+                    if (slot.vb.IsValid()) {
+                        toFree.push_back(slot.vb);
+                    }
+                    slot.vb = ZrBuffer {};
+                    slot.vbMapped = nullptr;
+                    slot.vbBytes = 0u;
+                    slot.vbNearSized = false;
+                    slot.appliedLod = kLodUnset;
+                    slot.pendingVerts.clear();
+                    slot.state = kSlotEmpty;
+                    --g_occupied;
+                }
+            }
+            ::ReleaseSRWLockExclusive(&g_lock);
+        }
+        for (ZrBuffer& buf : toFree) {
+            device->Destroy(buf);
+        }
+    }
+
+    // (b) 上传 PENDING_UPLOAD（§7.1：ChunkCreate 生成的顶点字节活到本边界）。
+    //     锁内摘参数+顶点字节 → 锁外建/升容 VB + 写入 → 锁内发布 LIVE。
+    struct UploadJob {
+        uint32_t slot;
+        uint32_t tier;
+        uint32_t faceId;
+        uint32_t cx;
+        uint32_t cy;
+        uint32_t cellsPerEdge;
+        double originAbs[3];
+        std::vector<uint8_t> verts;
+    };
+    {
+        std::vector<UploadJob> jobs;
+        {
+            ::AcquireSRWLockExclusive(&g_lock);
+            for (uint32_t s = 0; s < kMaxChunks; ++s) {
+                PlanetChunkSlot& slot = g_slots[s];
+                if (slot.state != kSlotPendingUpload) {
+                    continue;
+                }
+                UploadJob job;
+                job.slot = s;
+                job.tier = slot.desiredLod; // 上传前 SetLod 变档 → 直接以期望档上传
+                job.faceId = slot.faceId;
+                job.cx = slot.cx;
+                job.cy = slot.cy;
+                job.cellsPerEdge = slot.cellsPerEdge;
+                job.originAbs[0] = slot.originAbs[0];
+                job.originAbs[1] = slot.originAbs[1];
+                job.originAbs[2] = slot.originAbs[2];
+                if (slot.genTier == slot.desiredLod) {
+                    job.verts = std::move(slot.pendingVerts); // 生成即转 GPU（§7.1）
+                }
+                slot.pendingVerts.clear();
+                jobs.push_back(std::move(job));
+            }
+            ::ReleaseSRWLockExclusive(&g_lock);
+        }
+        for (UploadJob& job : jobs) {
+            if (job.verts.empty()) {
+                GenerateChunkVerts(job.faceId, job.cx, job.cy, job.cellsPerEdge, job.tier,
+                    job.originAbs, job.verts);
+            }
+            // VB 建/升容/写入在锁外（§8）。VB 指针写入只发生在本渲染线程；
+            // 主线程 Destroy 在 PENDING_UPLOAD 态只置状态不碰 VB（上传完成前
+            // VB 恒无效），故无竞争；并发 Destroy 后的孤儿路径在下方锁内裁决。
+            void* mapped = EnsureChunkVb(device, g_slots[job.slot], job.tier);
+            if (mapped != nullptr && !job.verts.empty()) {
+                std::memcpy(mapped, job.verts.data(), job.verts.size());
+            }
+            const bool uploadOk = (mapped != nullptr) && !job.verts.empty();
+            ::AcquireSRWLockExclusive(&g_lock);
+            PlanetChunkSlot& slot = g_slots[job.slot];
+            if (slot.state == kSlotPendingUpload && uploadOk) {
+                slot.state = kSlotLive;
+                slot.appliedLod = job.tier;
+                SeamCheckNear(job.faceId, job.cx, job.cy, job.cellsPerEdge, job.tier);
+            } else if (slot.state == kSlotPendingUpload) {
+                // 上传失败（建缓冲失败等设备级错误）：保持 LIVE 语义但 VB 无效，
+                // 绘制侧按 IsValid() 守卫跳过；错误经 g_target.lastError 可观测
+                slot.state = kSlotLive;
+                slot.appliedLod = kLodUnset;
+            }
+            // state 已变（并发 Destroy）→ 孤儿路径：新 VB 从未写进槽位——但
+            // EnsureChunkVb 可能已把它挂进槽位（见其实现），槽位状态为
+            // PENDING_FREE 时该 VB 会在下一帧 (a) 段正常回收，无泄漏。
+            ::ReleaseSRWLockExclusive(&g_lock);
+            (void)uploadOk;
+        }
+    }
+
+    // (c) 档位应用（LIVE 且 desiredLod != appliedLod；B-TECH-04：档变重建、
+    //     升容重建、退档复用不缩容）。顶点重生成 + VB 重写在锁外。
+    {
+        std::vector<uint32_t> lodSlots;
+        {
+            ::AcquireSRWLockExclusive(&g_lock);
+            for (uint32_t s = 0; s < kMaxChunks; ++s) {
+                PlanetChunkSlot& slot = g_slots[s];
+                if (slot.state == kSlotLive && slot.appliedLod != slot.desiredLod) {
+                    lodSlots.push_back(s);
+                }
+            }
+            ::ReleaseSRWLockExclusive(&g_lock);
+        }
+        for (uint32_t s : lodSlots) {
+            ::AcquireSRWLockShared(&g_lock);
+            PlanetChunkSlot snap = g_slots[s]; // 参数快照（浅拷贝 VB 句柄）
+            ::ReleaseSRWLockShared(&g_lock);
+            std::vector<uint8_t> verts;
+            GenerateChunkVerts(snap.faceId, snap.cx, snap.cy, snap.cellsPerEdge,
+                snap.desiredLod, snap.originAbs, verts);
+            void* mapped = EnsureChunkVb(device, g_slots[s], snap.desiredLod);
+            const bool ok = (mapped != nullptr);
+            if (ok) {
+                std::memcpy(mapped, verts.data(), verts.size());
+            }
+            ::AcquireSRWLockExclusive(&g_lock);
+            PlanetChunkSlot& slot = g_slots[s];
+            if (slot.state == kSlotLive && slot.generation == snap.generation) {
+                if (ok) {
+                    slot.appliedLod = slot.desiredLod;
+                    ++g_lodChangeTotal;
+                    SeamCheckNear(slot.faceId, slot.cx, slot.cy, slot.cellsPerEdge,
+                        slot.desiredLod);
+                } else {
+                    slot.appliedLod = kLodUnset; // 失败：下帧重试（desiredLod 不变）
+                }
+            }
+            ::ReleaseSRWLockExclusive(&g_lock);
+        }
+    }
+
+    // (d) 绘制快照（共享锁内完成地平线剔除——决策拷贝，§8）：
+    //     LIVE + PENDING_FREE（先画后删）且 VB 有效。相机相对模型平移在绘制侧
+    //     由 float(anchor − cam) 承载（§3.2），锚点在这里随快照带走。
+    {
+        ::AcquireSRWLockShared(&g_lock);
+        g_frame.drawCount = 0u;
+        g_frame.culledCount = 0u;
+        g_frame.worldSet = g_worldSet;
+        g_frame.camAbs[0] = g_camOrigin[0];
+        g_frame.camAbs[1] = g_camOrigin[1];
+        g_frame.camAbs[2] = g_camOrigin[2];
+        g_frame.center[0] = g_center[0];
+        g_frame.center[1] = g_center[1];
+        g_frame.center[2] = g_center[2];
+        g_frame.cameraUsable = g_scene.cameraSet;
+        const double relX = g_camOrigin[0] - g_center[0];
+        const double relY = g_camOrigin[1] - g_center[1];
+        const double relZ = g_camOrigin[2] - g_center[2];
+        const double camLen = std::sqrt(relX * relX + relY * relY + relZ * relZ);
+        // 地平线曲率剔除（B-TECH-04.md:76-77 移植）：chunk 法线与相机-心方向夹角
+        // > 地平线角 + chunk 半角 + 裙边/噪声裕度 → 不可见。相机深入行星内部/与心
+        // 重合时跳过剔除（绘制侧深度兜底；合法编排不会进入该状态）。
+        const bool cullUsable = g_worldSet && camLen > zplanet::kPlanetRadiusM * 0.5;
+        double horizonAng = 0.0;
+        if (cullUsable) {
+            const double altM = camLen - zplanet::kPlanetRadiusM;
+            horizonAng = std::acos(
+                std::min(1.0, zplanet::kPlanetRadiusM / (zplanet::kPlanetRadiusM + altM)));
+        }
+        for (uint32_t s = 0; s < kMaxChunks; ++s) {
+            const PlanetChunkSlot& slot = g_slots[s];
+            if (slot.state != kSlotLive && slot.state != kSlotPendingFree) {
+                continue;
+            }
+            if (!slot.vb.IsValid() || slot.appliedLod == kLodUnset) {
+                continue; // 上传失败等守卫（不画无效 VB）
+            }
+            if (cullUsable) {
+                const double cNvX = static_cast<double>(slot.originAbs[0]) - g_center[0];
+                const double cNvY = static_cast<double>(slot.originAbs[1]) - g_center[1];
+                const double cNvZ = static_cast<double>(slot.originAbs[2]) - g_center[2];
+                const double cLen = std::sqrt(cNvX * cNvX + cNvY * cNvY + cNvZ * cNvZ);
+                const double cosA = (cLen > 0.0)
+                    ? ((cNvX * relX + cNvY * relY + cNvZ * relZ) / (cLen * camLen))
+                    : 1.0;
+                // 半 chunk 角（本 chunk 自己的 cellsPerEdge）+ 裙边/噪声裕度
+                const double chunkAngRad
+                    = (kPi / 2.0) / static_cast<double>(slot.cellsPerEdge) * 0.5 + 0.05;
+                if (cosA < std::cos(horizonAng + chunkAngRad)) {
+                    ++g_frame.culledCount;
+                    continue;
+                }
+            }
+            if (g_frame.cameraUsable && g_frame.drawCount < kPlanetMaxDrawItems) {
+                PlanetFrameDraw& d = g_frame.draws[g_frame.drawCount];
+                d.vb = slot.vb;
+                d.tier = slot.appliedLod;
+                d.originAbs[0] = slot.originAbs[0];
+                d.originAbs[1] = slot.originAbs[1];
+                d.originAbs[2] = slot.originAbs[2];
+                ++g_frame.drawCount;
+            }
+            // 可见但超 CB 池/无相机：计入剔除侧（不绘制；B-TECH-04 截断口径）
+            else if (g_frame.cameraUsable) {
+                ++g_frame.culledCount;
+            }
+        }
+        ::ReleaseSRWLockShared(&g_lock);
+        g_drawnLast = g_frame.drawCount;
+        g_culledLast = g_frame.culledCount;
+    }
+
+    const std::chrono::duration<double, std::milli> elapsed =
+        std::chrono::steady_clock::now() - t0;
+    g_lastFrameMs = elapsed.count();
+    g_frameMsSum += g_lastFrameMs;
+    ++g_frameMsCount;
+}
+
+// ---- 共享档位索引模式表（grid + 四缘裙边；每档全 chunk 复用同一 IB，B-TECH-04）----
+std::vector<uint32_t> BuildTierIndices(uint32_t res)
+{
+    std::vector<uint32_t> idx;
+    const uint32_t skirtBase = res * res;
+    idx.reserve(static_cast<size_t>((res - 1u) * (res - 1u) * 6u)
+        + static_cast<size_t>(4u * (res - 1u) * 6u));
+    for (uint32_t j = 0; j + 1u < res; ++j) {
+        for (uint32_t i = 0; i + 1u < res; ++i) {
+            const uint32_t v00 = j * res + i;
+            const uint32_t v10 = v00 + 1u;
+            const uint32_t v01 = v00 + res;
+            const uint32_t v11 = v01 + 1u;
+            idx.push_back(v00);
+            idx.push_back(v10);
+            idx.push_back(v11);
+            idx.push_back(v00);
+            idx.push_back(v11);
+            idx.push_back(v01);
+        }
+    }
+    // 裙边四缘：e=0 北(j=0) / 1 南(j=res−1) / 2 西(i=0) / 3 东(i=res−1)；
+    // 顶点 k 沿缘序——与 GenerateChunkVerts 的裙边发射序一致
+    for (uint32_t e = 0; e < 4u; ++e) {
+        const uint32_t sBase = skirtBase + e * res;
+        for (uint32_t k = 0; k + 1u < res; ++k) {
+            uint32_t g0 = 0u;
+            uint32_t g1 = 0u;
+            if (e == 0u) {
+                g0 = k;
+                g1 = k + 1u;
+            } else if (e == 1u) {
+                g0 = (res - 1u) * res + k;
+                g1 = g0 + 1u;
+            } else if (e == 2u) {
+                g0 = k * res;
+                g1 = g0 + res;
+            } else {
+                g0 = k * res + (res - 1u);
+                g1 = g0 + res;
+            }
+            const uint32_t s0 = sBase + k;
+            const uint32_t s1 = s0 + 1u;
+            idx.push_back(g0);
+            idx.push_back(s0);
+            idx.push_back(s1);
+            idx.push_back(g0);
+            idx.push_back(s1);
+            idx.push_back(g1);
+        }
+    }
+    return idx;
+}
+
+/// 行星逐绘常量池扩容（EnsureConstantBuffers 同构；每项 256B，持久 Map）
+bool EnsurePlanetConstantBuffers(uint32_t needed)
+{
+    if (needed > kPlanetMaxDrawItems || g_target.device == nullptr) {
+        return false;
+    }
+    while (g_target.planetCbCount < needed) {
+        ZrBufferDesc cbDesc {};
+        cbDesc.size = 256u;
+        cbDesc.usage = ZrBufferUsage::Uniform;
+        cbDesc.hostVisible = true;
+        ZrBuffer buffer = g_target.device->CreateBuffer(cbDesc);
+        if (!buffer.IsValid()) {
+            return false;
+        }
+        IZrBuffer* iface = g_target.device->GetBuffer(buffer);
+        void* mapped = (iface != nullptr) ? iface->Map() : nullptr;
+        if (mapped == nullptr) {
+            g_target.device->Destroy(buffer);
+            return false;
+        }
+        g_target.planetCb[g_target.planetCbCount] = buffer;
+        g_target.planetCbMapped[g_target.planetCbCount] = mapped;
+        ++g_target.planetCbCount;
+    }
+    return true;
+}
+
+// ---- 桥级兜底（§7.3 第 4 层）：目标/设备释放时随桥清空全部行星 GPU 资源 ------------
+void ReleaseGpuOnTeardown(ZrD3D12Device* device)
+{
+    ::AcquireSRWLockExclusive(&g_lock);
+    uint32_t cleared = 0u;
+    for (uint32_t s = 0; s < kMaxChunks; ++s) {
+        PlanetChunkSlot& slot = g_slots[s];
+        if (slot.state == kSlotEmpty) {
+            continue;
+        }
+        slot.generation += 1u; // 句柄全失效（与 ClearAll 同语义）
+        if (slot.state == kSlotPendingFree) {
+            // 已在 ChunkDestroy 记过销毁账——此处只清场，不重复记账（账目恒等式）
+        } else {
+            ++cleared; // PENDING_UPLOAD / LIVE → 新增销毁记账
+        }
+        if (device != nullptr && slot.vb.IsValid()) {
+            device->Destroy(slot.vb);
+        }
+        slot.vb = ZrBuffer {};
+        slot.vbMapped = nullptr;
+        slot.vbBytes = 0u;
+        slot.vbNearSized = false;
+        slot.appliedLod = kLodUnset;
+        slot.pendingVerts.clear();
+        slot.state = kSlotEmpty;
+    }
+    g_occupied = 0u;
+    // 销毁记账保恒等（§7.3②——createTotal − destroyTotal == liveChunks 全程成立）
+    g_destroyTotal += cleared;
+    g_frame.drawCount = 0u;
+    g_frame.culledCount = 0u;
+    ::ReleaseSRWLockExclusive(&g_lock);
+}
+
+} // namespace planet_detail
 
 
 /// 等本队列自己的 fence 到 value（TASK-B-UNITY-04）。顺手记一笔等待耗时：
@@ -509,11 +1358,15 @@ uint32_t FramesInFlight()
 void DestroyTargetObjects()
 {
     if (g_target.device == nullptr) {
+        // 无设备：行星槽位 VB 恒无效（从未上传），仅需清表态（§7.3 第 4 层兜底）
+        planet_detail::ReleaseGpuOnTeardown(nullptr);
         g_target = TargetState {};
         return;
     }
     ZrD3D12Device* device = g_target.device;
     device->WaitIdle();
+    // 行星 chunk 表 GPU 侧随桥释放（§7.3 第 4 层）——必须在设备包装仍有效时
+    planet_detail::ReleaseGpuOnTeardown(device);
     if (g_target.fullReadback.IsValid()) {
         device->Destroy(g_target.fullReadback);
         g_target.fullReadbackMapped = nullptr;
@@ -523,6 +1376,28 @@ void DestroyTargetObjects()
     }
     if (g_target.psoScene.IsValid()) {
         device->Destroy(g_target.psoScene);
+    }
+    if (g_target.psoPlanet.IsValid()) {
+        device->Destroy(g_target.psoPlanet);
+    }
+    if (g_target.planetPs.IsValid()) {
+        device->Destroy(g_target.planetPs);
+    }
+    if (g_target.planetVs.IsValid()) {
+        device->Destroy(g_target.planetVs);
+    }
+    if (g_target.planetIbNear.IsValid()) {
+        device->Destroy(g_target.planetIbNear);
+    }
+    if (g_target.planetIbFar.IsValid()) {
+        device->Destroy(g_target.planetIbFar);
+    }
+    // 行星逐绘常量池按实际增长量释放
+    for (uint32_t i = 0; i < g_target.planetCbCount && i < kPlanetMaxDrawItems; ++i) {
+        if (g_target.planetCb[i].IsValid()) {
+            device->Destroy(g_target.planetCb[i]);
+        }
+        g_target.planetCbMapped[i] = nullptr;
     }
     if (g_target.scenePs.IsValid()) {
         device->Destroy(g_target.scenePs);
@@ -680,6 +1555,46 @@ bool BuildRenderObjects(ZrD3D12Device* device)
         return false;
     }
 
+    // ---- 行星通道变体（TASK-B-PLANET-04）：planet2.hlsl 内嵌副本（mode 0 地形
+    // chunk；mode 1 天穹保留给窗口验证程序）——同一顶点布局/深度/剔除，常量
+    // 布局 208B（Planet2DrawConstants，static_assert 见下）。Cull None：chunk
+    // 裙边绕序混用（B-TECH-04 --planet2 同策）。
+    g_target.planetVs = device->CompileHlsl(
+        ZrShaderStage::Vertex, kPlanet2Hlsl, sizeof(kPlanet2Hlsl) - 1u, "VsMain");
+    g_target.planetPs = device->CompileHlsl(
+        ZrShaderStage::Pixel, kPlanet2Hlsl, sizeof(kPlanet2Hlsl) - 1u, "PsMain");
+    if (!g_target.planetVs.IsValid() || !g_target.planetPs.IsValid()) {
+        return false;
+    }
+    ZrGraphicsPsoDesc planetPsoDesc = psoDesc;
+    planetPsoDesc.vertexShader = g_target.planetVs;
+    planetPsoDesc.pixelShader = g_target.planetPs;
+    planetPsoDesc.cullMode = ZrCullMode::None;
+    g_target.psoPlanet = device->CreatePipelineState(planetPsoDesc);
+    if (!g_target.psoPlanet.IsValid()) {
+        return false;
+    }
+
+    // 共享档位索引（grid + 四缘裙边）：远档/近档各一，全 chunk 复用（B-TECH-04）
+    {
+        const std::vector<uint32_t> farIdx = planet_detail::BuildTierIndices(kPlanetResFar);
+        const std::vector<uint32_t> nearIdx = planet_detail::BuildTierIndices(kPlanetResNear);
+        if (farIdx.size() != kPlanetFarIndices || nearIdx.size() != kPlanetNearIndices) {
+            return false;
+        }
+        ZrBufferDesc farDesc {};
+        farDesc.size = static_cast<uint64_t>(farIdx.size()) * 4u;
+        farDesc.usage = ZrBufferUsage::Index | ZrBufferUsage::TransferDst;
+        g_target.planetIbFar = device->CreateBuffer(farDesc, farIdx.data());
+        ZrBufferDesc nearDesc {};
+        nearDesc.size = static_cast<uint64_t>(nearIdx.size()) * 4u;
+        nearDesc.usage = ZrBufferUsage::Index | ZrBufferUsage::TransferDst;
+        g_target.planetIbNear = device->CreateBuffer(nearDesc, nearIdx.data());
+        if (!g_target.planetIbFar.IsValid() || !g_target.planetIbNear.IsValid()) {
+            return false;
+        }
+    }
+
     g_target.cmd = device->CreateCommandList(ZrQueueType::Graphics);
     g_target.queue = device->GetQueue(ZrQueueType::Graphics);
     if (!g_target.cmd.IsValid() || g_target.queue == nullptr) {
@@ -744,6 +1659,299 @@ bool BuildRenderObjects(ZrD3D12Device* device)
 }
 
 } // namespace
+
+// =============================================================================
+// TASK-B-PLANET-04：行星通道公共 API（zplugin 六导出 + 相机原点存储的薄转发落点）
+// 语义契约逐条对齐 zplugin.h 行星声明块组 1/2/3 的注释与设计稿 §14——那里是 ABI
+// 权威；本层只实现，不重定义协议。
+// =============================================================================
+
+namespace planet {
+
+int SetWorldContext(uint32_t seed, const double centerAbs[3])
+{
+    if (centerAbs == nullptr) {
+        return ZR_PLANET_ERR_NULL;
+    }
+    ::AcquireSRWLockExclusive(&planet_detail::g_lock);
+    planet_detail::g_seed = seed;
+    planet_detail::g_center[0] = centerAbs[0];
+    planet_detail::g_center[1] = centerAbs[1];
+    planet_detail::g_center[2] = centerAbs[2];
+    planet_detail::g_worldSet = true;
+    ::ReleaseSRWLockExclusive(&planet_detail::g_lock);
+    return ZR_PLANET_OK;
+}
+
+void SetCameraOrigin(double x, double y, double z)
+{
+    // B-PLANET-05 语义原样迁移（zplugin.h 组 1 注释）：渲染线程单线程约定下
+    // 无锁（与既有 g_rhiBackend/网格句柄表同口径）；RenderFrame 消费方同线程。
+    planet_detail::g_camOrigin[0] = x;
+    planet_detail::g_camOrigin[1] = y;
+    planet_detail::g_camOrigin[2] = z;
+}
+
+void GetCameraOrigin(double* outOrigin)
+{
+    outOrigin[0] = planet_detail::g_camOrigin[0];
+    outOrigin[1] = planet_detail::g_camOrigin[1];
+    outOrigin[2] = planet_detail::g_camOrigin[2];
+}
+
+int ChunkCreate(const ZrPlanetChunkDesc& desc, uint64_t* outHandle)
+{
+    if (outHandle == nullptr) {
+        return ZR_PLANET_ERR_NULL; // zplugin 已查，防御保留
+    }
+    {
+        ::AcquireSRWLockShared(&planet_detail::g_lock);
+        const bool worldSet = planet_detail::g_worldSet;
+        ::ReleaseSRWLockShared(&planet_detail::g_lock);
+        if (!worldSet) {
+            return ZR_PLANET_ERR_STATE; // §4.5：行星上下文未设置
+        }
+    }
+    // 顶点生成在锁外（§8 表：校验+占槽独占；顶点生成锁外，完成后独占发布）。
+    // FULL 检查在发布段（生成成本在 FULL 拒绝时白付——FULL 属异常路径，换取
+    // 锁内零重活）。
+    std::vector<uint8_t> verts;
+    const uint32_t vertCount = planet_detail::GenerateChunkVerts(desc.faceId, desc.cx,
+        desc.cy, desc.cellsPerEdge, desc.lodLevel, desc.originAbs, verts);
+    if (vertCount == 0u) {
+        return ZR_PLANET_ERR_RANGE; // 防御（zplugin 已校验，理论不可达）
+    }
+    ::AcquireSRWLockExclusive(&planet_detail::g_lock);
+    if (!planet_detail::g_worldSet) {
+        ::ReleaseSRWLockExclusive(&planet_detail::g_lock);
+        return ZR_PLANET_ERR_STATE;
+    }
+    if (planet_detail::g_occupied >= planet_detail::kMaxChunks) {
+        ::ReleaseSRWLockExclusive(&planet_detail::g_lock);
+        return ZR_PLANET_ERR_FULL; // §4.5：liveChunks + pending ≥ 8192
+    }
+    uint32_t slotIdx = planet_detail::kMaxChunks;
+    for (uint32_t s = 0; s < planet_detail::kMaxChunks; ++s) {
+        if (planet_detail::g_slots[s].state == planet_detail::kSlotEmpty) {
+            slotIdx = s;
+            break;
+        }
+    }
+    if (slotIdx == planet_detail::kMaxChunks) {
+        ::ReleaseSRWLockExclusive(&planet_detail::g_lock);
+        return ZR_PLANET_ERR_FULL; // 占用计数与扫描失步的防御（理论不可达）
+    }
+    planet_detail::PlanetChunkSlot& slot = planet_detail::g_slots[slotIdx];
+    if (slot.generation == 0u) {
+        slot.generation = 1u; // 槽位首次启用（mesh 表同协议）
+    }
+    slot.state = planet_detail::kSlotPendingUpload;
+    slot.faceId = desc.faceId;
+    slot.cx = desc.cx;
+    slot.cy = desc.cy;
+    slot.cellsPerEdge = desc.cellsPerEdge;
+    slot.desiredLod = desc.lodLevel;
+    slot.genTier = desc.lodLevel;
+    slot.appliedLod = planet_detail::kLodUnset;
+    slot.neighborMask = desc.neighborMask; // v1 校验+记录（设计稿 §5.2 方案 A）
+    slot.originAbs[0] = desc.originAbs[0];
+    slot.originAbs[1] = desc.originAbs[1];
+    slot.originAbs[2] = desc.originAbs[2];
+    slot.freeFrame = 0u;
+    slot.vb = ZrBuffer {};
+    slot.vbMapped = nullptr;
+    slot.vbBytes = 0u;
+    slot.vbNearSized = false;
+    slot.pendingVerts = std::move(verts);
+    ++planet_detail::g_occupied;
+    ++planet_detail::g_createTotal;
+    *outHandle = (static_cast<uint64_t>(slot.generation) << 32)
+        | static_cast<uint64_t>(slotIdx);
+    ::ReleaseSRWLockExclusive(&planet_detail::g_lock);
+    return ZR_PLANET_OK;
+}
+
+int ChunkDestroy(uint64_t handle)
+{
+    const uint32_t slotIdx = static_cast<uint32_t>(handle & 0xFFFFFFFFull);
+    const uint32_t generation = static_cast<uint32_t>(handle >> 32);
+    if (slotIdx >= planet_detail::kMaxChunks || generation == 0u) {
+        return ZR_PLANET_ERR_HANDLE;
+    }
+    ::AcquireSRWLockExclusive(&planet_detail::g_lock);
+    planet_detail::PlanetChunkSlot& slot = planet_detail::g_slots[slotIdx];
+    if (slot.state == planet_detail::kSlotEmpty || slot.generation != generation) {
+        ::ReleaseSRWLockExclusive(&planet_detail::g_lock);
+        return ZR_PLANET_ERR_HANDLE; // 代际防误用（§7.3 第 1 层）
+    }
+    // 句柄立即失效（代际+1，独占锁内——§4.4 语义 1）；VB 延迟一帧（语义 2），
+    // freeFrame = 本帧号：本帧 RenderFrame 仍绘制（先画后删，语义 3），下一帧释放。
+    slot.generation += 1u;
+    slot.state = planet_detail::kSlotPendingFree;
+    slot.freeFrame = g_target.frameCount;
+    ++planet_detail::g_destroyTotal;
+    ::ReleaseSRWLockExclusive(&planet_detail::g_lock);
+    return ZR_PLANET_OK;
+}
+
+int ChunkSetOrigin(uint64_t handle, double x, double y, double z)
+{
+    const uint32_t slotIdx = static_cast<uint32_t>(handle & 0xFFFFFFFFull);
+    const uint32_t generation = static_cast<uint32_t>(handle >> 32);
+    if (slotIdx >= planet_detail::kMaxChunks || generation == 0u) {
+        return ZR_PLANET_ERR_HANDLE;
+    }
+    ::AcquireSRWLockExclusive(&planet_detail::g_lock);
+    planet_detail::PlanetChunkSlot& slot = planet_detail::g_slots[slotIdx];
+    if (slot.state == planet_detail::kSlotEmpty || slot.generation != generation) {
+        ::ReleaseSRWLockExclusive(&planet_detail::g_lock);
+        return ZR_PLANET_ERR_HANDLE;
+    }
+    // 顶点不重算（§4.3）：局部坐标相对锚点不变；锚点平移而行星中心未同步平移
+    // = 托管侧 bug（地形视觉错位），原生不校验、文档写明。
+    slot.originAbs[0] = x;
+    slot.originAbs[1] = y;
+    slot.originAbs[2] = z;
+    ::ReleaseSRWLockExclusive(&planet_detail::g_lock);
+    return ZR_PLANET_OK;
+}
+
+int SetLod(uint64_t handle, uint32_t lodLevel, uint32_t neighborMask)
+{
+    const uint32_t slotIdx = static_cast<uint32_t>(handle & 0xFFFFFFFFull);
+    const uint32_t generation = static_cast<uint32_t>(handle >> 32);
+    if (slotIdx >= planet_detail::kMaxChunks || generation == 0u) {
+        return ZR_PLANET_ERR_HANDLE;
+    }
+    ::AcquireSRWLockExclusive(&planet_detail::g_lock);
+    planet_detail::PlanetChunkSlot& slot = planet_detail::g_slots[slotIdx];
+    if (slot.state == planet_detail::kSlotEmpty || slot.generation != generation) {
+        ::ReleaseSRWLockExclusive(&planet_detail::g_lock);
+        return ZR_PLANET_ERR_HANDLE;
+    }
+    // 期望档位记录（下一 RenderFrame 应用——§5.2/D6；同帧多次最后生效即此处
+    // 直接覆盖）；neighborMask v1 校验+记录，不改几何。
+    slot.desiredLod = lodLevel;
+    slot.neighborMask = neighborMask;
+    ::ReleaseSRWLockExclusive(&planet_detail::g_lock);
+    return ZR_PLANET_OK;
+}
+
+int GetStats(ZrPlanetStats* out)
+{
+    if (out == nullptr) {
+        return ZR_PLANET_ERR_NULL;
+    }
+    ::AcquireSRWLockShared(&planet_detail::g_lock);
+    uint32_t live = 0u;
+    uint32_t pendingUp = 0u;
+    uint32_t pendingFree = 0u;
+    uint32_t pendingLod = 0u;
+    uint64_t vertexBytes = 0u;
+    for (uint32_t s = 0; s < planet_detail::kMaxChunks; ++s) {
+        const planet_detail::PlanetChunkSlot& slot = planet_detail::g_slots[s];
+        if (slot.state == planet_detail::kSlotEmpty) {
+            continue;
+        }
+        vertexBytes += slot.vbBytes;
+        if (slot.state == planet_detail::kSlotPendingUpload) {
+            ++pendingUp;
+            ++live;
+            if (slot.desiredLod != slot.genTier) {
+                ++pendingLod; // 上传前变档：上传边界以期望档生效
+            }
+        } else if (slot.state == planet_detail::kSlotLive) {
+            ++live;
+            if (slot.appliedLod != slot.desiredLod) {
+                ++pendingLod;
+            }
+        } else { // kSlotPendingFree（句柄已失效——不计 live）
+            ++pendingFree;
+        }
+    }
+    out->structSize = static_cast<uint32_t>(sizeof(ZrPlanetStats));
+    out->liveChunks = live;
+    out->pendingUploads = pendingUp;
+    out->pendingFrees = pendingFree;
+    out->pendingLod = pendingLod;
+    out->drawnLastFrame = planet_detail::g_drawnLast;
+    out->culledLastFrame = planet_detail::g_culledLast;
+    out->seamCheckFails = planet_detail::g_seamFails;
+    out->createTotal = planet_detail::g_createTotal;
+    out->destroyTotal = planet_detail::g_destroyTotal;
+    out->lodChangeTotal = planet_detail::g_lodChangeTotal;
+    out->vertexBytes = vertexBytes;
+    out->lastFrameMs = planet_detail::g_lastFrameMs;
+    out->avgFrameMs = (planet_detail::g_frameMsCount > 0u)
+        ? (planet_detail::g_frameMsSum / static_cast<double>(planet_detail::g_frameMsCount))
+        : 0.0;
+    ::ReleaseSRWLockShared(&planet_detail::g_lock);
+    return ZR_PLANET_OK;
+}
+
+void ClearAll(void)
+{
+    ::AcquireSRWLockExclusive(&planet_detail::g_lock);
+    uint32_t cleared = 0u;
+    for (uint32_t s = 0; s < planet_detail::kMaxChunks; ++s) {
+        planet_detail::PlanetChunkSlot& slot = planet_detail::g_slots[s];
+        if (slot.state == planet_detail::kSlotEmpty) {
+            continue;
+        }
+        slot.generation += 1u; // 句柄全失效（§7.3 第 3 层）
+        if (slot.state == planet_detail::kSlotPendingFree) {
+            continue; // 已按销毁记账——VB 照常到期释放，不重复记账
+        }
+        ++cleared;
+        // 统一延迟语义（与 ChunkDestroy 同构）：全部进 PENDING_FREE 排队——
+        // 渲染线程下一 RenderFrame 释放（VB 无效的槽位释放时直接丢弃）。
+        slot.state = planet_detail::kSlotPendingFree;
+        slot.freeFrame = g_target.frameCount;
+    }
+    // 销毁记账保恒等（§7.3②）：ClearAll 等价批量 Destroy
+    planet_detail::g_destroyTotal += cleared;
+    planet_detail::g_frame.drawCount = 0u;
+    planet_detail::g_frame.culledCount = 0u;
+    ::ReleaseSRWLockExclusive(&planet_detail::g_lock);
+}
+
+void TestResetForUnitTests(void)
+{
+    // 仅 doctest 使用（进程级单例复位，ZR_Upscaler 测试复位同策）。
+    // 前提：调用时无存活 GPU 目标（doctest 从不建目标——VB 恒无效，无泄漏路径）。
+    ::AcquireSRWLockExclusive(&planet_detail::g_lock);
+    for (uint32_t s = 0; s < planet_detail::kMaxChunks; ++s) {
+        planet_detail::PlanetChunkSlot& slot = planet_detail::g_slots[s];
+        slot.state = planet_detail::kSlotEmpty;
+        slot.generation = 0u;
+        slot.vb = ZrBuffer {};
+        slot.vbMapped = nullptr;
+        slot.vbBytes = 0u;
+        slot.vbNearSized = false;
+        slot.appliedLod = planet_detail::kLodUnset;
+        slot.pendingVerts.clear();
+    }
+    planet_detail::g_occupied = 0u;
+    planet_detail::g_createTotal = 0u;
+    planet_detail::g_destroyTotal = 0u;
+    planet_detail::g_lodChangeTotal = 0u;
+    planet_detail::g_drawnLast = 0u;
+    planet_detail::g_culledLast = 0u;
+    planet_detail::g_seamFails = 0u;
+    planet_detail::g_lastFrameMs = 0.0;
+    planet_detail::g_frameMsSum = 0.0;
+    planet_detail::g_frameMsCount = 0u;
+    planet_detail::g_worldSet = false;
+    planet_detail::g_seed = 0u;
+    planet_detail::g_center[0] = 0.0;
+    planet_detail::g_center[1] = 0.0;
+    planet_detail::g_center[2] = 0.0;
+    planet_detail::g_frame.drawCount = 0u;
+    planet_detail::g_frame.culledCount = 0u;
+    ::ReleaseSRWLockExclusive(&planet_detail::g_lock);
+}
+
+} // namespace planet
 
 int AttachDeviceFromTexture(void* d3d12Texture)
 {
@@ -1084,9 +2292,17 @@ int RenderFrame(void)
         g_target.pendingReadback = false;
     }
 
+    // ---- TASK-B-PLANET-04：行星通道帧首（§8 延迟一帧协议）-------------------------
+    // GPU 上传/释放/档位应用只在此边界（锁外），绘制快照（决策拷贝）随后锁外消费。
+    // 上传成功 chunk 本帧即活（§7.1"主线程 Create 后下一 RenderFrame 生效"）。
+    planet_detail::FrameBegin(device);
+    const bool planetPath = planet_detail::g_frame.cameraUsable
+        && planet_detail::g_frame.drawCount > 0u;
+
     // ---- 帧内容：调用方提交优先，无提交回落硬编码三 cube ------------------------
     // 这个分叉是任务判据 V1/V4 的分水岭：有相机 + 有绘制项 = 画 Unity 的场景；
-    // 否则保持 B-UNITY-02 的演示（--draw 与既有验证不受影响）。
+    // 否则保持 B-UNITY-02 的演示（--draw 与既有验证不受影响）。行星通道有内容时
+    // 同样跳过 cube 回落（帧非空——回落只为兜底空帧，--draw 无 chunk 不受影响）。
     const bool scenePath = g_scene.cameraSet && g_scene.drawCount > 0u;
     uint32_t frameDrawCount = 0u;
     ZrPipelineState framePso = g_target.pso;
@@ -1129,7 +2345,7 @@ int RenderFrame(void)
         framePso = g_target.psoScene;
     }
 
-    if (!scenePath) {
+    if (!scenePath && !planetPath) {
         // ---- 回落路径：绕 Y 匀速旋转 + 固定俯仰，三个 cube 横向排开（B-UNITY-02 原样）
         const float angle = 2.0f * kPi * static_cast<float>(g_target.frameCount % 120u) / 120.0f;
         const float lightDir[3] = {0.5f, 0.8f, 0.6f};
@@ -1172,6 +2388,93 @@ int RenderFrame(void)
             g_frameDraws[i].indexCount = kCubeIndexCount;
         }
         frameDrawCount = kDrawItems;
+    }
+
+    // ---- 行星通道 CB 填充（TASK-B-PLANET-04；§3.2/D3 相机相对模型矩阵）--------------
+    // 模型平移 = float(anchorAbs − camAbs)：double 域相减后一次 cast——chunk 不走
+    // DrawMesh 的 float world16 的全部理由（100km 爬升段 ULP≈1m 的抖动回流）。
+    bool planetDrawActive = false;
+    if (planetPath) {
+        if (!planet_detail::EnsurePlanetConstantBuffers(planet_detail::g_frame.drawCount)) {
+            // 常量池扩容失败（设备级错误）：本帧行星整体跳过，计入剔除侧
+            ++g_target.lastError;
+            planet_detail::g_drawnLast = 0u;
+            planet_detail::g_culledLast += planet_detail::g_frame.drawCount;
+        } else {
+            float vp[16];
+            MatMultiply(g_scene.proj, g_scene.view, vp);
+            const double relX = planet_detail::g_frame.camAbs[0]
+                - planet_detail::g_frame.center[0];
+            const double relY = planet_detail::g_frame.camAbs[1]
+                - planet_detail::g_frame.center[1];
+            const double relZ = planet_detail::g_frame.camAbs[2]
+                - planet_detail::g_frame.center[2];
+            const double camLen = std::sqrt(relX * relX + relY * relY + relZ * relZ);
+            const double altM = (camLen > 0.0)
+                ? (camLen - zplanet::kPlanetRadiusM) : 0.0;
+            // 大气色/雾（B-TECH-04 CPU 预混口径原样移植）
+            const double altT = std::min(1.0, std::max(0.0,
+                (std::log10(std::max(altM, 0.0) + 1.0) - 3.0)
+                    / (std::log10(kPlanetClimbAltM) - 3.0)));
+            float zenith[3] = {};
+            float horizon[3] = {};
+            for (int c = 0; c < 3; ++c) {
+                zenith[c] = static_cast<float>(static_cast<double>(kPlanetZenithBlue[c])
+                    + (static_cast<double>(kPlanetSpace[c])
+                          - static_cast<double>(kPlanetZenithBlue[c])) * altT);
+                horizon[c] = static_cast<float>(static_cast<double>(kPlanetHorizonBlue[c])
+                    + (static_cast<double>(kPlanetSpace[c])
+                          - static_cast<double>(kPlanetHorizonBlue[c])) * altT);
+            }
+            const double fogDist = (altM < 1.0e6)
+                ? (kPlanetFogGroundM
+                      + (kPlanetFogClimbM - kPlanetFogGroundM) * (altM / 1.0e6))
+                : 0.0;
+            // 渲染空间 up = view 旋转 × 世界 up（径向；行主序旋转 v'_c = Σ_r m[r*4+c]·v_r）
+            double worldUp[3] = {0.0, 1.0, 0.0};
+            if (camLen > 0.0) {
+                worldUp[0] = relX / camLen;
+                worldUp[1] = relY / camLen;
+                worldUp[2] = relZ / camLen;
+            }
+            float upRender[3] = {};
+            for (int c = 0; c < 3; ++c) {
+                upRender[c] = g_scene.view[0 * 4 + c] * static_cast<float>(worldUp[0])
+                    + g_scene.view[1 * 4 + c] * static_cast<float>(worldUp[1])
+                    + g_scene.view[2 * 4 + c] * static_cast<float>(worldUp[2]);
+            }
+            for (uint32_t i = 0; i < planet_detail::g_frame.drawCount; ++i) {
+                const planet_detail::PlanetFrameDraw& d = planet_detail::g_frame.draws[i];
+                // double 域相减后一次 cast（设计稿 §9 表第 7 行的原生执行点）
+                const float tx = static_cast<float>(d.originAbs[0]
+                    - planet_detail::g_frame.camAbs[0]);
+                const float ty = static_cast<float>(d.originAbs[1]
+                    - planet_detail::g_frame.camAbs[1]);
+                const float tz = static_cast<float>(d.originAbs[2]
+                    - planet_detail::g_frame.camAbs[2]);
+                float model[16];
+                MatTranslation(tx, ty, tz, model);
+                float mvp[16];
+                MatMultiply(vp, model, mvp);
+                Planet2DrawConstants c {};
+                std::memcpy(c.mvp, mvp, sizeof(c.mvp));
+                std::memcpy(c.model, model, sizeof(c.model));
+                c.params[0] = 0.0f; // mode 0：地形 chunk（mode 1 天穹属窗口演示层）
+                c.params[1] = static_cast<float>(fogDist);
+                c.params[2] = static_cast<float>(altT);
+                c.params[3] = static_cast<float>(kPlanetContourM);
+                c.fogColor[0] = horizon[0]; c.fogColor[1] = horizon[1];
+                c.fogColor[2] = horizon[2]; c.fogColor[3] = 1.0f;
+                c.zenithColor[0] = zenith[0]; c.zenithColor[1] = zenith[1];
+                c.zenithColor[2] = zenith[2]; c.zenithColor[3] = 1.0f;
+                c.horizonColor[0] = horizon[0]; c.horizonColor[1] = horizon[1];
+                c.horizonColor[2] = horizon[2]; c.horizonColor[3] = 1.0f;
+                c.upVec[0] = upRender[0]; c.upVec[1] = upRender[1];
+                c.upVec[2] = upRender[2]; c.upVec[3] = 0.0f;
+                std::memcpy(g_target.planetCbMapped[i], &c, sizeof(c));
+            }
+            planetDrawActive = true;
+        }
     }
 
     const bool doReadback = (g_target.frameCount % kReadbackInterval) == 0u;
@@ -1230,6 +2533,37 @@ int RenderFrame(void)
                 cmdList->DrawIndexedInstanced(draw.indexCount, 1u, 0u, 0u, 0u);
             }
         });
+
+    // ---- TASK-B-PLANET-04：行星通道（场景路径后追加、同深度缓冲）--------------------
+    // planet2.hlsl mode 0；逐 chunk VB + 共享档位 IB + 逐绘 CB。地平线剔除已在
+    // 帧首快照完成（drawCount 即剔除后的绘制集合）。
+    if (planetDrawActive) {
+        graph.AddPass("ZRPlanetDraw",
+            [&](RgPass& pass) {
+                pass.Write(colorH, ZrImageLayout::ColorAttachmentOptimal,
+                    ZrAccessBits::ColorAttachmentWrite,
+                    ZrPipelineStageBits::ColorAttachmentOutput);
+                pass.Write(depthH, ZrImageLayout::DepthStencilAttachmentOptimal,
+                    ZrAccessBits::DepthStencilAttachmentWrite,
+                    ZrPipelineStageBits::LateFragmentTests);
+            },
+            [&](RgContext&) {
+                cmdList->SetPipelineState(g_target.psoPlanet);
+                cmdList->SetRenderTarget(g_target.colorRtv[slot], g_target.depthDsv[slot]);
+                cmdList->SetViewportScissor(g_target.width, g_target.height);
+                for (uint32_t i = 0; i < planet_detail::g_frame.drawCount; ++i) {
+                    const planet_detail::PlanetFrameDraw& d
+                        = planet_detail::g_frame.draws[i];
+                    ZrBuffer vbs[1] = {d.vb};
+                    cmdList->SetVertexBuffers(vbs, 1u);
+                    cmdList->SetIndexBuffer(
+                        (d.tier >= 1u) ? g_target.planetIbNear : g_target.planetIbFar);
+                    cmdList->SetGraphicsConstantBuffer(0u, g_target.planetCb[i]);
+                    cmdList->DrawIndexedInstanced(planet_detail::TierIndices(d.tier), 1u,
+                        0u, 0u, 0u);
+                }
+            });
+    }
 
     if (doReadback) {
         graph.AddPass("ZRTargetReadback",
@@ -1361,6 +2695,15 @@ const char* EmbeddedFirstDrawHlsl(uint32_t* outSize)
         *outSize = size;
     }
     return kFirstDrawHlsl;
+}
+
+const char* EmbeddedPlanet2Hlsl(uint32_t* outSize)
+{
+    const uint32_t size = static_cast<uint32_t>(sizeof(kPlanet2Hlsl) - 1u);
+    if (outSize != nullptr) {
+        *outSize = size;
+    }
+    return kPlanet2Hlsl;
 }
 
 // ---- TASK-B-UNITY-03：场景提交 ------------------------------------------------

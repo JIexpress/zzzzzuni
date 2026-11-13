@@ -151,7 +151,7 @@ ZRender RenderFrame
 - `seed`：来自 `ZrPlanetWorld`（§6），不逐 chunk 传
 - `originAbs`：chunk 锚点（建议取 chunk 中心球面点，B-TECH-04 现状）double 绝对坐标；顶点局部坐标 = `float(posAbs − originAbs)`（double 域相减后一次 cast）
 
-顶点布局复用场景路径 v1 的 32B/顶点（pos3f + normal3f + uv2f，strideFloats=8，zplugin.h:358）：pos=锚点局部 float；normal=球面法线+构建期中心差分坡度（B-TECH-04.md:66-67）；uv=面内 (u,v)（预留贴图，v1 高程色带不用）。
+顶点布局复用场景路径 v1 的 32B/顶点（pos3f + normal3f + uv2f，strideFloats=8，zplugin.h:358）：pos=锚点局部 float；normal=球面法线+构建期中心差分坡度（B-TECH-04.md:66-67）；uv.x=heightM、uv.y=0（B-TECH-04 高程色带口径，TASK-B-PLANET-04 G1 裁决落地；原稿面内 (u,v) 表述与实现自冲突，2026-11-14 勘误）。
 
 GPU 内存量级（计算，与实测吻合）：远档 320 顶点 × 32B = 10.24KB/chunk × 6144 = **62.9MB**——与 B-TECH-04 实测「6144 VB 池 ~63MB」一致（B-TECH-04.md:171）；近档 4352 × 32B = 139.3KB/chunk。
 

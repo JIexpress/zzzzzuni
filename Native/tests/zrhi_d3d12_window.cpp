@@ -9181,6 +9181,416 @@ static int RunPlanet2Mode()
     return 1;
 }
 
+// ---- TASK-B-PLANET-04：--planet3 模式（生产导出面行星真渲染验证）--------------------
+// =============================================================================
+// 与 --planet2 的差别：planet2 走窗口程序自建渲染链（验证数学与几何），planet3
+// 走 **zrender.dll 生产导出面**（LoadLibrary + GetProcAddress——zrhi_unity_bridge
+// 同策：导出表是硬前提）验证生产通道本体：
+//   自建宿主设备/纹理（扮演 Unity）→ AttachDeviceFromTexture → CreateSharedTarget
+//   → ZR_Planet_SetWorld → ZR_Planet_ChunkCreate ×30（近档 3×3 + 远档环 + 对面
+//   5 采样）→ 每帧 SetCameraOrigin(double 绝对) + SetCamera(相机相对纯旋转) +
+//   BeginScene + ZR_Unity_RenderFrame（行星通道在共享纹理上自主绘制）→
+//   ZR_Unity_ReadTargetPixels 探针 + PNG + ZR_Planet_GetStats 断言。
+// 断言面：ApiVersion==3、账目恒等式、pendingUploads 清零（延迟上传落地）、
+// drawn/culled（地平线剔除）、SetLod 下一帧应用（lodChangeTotal）、退档不缩容
+// （vertexBytes 不变）、seamCheckFails==0（近档运行期共享边核查）、地形像素证据。
+// 通过行：`D3D12 PLANET3 OK (chunks=N drawn=M culled=C vbytes=V frame_ms=X)`。
+// =============================================================================
+
+static int RunPlanet3Mode()
+{
+    using zplanet::Vec3d;
+    constexpr uint32_t kP3Width = 640u;
+    constexpr uint32_t kP3Height = 480u;
+    constexpr uint32_t kP3Frames = 48u;
+    constexpr uint32_t kP3Seed = 1337u;
+    constexpr uint32_t kP3ReadbackFrame = 10u; // 帧 10（偶数帧 → 槽 0）全帧回读
+    constexpr uint32_t kP3LodCallFrame = 16u;  // 帧 16 前 SetLod（下一 RenderFrame 应用）
+    const char* kP3Png = "Docs/Parity/planet3_terrain.png";
+
+    // ---- 1) 生产 dll 导出面（zrhi_unity_bridge 同策）--------------------------------
+    HMODULE dll = LoadLibraryA("zrender.dll");
+    if (dll == nullptr) {
+        std::printf("zrhi_d3d12_window: --planet3 FAILED LoadLibrary(zrender.dll) err=%lu\n",
+            GetLastError());
+        return 2;
+    }
+    using ZrApiVersionFn = uint32_t (*)();
+    const auto apiVersion = reinterpret_cast<ZrApiVersionFn>(GetProcAddress(dll, "ZR_ApiVersion"));
+    const auto attachTex = reinterpret_cast<ZrUnityAttachDeviceFromTextureFn>(
+        GetProcAddress(dll, "ZR_Unity_AttachDeviceFromTexture"));
+    const auto createTarget = reinterpret_cast<ZrUnityCreateSharedTargetFn>(
+        GetProcAddress(dll, "ZR_Unity_CreateSharedTarget"));
+    const auto setCamera = reinterpret_cast<ZrUnitySetCameraFn>(
+        GetProcAddress(dll, "ZR_Unity_SetCamera"));
+    const auto setCameraOrigin = reinterpret_cast<ZrUnitySetCameraOriginFn>(
+        GetProcAddress(dll, "ZR_Unity_SetCameraOrigin"));
+    const auto beginScene = reinterpret_cast<ZrUnityBeginSceneFn>(
+        GetProcAddress(dll, "ZR_Unity_BeginScene"));
+    const auto renderFrame = reinterpret_cast<ZrUnityRenderFrameFn>(
+        GetProcAddress(dll, "ZR_Unity_RenderFrame"));
+    const auto readPixels = reinterpret_cast<ZrUnityReadTargetPixelsFn>(
+        GetProcAddress(dll, "ZR_Unity_ReadTargetPixels"));
+    const auto releaseTarget = reinterpret_cast<ZrUnityReleaseSharedTargetFn>(
+        GetProcAddress(dll, "ZR_Unity_ReleaseSharedTarget"));
+    const auto setWorld = reinterpret_cast<ZrPlanetSetWorldFn>(
+        GetProcAddress(dll, "ZR_Planet_SetWorld"));
+    const auto chunkCreate = reinterpret_cast<ZrPlanetChunkCreateFn>(
+        GetProcAddress(dll, "ZR_Planet_ChunkCreate"));
+    const auto chunkDestroy = reinterpret_cast<ZrPlanetChunkDestroyFn>(
+        GetProcAddress(dll, "ZR_Planet_ChunkDestroy"));
+    const auto setLod = reinterpret_cast<ZrPlanetSetLodFn>(
+        GetProcAddress(dll, "ZR_Planet_SetLod"));
+    const auto getStats = reinterpret_cast<ZrPlanetGetStatsFn>(
+        GetProcAddress(dll, "ZR_Planet_GetStats"));
+    const auto clearAll = reinterpret_cast<ZrPlanetClearAllFn>(
+        GetProcAddress(dll, "ZR_Planet_ClearAll"));
+    if (apiVersion == nullptr || attachTex == nullptr || createTarget == nullptr
+        || setCamera == nullptr || setCameraOrigin == nullptr || beginScene == nullptr
+        || renderFrame == nullptr || readPixels == nullptr || releaseTarget == nullptr
+        || setWorld == nullptr || chunkCreate == nullptr || chunkDestroy == nullptr
+        || setLod == nullptr || getStats == nullptr || clearAll == nullptr) {
+        std::printf("zrhi_d3d12_window: --planet3 FAILED GetProcAddress (planet/bridge "
+                    "exports missing)\n");
+        FreeLibrary(dll);
+        return 2;
+    }
+    const uint32_t version = apiVersion();
+    if (version < 3u) {
+        std::printf("zrhi_d3d12_window: --planet3 FAILED ApiVersion=%u (need >= 3)\n",
+            version);
+        FreeLibrary(dll);
+        return 2;
+    }
+
+    // ---- 2) 扮演宿主：自建设备 + 纹理（COMMON 态，B-UNITY-02 契约）--------------------
+    Microsoft::WRL::ComPtr<IDXGIFactory4> factory;
+    if (FAILED(CreateDXGIFactory2(0u, IID_PPV_ARGS(&factory)))) {
+        std::printf("zrhi_d3d12_window: --planet3 FAILED CreateDXGIFactory2\n");
+        FreeLibrary(dll);
+        return 2;
+    }
+    Microsoft::WRL::ComPtr<IDXGIAdapter1> adapter;
+    for (UINT i = 0u; i < 8u; ++i) {
+        Microsoft::WRL::ComPtr<IDXGIAdapter1> candidate;
+        if (factory->EnumAdapters1(i, &candidate) == DXGI_ERROR_NOT_FOUND) {
+            break;
+        }
+        DXGI_ADAPTER_DESC1 desc1 {};
+        candidate->GetDesc1(&desc1);
+        if ((desc1.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) == 0u) {
+            adapter = candidate;
+            break;
+        }
+    }
+    Microsoft::WRL::ComPtr<ID3D12Device> hostDevice;
+    if (FAILED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0,
+            IID_PPV_ARGS(&hostDevice)))) {
+        std::printf("zrhi_d3d12_window: --planet3 FAILED host D3D12CreateDevice\n");
+        FreeLibrary(dll);
+        return 2;
+    }
+    D3D12_HEAP_PROPERTIES heap {};
+    heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+    D3D12_RESOURCE_DESC texDesc {};
+    texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    texDesc.Width = kP3Width;
+    texDesc.Height = kP3Height;
+    texDesc.DepthOrArraySize = 1u;
+    texDesc.MipLevels = 1u;
+    texDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    texDesc.SampleDesc.Count = 1u;
+    texDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+    Microsoft::WRL::ComPtr<ID3D12Resource> hostTexture;
+    if (FAILED(hostDevice->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &texDesc,
+            D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&hostTexture)))) {
+        std::printf("zrhi_d3d12_window: --planet3 FAILED host texture\n");
+        FreeLibrary(dll);
+        return 2;
+    }
+
+    // ---- 3) 接入共享目标 + 行星上下文 -------------------------------------------------
+    int rc = attachTex(hostTexture.Get());
+    if (rc != ZR_UNITY_OK) {
+        std::printf("zrhi_d3d12_window: --planet3 FAILED AttachDeviceFromTexture rc=%d\n", rc);
+        FreeLibrary(dll);
+        return 2;
+    }
+    rc = createTarget(kP3Width, kP3Height);
+    if (rc != ZR_UNITY_OK) {
+        std::printf("zrhi_d3d12_window: --planet3 FAILED CreateSharedTarget rc=%d\n", rc);
+        FreeLibrary(dll);
+        return 2;
+    }
+    ZrPlanetWorld world {};
+    world.structSize = static_cast<uint32_t>(sizeof(ZrPlanetWorld));
+    world.seed = kP3Seed;
+    world.centerAbs[0] = 0.0;
+    world.centerAbs[1] = -zplanet::kPlanetRadiusM;
+    world.centerAbs[2] = 0.0;
+    if (setWorld(&world) != ZR_PLANET_OK) {
+        std::printf("zrhi_d3d12_window: --planet3 FAILED SetWorld\n");
+        FreeLibrary(dll);
+        return 2;
+    }
+
+    // ---- 4) chunk 编排（face 0 (+Z) 中心区；锚点 = chunk 中心球面点）--------------------
+    //   近档 3×3（cx,cy ∈ [15,17]，lod 1）+ 远档环 [14,18]²−内 3×3（16 块）+
+    //   面 1..5 各 1 块远档采样（背面——地平线剔除的必中被测对象）。合计 30 块。
+    constexpr uint32_t kP3Cells = 32u;
+    constexpr double kP3AltM = 600.0;
+    struct P3ChunkSpec {
+        uint32_t face;
+        uint32_t cx;
+        uint32_t cy;
+        uint32_t lod;
+        uint64_t handle;
+    };
+    std::vector<P3ChunkSpec> specs;
+    for (uint32_t cy = 14u; cy <= 18u; ++cy) {
+        for (uint32_t cx = 14u; cx <= 18u; ++cx) {
+            const bool inner = (cx >= 15u && cx <= 17u && cy >= 15u && cy <= 17u);
+            specs.push_back({0u, cx, cy, inner ? 1u : 0u, 0u});
+        }
+    }
+    for (uint32_t face = 1u; face <= 5u; ++face) {
+        specs.push_back({face, 16u, 16u, 0u, 0u});
+    }
+    const double expectedVertexBytes = 9.0 * 139264.0 + 21.0 * 10240.0; // 近档+远档
+    for (P3ChunkSpec& spec : specs) {
+        ZrPlanetChunkDesc desc {};
+        desc.structSize = static_cast<uint32_t>(sizeof(ZrPlanetChunkDesc));
+        desc.faceId = spec.face;
+        desc.lodLevel = spec.lod;
+        desc.cx = spec.cx;
+        desc.cy = spec.cy;
+        desc.cellsPerEdge = kP3Cells;
+        desc.neighborMask = 0u;
+        desc.reserved0 = 0u;
+        const int32_t stride = static_cast<int32_t>(spec.lod >= 1u ? 63u : 15u);
+        const int32_t total = static_cast<int32_t>(kP3Cells) * stride;
+        const int32_t gU = zplanet::ChunkVertexIndex(
+            static_cast<int32_t>(spec.cx), stride / 2, stride);
+        const int32_t gV = zplanet::ChunkVertexIndex(
+            static_cast<int32_t>(spec.cy), stride / 2, stride);
+        const zplanet::Vec3d center = {0.0, -zplanet::kPlanetRadiusM, 0.0};
+        const zplanet::PlanetChunkVertex v = zplanet::PlanetChunkVertexAtGlobal(
+            center, static_cast<int>(spec.face), gU, gV, total, kP3Seed);
+        desc.originAbs[0] = v.posAbs.x;
+        desc.originAbs[1] = v.posAbs.y;
+        desc.originAbs[2] = v.posAbs.z;
+        rc = chunkCreate(&desc, &spec.handle);
+        if (rc != ZR_PLANET_OK) {
+            std::printf("zrhi_d3d12_window: --planet3 FAILED ChunkCreate(face=%u cx=%u "
+                        "cy=%u) rc=%d\n",
+                spec.face, spec.cx, spec.cy, rc);
+            FreeLibrary(dll);
+            return 2;
+        }
+    }
+    ZrPlanetStats stats {};
+    if (getStats(&stats) != ZR_PLANET_OK || stats.liveChunks != specs.size()
+        || stats.createTotal != specs.size() || stats.pendingUploads != specs.size()) {
+        std::printf("zrhi_d3d12_window: --planet3 FAILED create stats (live=%u up=%u "
+                    "create=%llu)\n",
+            stats.liveChunks, stats.pendingUploads,
+            static_cast<unsigned long long>(stats.createTotal));
+        FreeLibrary(dll);
+        return 2;
+    }
+    std::printf("zrhi_d3d12_window: --planet3 chunks=%zu (near=%u far=%zu expectedVB=%.0fB) "
+                "version=%u\n",
+        specs.size(), 9u, specs.size() - 9u, expectedVertexBytes, version);
+
+    // ---- 5) 相机与相机相对提交（§3.1/§3.4 契约：SetCameraOrigin 先于 RenderFrame，
+    //         view 为纯旋转——平移经行星通道的 float(anchor−cam) 承载）--------------------
+    const Vec3d dir0 = zplanet::CubeSphereDir(0, 0.0, 0.0); // face 0 中心方向 (+Z)
+    const Vec3d t1 = {1.0, 0.0, 0.0}; // face 0 u 方向（CubeFaceBasisOf(0).t1）
+    const Vec3d t2 = {0.0, 1.0, 0.0}; // face 0 v 方向
+    const Vec3d centerC = {0.0, -zplanet::kPlanetRadiusM, 0.0};
+    const double h0 = zplanet::PlanetTerrainHeightM(
+        kP3Seed, dir0.x, dir0.y, dir0.z);
+    const Vec3d camAbs = zplanet::VecAdd(centerC,
+        zplanet::VecScale(dir0, zplanet::kPlanetRadiusM + h0 + kP3AltM));
+    constexpr float kFovY = 3.14159265f / 3.0f;
+    float proj[16];
+    MatPerspectiveFovLH(kFovY, static_cast<float>(kP3Width) / static_cast<float>(kP3Height),
+        2.0f, 800000.0f, proj);
+
+    bool allOk = true;
+    uint64_t lodAppliedFrame = 0u;
+    bool pngOk = false;
+    uint32_t terrainPixels = 0u;
+    LARGE_INTEGER qpf {};
+    QueryPerformanceFrequency(&qpf);
+    LARGE_INTEGER qpc0 {};
+    LARGE_INTEGER qpc1 {};
+    double frameMsTotal = 0.0;
+    constexpr uint8_t kClearRGB[3] = {13u, 26u, 38u}; // ZR_UNITY 清屏色 8bit（kClearColor）
+
+    for (uint32_t frame = 0u; frame < kP3Frames; ++frame) {
+        QueryPerformanceCounter(&qpc0);
+        // 缓慢偏航（±8°）+ 恒定俯角 30°：像素随帧微变、场景结构稳定
+        const double yaw = std::sin(static_cast<double>(frame) * 0.12) * (8.0 * 3.14159265
+            / 180.0);
+        const double dip = 30.0 * 3.14159265 / 180.0;
+        Vec3d fwdFlat = zplanet::VecAdd(zplanet::VecScale(t1, std::cos(yaw)),
+            zplanet::VecScale(t2, std::sin(yaw)));
+        fwdFlat = zplanet::VecScale(fwdFlat, 1.0 / zplanet::VecLen(fwdFlat));
+        Vec3d fwdD = zplanet::VecSub(zplanet::VecScale(fwdFlat, std::cos(dip)),
+            zplanet::VecScale(dir0, std::sin(dip)));
+        fwdD = zplanet::VecScale(fwdD, 1.0 / zplanet::VecLen(fwdD));
+        const float fwd[3] = {static_cast<float>(fwdD.x), static_cast<float>(fwdD.y),
+            static_cast<float>(fwdD.z)};
+        const float up[3] = {static_cast<float>(dir0.x), static_cast<float>(dir0.y),
+            static_cast<float>(dir0.z)};
+        float view[16];
+        zplanetapp::PlanetMatLookAtLH(fwd, up, view);
+
+        setCameraOrigin(camAbs.x, camAbs.y, camAbs.z); // double 绝对原点直传（§3.3）
+        setCamera(view, proj);                          // 相机相对纯旋转 view
+        beginScene();                                   // 无 DrawMesh → 行星专用帧
+        rc = renderFrame();
+        if (rc != ZR_UNITY_OK) {
+            std::printf("  frame %u: RenderFrame FAILED rc=%d\n", frame + 1u, rc);
+            allOk = false;
+            break;
+        }
+        QueryPerformanceCounter(&qpc1);
+        frameMsTotal += static_cast<double>(qpc1.QuadPart - qpc0.QuadPart) * 1000.0
+            / static_cast<double>(qpf.QuadPart);
+
+        if (getStats(&stats) != ZR_PLANET_OK) {
+            std::printf("  frame %u: GetStats FAILED\n", frame + 1u);
+            allOk = false;
+            break;
+        }
+        // 账目恒等式全程断言（§7.3②）
+        if (stats.createTotal - stats.destroyTotal != stats.liveChunks) {
+            std::printf("  frame %u: account invariant BROKEN (create=%llu destroy=%llu "
+                        "live=%u)\n",
+                frame + 1u, static_cast<unsigned long long>(stats.createTotal),
+                static_cast<unsigned long long>(stats.destroyTotal), stats.liveChunks);
+            allOk = false;
+        }
+        // 帧 1 起上传已落地（延迟一帧的可观测面）
+        if (frame == 0u) {
+            if (stats.pendingUploads != 0u || stats.drawnLastFrame == 0u
+                || stats.culledLastFrame == 0u
+                || stats.vertexBytes != static_cast<uint64_t>(expectedVertexBytes)) {
+                std::printf("  frame %u: upload/visible FAILED (pendingUp=%u drawn=%u "
+                            "culled=%u vbytes=%llu expect=%.0f)\n",
+                    frame + 1u, stats.pendingUploads, stats.drawnLastFrame,
+                    stats.culledLastFrame, static_cast<unsigned long long>(stats.vertexBytes),
+                    expectedVertexBytes);
+                allOk = false;
+            }
+        }
+        // SetLod 下一 RenderFrame 应用（帧 16 调用 → 帧 17 起计数 1）
+        if (frame + 1u == kP3LodCallFrame) {
+            // 退档内 3×3 的左上块 (15,15)（1 → 0）：下一帧应用 + vertexBytes 不变
+            // （退档复用不缩容，B-TECH-04 策略）。specs 索引 = (cy−14)·5 + (cx−14) = 6
+            const uint64_t hInner = specs[6].handle;
+            if (setLod(hInner, 0u, 0u) != ZR_PLANET_OK) {
+                std::printf("  frame %u: SetLod FAILED\n", frame + 1u);
+                allOk = false;
+            }
+        }
+        if (frame + 1u == kP3LodCallFrame + 1u) {
+            if (stats.lodChangeTotal != 1u || stats.pendingLod != 0u) {
+                std::printf("  frame %u: SetLod next-frame apply FAILED (applied=%llu "
+                            "pending=%u)\n",
+                    frame + 1u, static_cast<unsigned long long>(stats.lodChangeTotal),
+                    stats.pendingLod);
+                allOk = false;
+            } else if (stats.vertexBytes != static_cast<uint64_t>(expectedVertexBytes)) {
+                std::printf("  frame %u: downgrade shrunk VB (vbytes=%llu expect=%.0f)\n",
+                    frame + 1u, static_cast<unsigned long long>(stats.vertexBytes),
+                    expectedVertexBytes);
+                allOk = false;
+            } else {
+                lodAppliedFrame = frame + 1u;
+            }
+        }
+        // 关键帧回读（偶数帧 → 槽 0 持有本帧内容）
+        if (frame + 1u == kP3ReadbackFrame) {
+            std::vector<uint8_t> pixels(static_cast<size_t>(kP3Width) * kP3Height * 4u);
+            uint32_t rw = 0u;
+            uint32_t rh = 0u;
+            rc = readPixels(pixels.data(), kP3Width * 4u, &rw, &rh);
+            if (rc != ZR_UNITY_OK || rw != kP3Width || rh != kP3Height) {
+                std::printf("  frame %u: ReadTargetPixels FAILED rc=%d %ux%u\n", frame + 1u,
+                    rc, rw, rh);
+                allOk = false;
+            } else {
+                // 地形像素证据：非清屏色像素计数（容差 12/255）+ PNG 落盘
+                for (uint32_t y = 0u; y < kP3Height; ++y) {
+                    for (uint32_t x = 0u; x < kP3Width; ++x) {
+                        const uint8_t* px = pixels.data()
+                            + (static_cast<size_t>(y) * kP3Width + x) * 4u;
+                        const int dr = std::abs(static_cast<int>(px[2]) - static_cast<int>(kClearRGB[0]));
+                        const int dg = std::abs(static_cast<int>(px[1]) - static_cast<int>(kClearRGB[1]));
+                        const int db = std::abs(static_cast<int>(px[0]) - static_cast<int>(kClearRGB[2]));
+                        if (dr > 12 || dg > 12 || db > 12) {
+                            ++terrainPixels;
+                        }
+                    }
+                }
+                std::filesystem::create_directories("Docs/Parity");
+                std::vector<uint8_t> rgb(static_cast<size_t>(kP3Width) * kP3Height * 3u);
+                for (uint32_t y = 0u; y < kP3Height; ++y) {
+                    for (uint32_t x = 0u; x < kP3Width; ++x) {
+                        const uint8_t* px = pixels.data()
+                            + (static_cast<size_t>(y) * kP3Width + x) * 4u;
+                        uint8_t* o = rgb.data()
+                            + (static_cast<size_t>(y) * kP3Width + x) * 3u;
+                        o[0] = px[2]; // BGRA → RGB
+                        o[1] = px[1];
+                        o[2] = px[0];
+                    }
+                }
+                pngOk = WritePng24(kP3Png, rgb.data(), kP3Width, kP3Height, kP3Width * 3u);
+                std::printf("  frame %u keyframe -> %s (%s) terrainPixels=%u/%u\n",
+                    frame + 1u, kP3Png, pngOk ? "written" : "FAILED", terrainPixels,
+                    kP3Width * kP3Height);
+            }
+        }
+    }
+
+    // ---- 6) 终态统计与判定 --------------------------------------------------------------
+    if (getStats(&stats) == ZR_PLANET_OK) {
+        std::printf("zrhi_d3d12_window: --planet3 stats: live=%u create=%llu destroy=%llu "
+                    "drawn=%u culled=%u lodApplied=%llu seamFails=%u vbytes=%llu "
+                    "lastFrameMs=%.3f avgFrameMs=%.3f\n",
+            stats.liveChunks, static_cast<unsigned long long>(stats.createTotal),
+            static_cast<unsigned long long>(stats.destroyTotal), stats.drawnLastFrame,
+            stats.culledLastFrame, static_cast<unsigned long long>(stats.lodChangeTotal),
+            stats.seamCheckFails, static_cast<unsigned long long>(stats.vertexBytes),
+            stats.lastFrameMs, stats.avgFrameMs);
+    }
+    clearAll(); // 场景收尾（句柄全失效 + 渲染线程排队释放——§7.3 第 3 层演示）
+    releaseTarget();
+    FreeLibrary(dll);
+
+    const double frameMsAvg = frameMsTotal / static_cast<double>(kP3Frames);
+    const bool terrainOk = terrainPixels > (kP3Width * kP3Height) / 20u; // ≥5% 非清屏色
+    const bool statsOk = lodAppliedFrame == static_cast<uint64_t>(kP3LodCallFrame + 1u)
+        && stats.seamCheckFails == 0u;
+    if (allOk && terrainOk && pngOk && statsOk && frameMsAvg < 200.0) {
+        std::printf("D3D12 PLANET3 OK (chunks=%zu drawn=%u culled=%u vbytes=%llu "
+                    "lodNextFrame=%llu frame_ms=%.3f)\n",
+            specs.size(), stats.drawnLastFrame, stats.culledLastFrame,
+            static_cast<unsigned long long>(stats.vertexBytes),
+            static_cast<unsigned long long>(stats.lodChangeTotal), frameMsAvg);
+        return 0;
+    }
+    std::printf("D3D12 PLANET3 FAILED (allOk=%d terrain=%u/%u png=%d lodApplied@%llu "
+                "seamFails=%u frame_ms=%.3f)\n",
+        allOk ? 1 : 0, terrainPixels, kP3Width * kP3Height, pngOk ? 1 : 0,
+        static_cast<unsigned long long>(lodAppliedFrame), stats.seamCheckFails, frameMsAvg);
+    return 1;
+}
+
 /// MV 常量（b0 镜像）——zupscaler.h ZrUpscalerMotionVectorConstants 直接复用
 
 /// （单一事实源；motion_vectors.hlsl CBufMotionVectors 与之一一对应）
@@ -16897,6 +17307,15 @@ int main(int argc, char** argv)
         // 通过行 `D3D12 PLANET2 OK (chunks=6144 lods=2 seams=0 frame_ms=X)`。
         if (std::strcmp(argv[i], "--planet2") == 0) {
             return RunPlanet2Mode();
+        }
+        // TASK-B-PLANET-04：--planet3 —— 生产导出面行星真渲染验证（LoadLibrary
+        // zrender.dll + GetProcAddress 全部行星/桥导出——zrhi_unity_bridge 同策；
+        // 自建宿主设备/纹理扮演 Unity → AttachDeviceFromTexture → CreateSharedTarget
+        // → SetWorld/ChunkCreate×30/SetCameraOrigin/SetCamera/RenderFrame×48 →
+        // ReadTargetPixels 探针 + PNG + GetStats 断言）。
+        // 通过行 `D3D12 PLANET3 OK (chunks=N drawn=M culled=C vbytes=V frame_ms=X)`。
+        if (std::strcmp(argv[i], "--planet3") == 0) {
+            return RunPlanet3Mode();
         }
         // TASK-B-R9-16：--devconsole —— GPU 工具链运行时入口（方案 §5.7）：
         // 127.0.0.1 白名单控制台（缺省端口 17323）+ hud 统计 + rg.export +
