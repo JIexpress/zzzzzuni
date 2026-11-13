@@ -200,7 +200,7 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | B-PLANET-01 | B/PLANET | P2拆解+行星ABI设计稿(double原点/chunk句柄/LOD邻居/高度采样)(改进计划P2) | done(验收FAIL一轮→修订R1→复验PASS;F1-F7全落地;46导出裁决正确;D8接受) | Docs/Logs/TASK-B-PLANET-01.md | 80d82bc |
 | B-PLANET-02 | B/PLANET | 行星ABI头落地(zplugin.h+def+ApiVersion 2→3+Bindings声明+ERR_ARGS注释同步) | todo | (简报待写) | |
 | B-PLANET-03 | B/PLANET | 行星数学生产化(planet_math §①③④提升,语义零改动) | done(验收PASS Z1-Z6,独立worktree基线逐位回归;Native/zplanet/ 在库) | Docs/Logs/TASK-B-PLANET-03.md | 11a477f |
-| B-PLANET-04 | B/PLANET | chunk通道生产实现(句柄表/生成/上传/RenderFrame集成/剔除移植/着色器) | todo | (简报待写) | |
+| B-PLANET-04 | B/PLANET | chunk通道生产实现(句柄表/生成/上传/RenderFrame集成/剔除移植/着色器) | done(验收PASS E1-E10变异亲做;56导出;--planet3真渲染306K像素;12864顶点账目恒等式;单chunk近档7.4ms实测) | Docs/Logs/TASK-B-PLANET-04.md | 8b03db6 |
 | B-PLANET-05 | B/PLANET | SetCameraOrigin+round-trip doctest | done(验收PASS C1-C7;def 46→48 dumpbin实证;五组doctest全绿) | Docs/Logs/TASK-B-PLANET-05.md | 3d3ac1c |
 | B-PLANET-06 | B/PLANET | SetWorld+SampleHeight(含与chunk顶点逐位一致断言) | done(验收PASS D1-D10;12864顶点0失配;并发38400次零撕裂;def 48→50) | Docs/Logs/TASK-B-PLANET-06.md | 63fa2f4 |
 | B-PLANET-07 | B/PLANET | Unity托管桥(流式管理器+WorldOrigin接线;首个生产消费者) | todo | (简报待写) | |

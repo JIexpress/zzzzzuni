@@ -4,6 +4,7 @@
 
 | 日期 | 任务 | 结果 | commit |
 |---|---|---|---|
+| 2026-11-14 | B-PLANET-04 chunk通道生产实现(P2最大件) | done：验收PASS(E1-E10,变异亲做)；六导出 50→56；RenderFrame 集成+--planet3 真渲染(30chunk/306K像素/截图)；相机原点迁移零破坏；账目恒等式；单 chunk 近档 7.4ms 实测补 MISSING；G1-G6 处置裁决+G4 改判全档(开销转 07)；G1 设计稿 uv 勘误；375 用例全绿 | 8b03db6 |
 | 2026-11-14 | B-PLANET-06 SetWorld+SampleHeight | done：验收PASS(D1-D10)；快照 SRWLOCK+纯函数无锁采样；def 48→50；**12864 个 chunk 顶点采样 0 失配**(float 位形 memcmp,验收修正口径)；并发 38400 次零撕裂；367 用例/821,749 全绿；溢出封口延后(B-PLANET-09+) | 63fa2f4 |
 | 2026-11-14 | X-ARCH-01 架构矩阵补登记 | done：捎带验收 PASS(主控显式委托)；ZFrame.Render.Probes EditorOnly 条目；arch 27/0；EditMode 1182/0 恢复(B-PROBE-02 债) | c9a7d0c |
 | 2026-11-14 | B-PROBE-02 linear-bridge 探针 | done：验收PASS(L1-L6)；**方向性发现：桥输出较 URP 直出亮 12.5%**(61.22→68.88)——复合差(原生 Lambert+环境 0.45/sRGB 当线性 vs URP PBR+环境 0.12)，背景逐字节相同；HANDOFF"略暗"形容词被实测推翻；两次独立跑四项数字逐位一致；MISSING 分支有牙；JSON+3PNG 入 Tools/Probes/out | 72126a0 |
