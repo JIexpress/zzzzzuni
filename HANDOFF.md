@@ -4,9 +4,19 @@
 > ⚡ **给下一个 LLM 主控**：先读 `Docs/LLM-HANDOFF-NOTES.md`——132 个任务沉淀的全部操作手册（派发模板/变异验证法/故障处置手册/技术坑备忘/工具调用技巧/额度管理），照做即可满血接力。
 > 历史交接记录已归档 git 历史（`git show G-113:HANDOFF.md`），WORKLOG.md 有全部任务索引。
 
-**快照时间**: 2026-11-09 23:50（**正式开发前收尾校准：登记 A-AI-05 为 held、对齐看板口径与领先提交数**）｜**刷新者**: 主控（WorkBuddy，银橙AI 会话）｜**仓库**: `C:\Users\1\Desktop\zcode\GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni
+**快照时间**: 2026-11-14（**双机分工确立+U盘交接材料入仓 G-158；引擎补全轮启动**）｜**刷新者**: 主控（ZCode，GLM 会话）｜**仓库**: `C:\Users\1\Desktop\zcode\GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni
 
-## ⚡ 最新（2026-11-09 20:50，A-AI-04 闭环——NPC 会自己走去找事做）
+## ⚡ 最新（2026-11-14，双机分工 + 材料入仓 + P0 派发）
+
+- **双机分工（用户 2026-11-14 拍板）**：本机（780M/RDNA3）=**引擎改进机**；另一台机（RX 9060 XT/RDNA4，`D:\Dev\ZFrame` 只读）=**游戏开发机**——第一版 EVA 修复循环用 URP（清单 `Docs/Planning/07-第一版清单-2026-11-13.md`）。本机本轮=按 U 盘《ZRender-改进计划-2026-11-13》补齐全部未完成项。
+- **交接材料入仓（G-158）**：`Docs/Planning/`（07 清单/08 需求对照/改进计划/约法三章）；探针家底移 `Tools/Probes/`（env-probe.js 仓库自适应两机可跑，out/ 存两机证据）。**约法三章为硬规矩**：真跑/真输入/缺就报缺/可复核；**全仓写死能力表面一律视为伪造候选**（对端 demo FSR 选项写死被真机戳穿的教训，用户明确要求）。
+- **08 对照结论（对端 AI 实测，基线 cdf4eb2=本机 HEAD，无漂移）**：框架要求基本全实现；ZRender 实为"旁路渲染器"（C ABI 只收 float 矩阵+rgba）；未做到=XeSS/FSR3.5/多视图共享可见性；半=Config 代码生成/替代 Unity/满血 bindless/3 周期实测/跨平台。**改进计划口径：不把 ZRender 做成完整管线，只做行星 chunk 专用通道（P2，第二章前，4–8 周）。**
+- **P0 已定位（对端证实+本机代码复核）**：`Native/zupscaler/upscaler_caps.cpp:61` `ZupFsr4Probe(nullptr)` 传空设备 → 假阴性（对端实测 null=2 条 vs 真机=4 条含 4.1.2）；本机历史 B-R6-02"FSR4 本机不可用"即此根因。修复=B-FSR-01（**doing**，简报已写）。
+- **本机 env-probe 首跑**：HEAD cdf4eb2 / 556 C# / 6 场景 / 许可证在位；**本机 Build/Windows64 播放器缺 FFX DLL**（对端是手工补的 3 FFX+1 AGS）→ 引擎机玩家包当前不能跑 FSR（属实记录）；原生测试 exe 目录 FFX DLL 齐备，真机验证走 `zrender_test.exe`。
+- **本轮看板新增**：B-FSR-01(doing)/B-FSR-02/B-PROBE-01/B-PROBE-02/A-CONF-01/B-KERNEL-01/B-VIS-01/B-PLANET-01(todo)；P2 实施任务待 B-PLANET-01 设计稿后拆。
+- **git 现场**：main 领先 origin/main **51+ 提交**未推（推远程需用户确认——AGENTS.md 铁律）。
+
+## ⚡ 最新-2026-11-09（A-AI-04 闭环——NPC 会自己走去找事做）
 
 - **看板真实口径**：**144 done / 0 doing / 0 todo / 1 held**（held = A-AI-05，NPC 自主模式+预约态，简报已写未动工，正式开发前暂缓后置；A-AI-01/A-AND-09/A-AI-02/A-AND-10 早已闭环，**不要再派**）。
 - **A-AI-05 暂缓（held，本次收尾登记）**：NPC 自主模式（G 键开关）+ 预约态（到达才占）。简报已写、**零半成品代码**（`NpcAutonomyMode.cs` 不存在、`AffordanceRegistry.cs` 无预约痕迹）。用户决定进入正式游戏开发，此功能后置，恢复时按简报 §五验收清单直接派施工。

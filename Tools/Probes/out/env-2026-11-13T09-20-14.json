@@ -1,0 +1,104 @@
+{
+  "probedAt": "2026-11-13T09:20:14.616Z",
+  "host": "win32 x64 node v22.22.2",
+  "engine": "D:/Dev/ZFrame",
+  "results": [
+    {
+      "name": "engine.head",
+      "what": "引擎仓库当前提交",
+      "status": "OK",
+      "value": {
+        "ref": "refs/heads/main",
+        "sha": "cdf4eb244fd38d22749eee97d03df6d9365f6eac",
+        "short": "cdf4eb2"
+      }
+    },
+    {
+      "name": "engine.git_clean_hint",
+      "what": "工作区是否干净（仅看 .git 是否存在，判断改动需用 git 命令）",
+      "status": "OK",
+      "value": "未采（需 git 命令，探针不调外部进程）"
+    },
+    {
+      "name": "engine.cs_files",
+      "what": "Unity 侧 C# 文件数",
+      "status": "OK",
+      "value": 556
+    },
+    {
+      "name": "engine.scenes",
+      "what": "场景文件数",
+      "status": "OK",
+      "value": 6
+    },
+    {
+      "name": "unity.exe",
+      "what": "Unity 编辑器可执行文件",
+      "status": "OK",
+      "value": {
+        "exists": true,
+        "sizeMB": 85
+      }
+    },
+    {
+      "name": "unity.project_version",
+      "what": "工程声明的引擎版本",
+      "status": "OK",
+      "value": "m_EditorVersion: 2022.3.62f3c1\nm_EditorVersionWithRevision: 2022.3.62f3c1 (1623fc0bbb97)"
+    },
+    {
+      "name": "unity.license",
+      "what": "许可证文件（缺则任何批处理会退出）",
+      "status": "OK",
+      "value": [
+        "Unity_lic.ulf"
+      ]
+    },
+    {
+      "name": "fsr.runtime_dlls",
+      "what": "播放器目录里的 FFX 运行时 DLL",
+      "status": "OK",
+      "value": [
+        "amd_fidelityfx_framegeneration_dx12.dll",
+        "amd_fidelityfx_loader_dx12.dll",
+        "amd_fidelityfx_upscaler_dx12.dll"
+      ]
+    },
+    {
+      "name": "disk.d",
+      "what": "D 盘空间",
+      "status": "OK",
+      "value": {
+        "drive": "D:/",
+        "freeGB": 359.5,
+        "totalGB": 953.9
+      }
+    },
+    {
+      "name": "disk.c",
+      "what": "C 盘空间",
+      "status": "OK",
+      "value": {
+        "drive": "C:/",
+        "freeGB": 285.3,
+        "totalGB": 951.9
+      }
+    },
+    {
+      "name": "gpu.adapter",
+      "what": "显卡型号与显存",
+      "status": "MISSING",
+      "reason": "本例用纯 Node 读文件，取不到设备信息；需要 DXGI/WMI 采集器，尚未编写"
+    },
+    {
+      "name": "fsr4.real_caps",
+      "what": "FSR 4.1 真实能力（这台机器到底支不支持）",
+      "status": "MISSING",
+      "reason": "需要 DXGI 枚举真实适配器后问运行时，尚未编写；引擎内现有探测传的是空设备，结果不可信"
+    }
+  ],
+  "summary": {
+    "ok": 10,
+    "missing": 2
+  }
+}

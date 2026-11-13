@@ -4,6 +4,7 @@
 
 | 日期 | 任务 | 结果 | commit |
 |---|---|---|---|
+| 2026-11-14 | G-158 交接材料入仓+双机分工 | done：Docs/Planning 四文档+Tools/Probes(env-probe 两机自适应+两机证据存档)+看板新增 9 行(引擎补全轮)；本机探针首跑 10 项取到/3 项 MISSING 如实记录 | (本提交) |
 | 2026-11-09 | A-AI-05 NPC 自主模式+预约态 | held（暂缓）：简报已写、零半成品代码；用户进入正式开发后置，恢复按简报 §五派施工 | — |
 | 2026-11-09 | A-AI-04 可供性接场景 | done：SceneAffordances 真实锚点 + AffordanceSeeker 走过去占用；验收 PASS 7/7，1140+110 | 89f3497 |
 | 2026-11-09 | A-AI-03 可供性扫描 | done：Affordance/Registry(容量/预算/最近可用)+Action 接效用；验收 PASS 7/7，1140+102 | ccb5897 |
