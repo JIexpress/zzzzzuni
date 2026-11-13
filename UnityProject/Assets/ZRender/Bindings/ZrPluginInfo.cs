@@ -5,7 +5,7 @@ namespace ZFrame.Render.Bindings
     /// <summary>zrender.dll 加载成功后的一次性诊断信息。</summary>
     public sealed class ZrPluginInfo
     {
-        /// <summary>C ABI 版本号（当前约定为 1）。</summary>
+        /// <summary>C ABI 版本号（当前约定为 3——B-PLANET-02 行星通道 ABI；与 ZrPlugin.ExpectedApiVersion 一致）。</summary>
         public uint ApiVersion { get; }
 
         /// <summary>ZRender 版本字符串，如 "0.1.0"。</summary>

@@ -11,8 +11,8 @@ namespace ZFrame.Render.Bindings
     /// </summary>
     public static class ZrPlugin
     {
-        /// <summary>当前托管侧支持的 C ABI 版本（与 ZR_ApiVersion 约定一致；v2 = B-FSR-02 在 ZrUpscalerCaps 末尾追加 fsr4ProbeMode）。</summary>
-        public const uint ExpectedApiVersion = 2;
+        /// <summary>当前托管侧支持的 C ABI 版本（与 ZR_ApiVersion 约定一致；v3 = B-PLANET-02 追加行星通道 ABI——zplugin.h 末尾声明块。历史：v2 = B-FSR-02 追加 fsr4ProbeMode）。</summary>
+        public const uint ExpectedApiVersion = 3;
 
         private static readonly object Gate = new object();
         private static ZrPluginInfo _info;

@@ -27,7 +27,10 @@ extern "C" {
 
 uint32_t ZR_ApiVersion(void)
 {
-    return 2u; // B-FSR-02：ZrUpscalerCaps 末尾追加 fsr4ProbeMode（36B）
+    // v3（TASK-B-PLANET-02）：追加行星通道 ABI 声明（zplugin.h 末尾声明块）。
+    // 本任务只落声明与版本号——行星导出函数随 B-PLANET-04/05/06 实现任务逐个落
+    // （zrender.def 不加行：未实现符号进 def 会造成加载期缺符号）。
+    return 3u;
 }
 
 const char* ZR_GetVersion(void)

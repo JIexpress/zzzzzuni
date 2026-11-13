@@ -15,10 +15,33 @@
 #include "zrhi/zrhi.h"
 #include "zupscaler/zupscaler.h"
 
-TEST_CASE("C ABI: ZR_ApiVersion 返回 2")
+TEST_CASE("C ABI: ZR_ApiVersion 返回 3")
 {
-    // v2（TASK-B-FSR-02）：ZrUpscalerCaps 末尾追加 fsr4ProbeMode。
-    CHECK(ZR_ApiVersion() == 2u);
+    // v3（TASK-B-PLANET-02）：追加行星通道 ABI（zplugin.h 末尾声明块，接口冻结）。
+    CHECK(ZR_ApiVersion() == 3u);
+}
+
+TEST_CASE("行星通道 ABI 常量与设计稿 §14 一致（TASK-B-PLANET-02）")
+{
+    // 结构尺寸 32/56/80B 由 zplugin.h 的 static_assert 编译期锁定（本文件已包含
+    // zplugin.h）；本用例锁错误码七值与常量/掩码（接口冻结自检的运行时部分）。
+    CHECK(ZR_PLANET_OK == 0);
+    CHECK(ZR_PLANET_ERR_NULL == -1);
+    CHECK(ZR_PLANET_ERR_ABI == -2);
+    CHECK(ZR_PLANET_ERR_RANGE == -3);
+    CHECK(ZR_PLANET_ERR_HANDLE == -4);
+    CHECK(ZR_PLANET_ERR_STATE == -5);
+    CHECK(ZR_PLANET_ERR_FULL == -6);
+    CHECK(ZR_PLANET_ERR_NONFINITE == -7);
+    CHECK(ZR_PLANET_MAX_CHUNKS == 8192u);
+    CHECK(ZR_PLANET_VERTEX_STRIDE_FLOATS == 8u);
+    CHECK(ZR_PLANET_EDGE_NEG_U == (1u << 0));
+    CHECK(ZR_PLANET_EDGE_POS_U == (1u << 1));
+    CHECK(ZR_PLANET_EDGE_NEG_V == (1u << 2));
+    CHECK(ZR_PLANET_EDGE_POS_V == (1u << 3));
+    CHECK(sizeof(ZrPlanetWorld) == 32);
+    CHECK(sizeof(ZrPlanetChunkDesc) == 56);
+    CHECK(sizeof(ZrPlanetStats) == 80);
 }
 
 TEST_CASE("C ABI: ZR_GetVersion 返回 \"0.1.0\"")

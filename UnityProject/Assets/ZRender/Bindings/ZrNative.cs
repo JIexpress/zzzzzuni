@@ -119,6 +119,42 @@ namespace ZFrame.Render.Bindings
         [DllImport("zrender")]
         internal static extern int ZR_Unity_GetSceneStats(out ZrUnitySceneStatsNative stats);
 
+        // ---- TASK-B-PLANET-02：行星专用通道 C ABI 声明（见 zplugin.h 末尾声明块）----
+        // 本任务只落声明与版本门控——原生导出尚未实现（B-PLANET-04/05/06 落地），
+        // 版本门控（ZrPlanetNative.EnsurePlanetChannelReady，要求 ApiVersion >= 3）未通过
+        // 时不得触碰任何 ZR_Planet_* 导出，否则 P/Invoke 崩溃。
+        // 错误码 0=OK；-1=NULL、-2=ABI、-3=RANGE、-4=HANDLE、-5=STATE、-6=FULL、-7=NONFINITE。
+
+        [DllImport("zrender")]
+        internal static extern int ZR_Unity_SetCameraOrigin(double x, double y, double z);
+
+        [DllImport("zrender")]
+        internal static extern int ZR_Unity_GetCameraOrigin([Out] double[] outOrigin);
+
+        [DllImport("zrender")]
+        internal static extern int ZR_Planet_SetWorld(ref ZrPlanetWorldNative world);
+
+        [DllImport("zrender")]
+        internal static extern int ZR_Planet_ChunkCreate(ref ZrPlanetChunkDescNative desc, out ulong outHandle);
+
+        [DllImport("zrender")]
+        internal static extern int ZR_Planet_ChunkDestroy(ulong handle);
+
+        [DllImport("zrender")]
+        internal static extern int ZR_Planet_ChunkSetOrigin(ulong handle, double x, double y, double z);
+
+        [DllImport("zrender")]
+        internal static extern int ZR_Planet_SetLod(ulong handle, uint lodLevel, uint neighborMask);
+
+        [DllImport("zrender")]
+        internal static extern int ZR_Planet_GetStats(out ZrPlanetStatsNative stats);
+
+        [DllImport("zrender")]
+        internal static extern void ZR_Planet_ClearAll();
+
+        [DllImport("zrender")]
+        internal static extern int ZR_Planet_SampleHeight(double x, double y, double z, out float outHeightM);
+
         /// <summary>原生 ZmeshStats（40B，全定宽；布局须与 zmesh.h 的 ZmeshStats 一致）。</summary>
         [StructLayout(LayoutKind.Sequential)]
         internal struct ZmeshStatsNative
@@ -473,5 +509,213 @@ namespace ZFrame.Render.Bindings
         public ulong UploadCount;
         public ulong SceneFrameCount;
         public ulong DrawTotal;
+    }
+
+    // ---- TASK-B-PLANET-02：行星通道结构体镜像（布局须与 zplugin.h 末尾声明块一致）----
+
+    /// <summary>
+    /// 原生 ZrPlanetWorld（32B，全定宽；布局须与 zplugin.h 的 ZrPlanetWorld 一致）。
+    /// 调用方须先把 <see cref="ZrPlanetWorldNative.StructSize"/> 填为 sizeof（版本化约定）。
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct ZrPlanetWorldNative
+    {
+        public uint StructSize;
+        public uint Seed;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+        public double[] CenterAbs;
+    }
+
+    /// <summary>
+    /// 原生 ZrPlanetChunkDesc（56B，全定宽；布局须与 zplugin.h 的 ZrPlanetChunkDesc 一致）。
+    /// 顶点由原生按规范路由生成：顶点局部坐标 = float(posAbs - OriginAbs)（double 域相减
+    /// 后一次 cast）。调用方须先填 StructSize；NeighborMask 高 4 位必须 0。
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct ZrPlanetChunkDescNative
+    {
+        public uint StructSize;
+        public uint FaceId;
+        public uint LodLevel;
+        public uint Cx;
+        public uint Cy;
+        public uint CellsPerEdge;
+        public uint NeighborMask;
+        public uint Reserved0;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+        public double[] OriginAbs;
+    }
+
+    /// <summary>
+    /// 原生 ZrPlanetStats（80B，全定宽；布局须与 zplugin.h 的 ZrPlanetStats 一致）。
+    /// StructSize 由实现填；账目断言 CreateTotal - DestroyTotal == LiveChunks。
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct ZrPlanetStatsNative
+    {
+        public uint StructSize;
+        public uint LiveChunks;
+        public uint PendingUploads;
+        public uint PendingFrees;
+        public uint PendingLod;
+        public uint DrawnLastFrame;
+        public uint CulledLastFrame;
+        public uint SeamCheckFails;
+        public ulong CreateTotal;
+        public ulong DestroyTotal;
+        public ulong LodChangeTotal;
+        public ulong VertexBytes;
+        public double LastFrameMs;
+        public double AvgFrameMs;
+    }
+
+    /// <summary>
+    /// 行星专用通道 C ABI 的托管门面（TASK-B-PLANET-02，设计稿 §3–§6/§14）。本任务
+    /// 只落声明与版本门控——导出实现属 B-PLANET-04/05/06：门控未通过或导出未落地时
+    /// 调用下列方法会抛 EntryPointNotFoundException（裸 P/Invoke 语义，与既有门面一致）。
+    /// 线程契约见 zplugin.h：SetCameraOrigin/GetCameraOrigin 渲染线程；
+    /// SetWorld/ChunkCreate/ChunkDestroy/SetOrigin/SetLod/ClearAll 主线程；
+    /// SampleHeight/GetStats 任意线程；GPU 触点延迟到 RenderFrame（延迟一帧）。
+    /// </summary>
+    public static class ZrPlanetNative
+    {
+        /// <summary>0 = 成功。</summary>
+        public const int Ok = 0;
+
+        /// <summary>指针参数为空。</summary>
+        public const int ErrNull = -1;
+
+        /// <summary>structSize 与当前 ABI 不符。</summary>
+        public const int ErrAbi = -2;
+
+        /// <summary>faceId/lodLevel/neighborMask/cellsPerEdge 越界或方向退化。</summary>
+        public const int ErrRange = -3;
+
+        /// <summary>句柄无效（含代际不符/已释放）。</summary>
+        public const int ErrHandle = -4;
+
+        /// <summary>行星上下文未设置（SetWorld 前置）。</summary>
+        public const int ErrState = -5;
+
+        /// <summary>chunk 槽位满（超过 <see cref="MaxChunks"/>）。</summary>
+        public const int ErrFull = -6;
+
+        /// <summary>double 参数含 NaN/Inf。</summary>
+        public const int ErrNonfinite = -7;
+
+        /// <summary>chunk 槽位上限（8192；现状全量 6144 + 余量）。</summary>
+        public const uint MaxChunks = 8192u;
+
+        /// <summary>顶点步长（8 float = 32B/顶点，与场景路径 v1 同宽）。</summary>
+        public const uint VertexStrideFloats = 8u;
+
+        /// <summary>neighborMask 四缘位：-u 缘邻居更粗档或无数据/面界。</summary>
+        public const uint EdgeNegU = 1u << 0;
+
+        /// <summary>neighborMask 四缘位：+u 缘。</summary>
+        public const uint EdgePosU = 1u << 1;
+
+        /// <summary>neighborMask 四缘位：-v 缘。</summary>
+        public const uint EdgeNegV = 1u << 2;
+
+        /// <summary>neighborMask 四缘位：+v 缘（高 4 位保留必须 0，否则 ErrRange）。</summary>
+        public const uint EdgePosV = 1u << 3;
+
+        /// <summary>
+        /// 行星通道要求的最低 C ABI 版本（设计稿 §3.5/D6：新增导出组即视为变更，
+        /// 当前 3——B-PLANET-02 追加行星通道 ABI）。
+        /// </summary>
+        public const uint MinPlanetApiVersion = 3u;
+
+        /// <summary>
+        /// 行星通道版本门控（设计稿 §3.5/D6）：加载 zrender.dll 并断言 C ABI 版本
+        /// <c>&gt;= 3</c> 才启用行星通道——返回 2 的旧 DLL 被显式拒绝，"行星通道缺导出"
+        /// 的 P/Invoke 崩溃变成显式失败。B-PLANET-07 托管桥启用行星通道前必须先过本门控。
+        /// </summary>
+        /// <exception cref="DllNotFoundException">zrender.dll 不在插件搜索路径上。</exception>
+        /// <exception cref="InvalidOperationException">C ABI 版本低于行星通道要求。</exception>
+        public static void EnsurePlanetChannelReady()
+        {
+            ZrPluginInfo info = ZrPlugin.EnsureLoaded();
+            if (info.ApiVersion < MinPlanetApiVersion)
+            {
+                throw new InvalidOperationException(
+                    $"zrender.dll 不支持行星通道：要求 C ABI >= {MinPlanetApiVersion}，实际 {info.ApiVersion}。" +
+                    "请重新构建原生库（Tools/build_native.ps1）并部署到 Assets/Plugins/ZRender/。");
+            }
+        }
+
+        /// <summary>
+        /// 设置相机绝对原点（行星中心系，米；渲染线程）。NaN/Inf 返回 ErrArgs(-6)——
+        /// 复用 ZR_UNITY_ERR_ARGS（zplugin.h 注释已随本任务扩充）。跨帧持久，
+        /// 同帧多次调用最后一个生效；未设置时按 (0,0,0)。
+        /// </summary>
+        public static int SetCameraOrigin(double x, double y, double z)
+        {
+            return ZrNative.ZR_Unity_SetCameraOrigin(x, y, z);
+        }
+
+        /// <summary>
+        /// 取当前相机绝对原点（写入 outOrigin[0..2]；渲染线程）。outOrigin 为 null/过短
+        /// 属托管侧 bug（原生按 3 元素指针写入）；诊断与 round-trip 自证用。
+        /// </summary>
+        public static int GetCameraOrigin(double[] outOrigin)
+        {
+            return ZrNative.ZR_Unity_GetCameraOrigin(outOrigin);
+        }
+
+        /// <summary>设置行星上下文（world.StructSize 须先填 sizeof）。见 zplugin.h 组 2。</summary>
+        public static int SetWorld(ref ZrPlanetWorldNative world)
+        {
+            return ZrNative.ZR_Planet_SetWorld(ref world);
+        }
+
+        /// <summary>
+        /// 创建 chunk（desc.StructSize 须先填 sizeof；延迟一帧上传）。
+        /// 校验失败不写 outHandle。见 zplugin.h 组 3 与设计稿 §4.5 校验全表。
+        /// </summary>
+        public static int ChunkCreate(ref ZrPlanetChunkDescNative desc, out ulong handle)
+        {
+            return ZrNative.ZR_Planet_ChunkCreate(ref desc, out handle);
+        }
+
+        /// <summary>销毁 chunk（句柄立即失效；GPU 下一 RenderFrame 释放；显式错误码可审计）。</summary>
+        public static int ChunkDestroy(ulong handle)
+        {
+            return ZrNative.ZR_Planet_ChunkDestroy(handle);
+        }
+
+        /// <summary>更新 chunk 锚点绝对坐标（顶点不重算；行星整体移动时批量调用）。</summary>
+        public static int ChunkSetOrigin(ulong handle, double x, double y, double z)
+        {
+            return ZrNative.ZR_Planet_ChunkSetOrigin(handle, x, y, z);
+        }
+
+        /// <summary>设置期望 LOD 档位与邻居掩码（下一 RenderFrame 应用，同帧多次最后生效）。</summary>
+        public static int SetLod(ulong handle, uint lodLevel, uint neighborMask)
+        {
+            return ZrNative.ZR_Planet_SetLod(handle, lodLevel, neighborMask);
+        }
+
+        /// <summary>取统计快照（任意线程；账目断言 CreateTotal - DestroyTotal == LiveChunks）。</summary>
+        public static int GetStats(out ZrPlanetStatsNative stats)
+        {
+            return ZrNative.ZR_Planet_GetStats(out stats);
+        }
+
+        /// <summary>一次性清空全部 chunk（场景卸载/Play 退出兜底；主线程）。</summary>
+        public static void ClearAll()
+        {
+            ZrNative.ZR_Planet_ClearAll();
+        }
+
+        /// <summary>
+        /// 采样地形噪声高程（同步纯函数，任意线程；与 chunk 顶点同一 PlanetTerrainHeightM）。
+        /// 地表点 = 中心 + dir*(R + h)。频率预算 ≤1000 次/帧（估算，探针实测校准）。
+        /// </summary>
+        public static int SampleHeight(double x, double y, double z, out float outHeightM)
+        {
+            return ZrNative.ZR_Planet_SampleHeight(x, y, z, out outHeightM);
+        }
     }
 }

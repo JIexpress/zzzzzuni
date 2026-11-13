@@ -17,8 +17,8 @@
 extern "C" {
 #endif
 
-/// C ABI 版本号；发生不兼容变更时递增（当前 2——B-FSR-02 在 ZrUpscalerCaps
-/// 末尾追加 fsr4ProbeMode 字段）。
+/// C ABI 版本号；发生不兼容变更时递增（当前 3——B-PLANET-02 追加行星通道 ABI：
+/// double 相机原点 + chunk 句柄 + LOD + 高度采样，见文件末尾行星通道声明块）。
 uint32_t ZR_ApiVersion(void);
 
 /// ZRender 版本字符串（与 CMake project VERSION 同源），如 "0.1.0"。
@@ -255,7 +255,11 @@ typedef int (*ZrUnityDebugGetAttachedDeviceFn)(void** outDevice);
 // 共享纹理只应创建一次：每帧 CreateTarget 会泄漏（尺寸变化时才 Release 后重建）。
 //
 // 错误码沿用上面的 ZR_UNITY_*，另加：
-#define ZR_UNITY_ERR_ARGS (-6) // 尺寸非法（0 或超过 16384）
+// ZR_UNITY_ERR_ARGS 注释定义（B-PLANET-02 修订轮 F7 同步扩充）：本码是通用
+// "参数值非法"——除原有的尺寸非法（0 或超过 16384）、槽位越界外，自本任务起
+// 复用于 double 参数 NaN/Inf 拒绝（ZR_Unity_SetCameraOrigin，见文件末尾行星通道
+// 声明块组 1）；ZR_Unity_GetCameraOrigin 无 double 值参数，不受此扩充影响。
+#define ZR_UNITY_ERR_ARGS (-6) // 参数值非法：尺寸非法（0 或超过 16384）/ 槽位越界 / double 参数 NaN/Inf（B-PLANET-02 起复用——SetCameraOrigin）
 
 /// 统计快照（全定宽 POD）。centerRGBA 不是屏幕抓取，而是渲染完的**纹理回读**：
 /// 它证明"这张交给 Unity 的纹理里到底有什么"，是"Blit 已调用"之外的真证据。
@@ -405,6 +409,155 @@ typedef int (*ZrUnityBeginSceneFn)(void);
 typedef int (*ZrUnityEndSceneFn)(void);
 typedef int (*ZrUnityGetSceneStatsFn)(ZrUnitySceneStats* out);
 
+// ---- TASK-B-PLANET-02：P2 行星专用通道 C ABI（double 原点 + chunk 句柄 + LOD + 高度采样）----
+//
+// 设计依据：Docs/Planning/P2-行星ABI设计.md（TASK-B-PLANET-01，2026-11-14）§14 权威签名块。
+// 通道形态：chunk 不走 DrawMesh——由 RenderFrame 在行星通道内自主绘制，
+// 模型平移由原生在 double 域相减后一次 cast（float(objAbs - camAbs)，
+// planet_math.h RenderOffsetF「重定位正确路径」）。重定位权威在 Unity 侧
+// WorldOrigin（4000m，>= 触发）；原生不重定位，只消费每帧 SetCameraOrigin。
+//
+// 线程归属（SRWLOCK 先例：ZR_Upscaler_* 三函数）：
+//   - SetCameraOrigin/GetCameraOrigin：渲染线程（与既有 ZR_Unity_* 同约束）；
+//   - Planet 组写操作（SetWorld/ChunkCreate/ChunkDestroy/SetOrigin/SetLod/ClearAll）：
+//     主线程可调，SRWLOCK 独占；
+//   - SampleHeight/GetStats：任意线程（共享锁拷贝快照后无锁计算）；
+//   - GPU 上传/释放/档位应用只在渲染线程 RenderFrame 边界（延迟一帧语义）。
+//
+// chunk 句柄：uint64_t 高 32 代际、低 32 槽位，0 恒无效（与 mesh 句柄同协议）。
+
+#define ZR_PLANET_OK 0
+#define ZR_PLANET_ERR_NULL (-1)      // 指针参数为空
+#define ZR_PLANET_ERR_ABI (-2)       // structSize 与当前 ABI 不符
+#define ZR_PLANET_ERR_RANGE (-3)     // faceId/lodLevel/neighborMask/cellsPerEdge 越界或方向退化
+#define ZR_PLANET_ERR_HANDLE (-4)    // 句柄无效（含代际不符/已释放）
+#define ZR_PLANET_ERR_STATE (-5)     // 行星上下文未设置（SetWorld 前置）
+#define ZR_PLANET_ERR_FULL (-6)      // chunk 槽位满（> ZR_PLANET_MAX_CHUNKS）
+#define ZR_PLANET_ERR_NONFINITE (-7) // double 参数含 NaN/Inf
+
+#define ZR_PLANET_MAX_CHUNKS 8192u   // 槽位上限（现状全量 6144 + 余量）
+#define ZR_PLANET_VERTEX_STRIDE_FLOATS 8u // 32B/顶点：pos3f+normal3f+uv2f（与场景路径 v1 同宽）
+
+// LOD 档位：0 = 远档（16x16 顶点）、1 = 近档（64x64）——v1 两档锁定（B-TECH-04 口径）。
+// neighborMask 四缘位：置 1 = 该缘邻居更粗档或无数据/面界（v1 仅校验+记录，不改几何；
+// 取舍分析见设计稿 §5——消缝真根因是共享边 float 基准，不是邻居信息缺失）。
+#define ZR_PLANET_EDGE_NEG_U (1u << 0)
+#define ZR_PLANET_EDGE_POS_U (1u << 1)
+#define ZR_PLANET_EDGE_NEG_V (1u << 2)
+#define ZR_PLANET_EDGE_POS_V (1u << 3)
+// 高 4 位保留，必须 0，否则 ZR_PLANET_ERR_RANGE。
+
+/// 行星上下文（进程级单例，v1 单行星静态语义；SetWorld 独占锁替换快照）。
+typedef struct ZrPlanetWorld {
+    uint32_t structSize;      // 调用方填 sizeof(ZrPlanetWorld)
+    uint32_t seed;            // 地形噪声种子（chunk 生成与 SampleHeight 共用）
+    double centerAbs[3];      // 行星中心绝对坐标（行星中心系，米）
+} ZrPlanetWorld;
+static_assert(sizeof(ZrPlanetWorld) == 32, "ZrPlanetWorld must be 32 bytes (no padding)");
+
+/// chunk 创建描述（全定宽 POD，托管侧按布局直接封送）。
+/// 顶点由原生按规范路由 PlanetChunkVertexAtGlobal 生成（与 doctest 同函数）；
+/// 顶点局部坐标 = float(posAbs - originAbs)（double 域相减后一次 cast）。
+typedef struct ZrPlanetChunkDesc {
+    uint32_t structSize;      // 调用方填 sizeof(ZrPlanetChunkDesc)
+    uint32_t faceId;          // 0..5（+Z/+X/-Z/-X/+Y/-Y）
+    uint32_t lodLevel;        // 0=远档 1=近档（分辨率由档位映射，不带 res 字段）
+    uint32_t cx;              // 面内 chunk 格 u（0..cellsPerEdge-1）
+    uint32_t cy;              // 面内 chunk 格 v
+    uint32_t cellsPerEdge;    // 面内 chunk 数（1..4096；现状 32）
+    uint32_t neighborMask;    // ZR_PLANET_EDGE_*（创建即可带；SetLod 可更新）
+    uint32_t reserved0;       // 必须 0
+    double originAbs[3];      // chunk 锚点绝对坐标（建议 chunk 中心球面点；顶点局部基准）
+} ZrPlanetChunkDesc;
+static_assert(sizeof(ZrPlanetChunkDesc) == 56, "ZrPlanetChunkDesc must be 56 bytes (no padding)");
+
+/// 行星通道统计（全定宽 POD；账目断言 createTotal - destroyTotal == liveChunks）。
+typedef struct ZrPlanetStats {
+    uint32_t structSize;       // 由实现填 sizeof(ZrPlanetStats)
+    uint32_t liveChunks;       // 当前存活 chunk 数
+    uint32_t pendingUploads;   // 待渲染线程上传
+    uint32_t pendingFrees;     // 待渲染线程释放
+    uint32_t pendingLod;       // 待应用档位变更
+    uint32_t drawnLastFrame;   // 最近一帧实际绘制数（地平线剔除后）
+    uint32_t culledLastFrame;  // 最近一帧剔除数
+    uint32_t seamCheckFails;   // 运行期共享边 double 位形不一致计数（诊断；B-TECH-04 seams 口径）
+    uint64_t createTotal;      // 累计 ChunkCreate 成功数
+    uint64_t destroyTotal;     // 累计 ChunkDestroy 成功数
+    uint64_t lodChangeTotal;   // 累计档位变更应用数
+    uint64_t vertexBytes;      // 当前 GPU VB 字节（顶点数 x 32B）
+    double lastFrameMs;        // 最近一级行星通道段耗时
+    double avgFrameMs;         // 累计平均耗时
+} ZrPlanetStats;
+static_assert(sizeof(ZrPlanetStats) == 80, "ZrPlanetStats must be 80 bytes (no padding)");
+
+// ---- 组 1：double 相机原点（沿用 ZR_UNITY_* 错误码；渲染线程） ----
+//
+// 注意：ZR_UNITY_ERR_ARGS 的定义注释（上方 ZR_UNITY_* 错误码处）已随本块落地同步扩充
+// （修订轮 F7）——本组将其复用于 double 参数 NaN/Inf 拒绝（原注释仅覆盖尺寸非法口径）。
+
+/// 设置相机绝对原点（行星中心系，米）。NaN/Inf 返回 ZR_UNITY_ERR_ARGS。
+/// 跨帧持久（BeginScene 不清）；同帧多次调用最后一个生效；未设置时按 (0,0,0)。
+int ZR_Unity_SetCameraOrigin(double x, double y, double z);
+
+/// 取当前相机绝对原点（3 元素）。outOrigin 为空返回 ZR_UNITY_ERR_NULL。
+/// 用途：C ABI round-trip 自证与托管诊断（TECH-VALIDATION §4.5 口径）。
+int ZR_Unity_GetCameraOrigin(double* outOrigin);
+
+// ---- 组 2：行星上下文 ----
+
+/// 设置行星上下文（seed + 行星中心）。v1 契约：初始化期调用，单行星。
+/// world 为空返回 ZR_PLANET_ERR_NULL；structSize 不符返回 ZR_PLANET_ERR_ABI；
+/// centerAbs 含 NaN/Inf 返回 ZR_PLANET_ERR_NONFINITE。
+int ZR_Planet_SetWorld(const ZrPlanetWorld* world);
+
+// ---- 组 3：chunk 句柄生命周期 ----
+
+/// 创建 chunk：原生生成顶点并排队 GPU 上传（下一 RenderFrame 生效——延迟一帧）。
+/// 成功写 *outHandle 并返回 ZR_PLANET_OK；校验失败返回 ZR_PLANET_ERR_*（不写 outHandle）。
+/// 同一 (faceId,cx,cy) 重复创建不去重（v1）——托管侧负责；账目以 GetStats 审计。
+int ZR_Planet_ChunkCreate(const ZrPlanetChunkDesc* desc, uint64_t* outHandle);
+
+/// 销毁 chunk：句柄立即失效（代际+1）；GPU 资源下一 RenderFrame 由渲染线程释放。
+/// 幂等防护：重复释放/无效句柄返回 ZR_PLANET_ERR_HANDLE（显式错误码风格——
+/// chunk 是流式资源，释放必须可审计；区别于 ZR_Unity_DestroyMesh 的 void 静默风格）。
+int ZR_Planet_ChunkDestroy(uint64_t handle);
+
+/// 更新 chunk 锚点绝对坐标（行星整体移动时由托管批量调用）。顶点不重算
+/// （局部坐标相对锚点不变；锚点平移而行星中心未同步平移 = 托管侧 bug，不校验）。
+/// NaN/Inf 返回 ZR_PLANET_ERR_NONFINITE；句柄无效返回 ZR_PLANET_ERR_HANDLE。
+int ZR_Planet_ChunkSetOrigin(uint64_t handle, double x, double y, double z);
+
+/// 设置期望 LOD 档位与邻居掩码。下一 RenderFrame 应用（同帧多次最后生效）。
+/// 档位应用策略照搬 B-TECH-04：档变重建 VB、升容重建、退档复用不缩容。
+/// lodLevel>1 或 neighborMask 高 4 位非 0 返回 ZR_PLANET_ERR_RANGE。
+int ZR_Planet_SetLod(uint64_t handle, uint32_t lodLevel, uint32_t neighborMask);
+
+/// 取统计快照。out 为空返回 ZR_PLANET_ERR_NULL；structSize 由实现填。
+int ZR_Planet_GetStats(ZrPlanetStats* out);
+
+/// 一次性清空全部 chunk（场景卸载/Play 退出兜底；句柄全失效，GPU 下一帧释放）。
+void ZR_Planet_ClearAll(void);
+
+// ---- 组 4：高度采样（同步纯函数；任意线程） ----
+
+/// 采样地形噪声高程（与 chunk 顶点同一 PlanetTerrainHeightM：同 (seed,dir) 逐位一致）。
+/// dir = normalize(pos - 行星中心)；地表点 = 中心 + dir*(R + h)，R = kPlanetRadiusM 锁定。
+/// 返回 ZR_PLANET_OK；outHeightM 为空 ERR_NULL；非有限输入 ERR_NONFINITE；
+/// pos 与中心重合（方向退化）ERR_RANGE；上下文未设 ERR_STATE。
+/// 频率预算：<=1000 次/帧（估算 <0.1ms，探针实测校准——设计稿 §6.2）。
+int ZR_Planet_SampleHeight(double x, double y, double z, float* outHeightM);
+
+// 托管侧 P/Invoke 可直接复用的函数指针类型
+typedef int (*ZrUnitySetCameraOriginFn)(double x, double y, double z);
+typedef int (*ZrUnityGetCameraOriginFn)(double* outOrigin);
+typedef int (*ZrPlanetSetWorldFn)(const ZrPlanetWorld* world);
+typedef int (*ZrPlanetChunkCreateFn)(const ZrPlanetChunkDesc* desc, uint64_t* outHandle);
+typedef int (*ZrPlanetChunkDestroyFn)(uint64_t handle);
+typedef int (*ZrPlanetChunkSetOriginFn)(uint64_t handle, double x, double y, double z);
+typedef int (*ZrPlanetSetLodFn)(uint64_t handle, uint32_t lodLevel, uint32_t neighborMask);
+typedef int (*ZrPlanetGetStatsFn)(ZrPlanetStats* out);
+typedef void (*ZrPlanetClearAllFn)(void);
+typedef int (*ZrPlanetSampleHeightFn)(double x, double y, double z, float* outHeightM);
 
 #ifdef __cplusplus
 } // extern "C"
