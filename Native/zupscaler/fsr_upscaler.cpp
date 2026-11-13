@@ -15,9 +15,13 @@
 // 枚举为空或未命中 → Initialize 显式失败并打印原因（含 provider 列表），
 // 由 UpscalerChain 回退下一候选——不得静默降级。
 //
-// 780M/RDNA3 iGPU 实测：provider 列表只有 3.1.5 / 2.3.4，4.x 未注册（SDK v2.3.0
-// 文档要求 7000/9000 系**离散** GPU）。因此 Fsr4 在本机走"能力不可用"分支，
-// 这是环境的真实结论，不是实现缺陷（见 Docs/Logs/TASK-B-R6-02.md）。
+// 780M/RDNA3 iGPU 实测（TASK-B-FSR-01，2026-11-14，null 与真设备两路径对照）：
+// provider 列表均只有 3.1.5 / 2.3.4，4.x 未注册——FFX 运行时对 RDNA3 iGPU
+// 不注册 4.x（SDK v2.3.0 文档口径：FSR4 需 7000/9000 系离散 GPU）。Fsr4 在
+// 该类硬件走"能力不可用"分支，这是硬件/运行时的真实结论，不是实现缺陷
+// （见 Docs/Logs/TASK-B-R6-02.md）。FSR4 支持硬件上 null 枚举仍会截断列表
+// （RX 9060 XT 实测 2026-11-13：null=2 条 vs 真设备=4 条含 4.1.2）——provider
+// 枚举必须传真设备，否则能力判定假阴性。
 //
 // 上下文 max 尺寸取 Initialize 的输入/输出尺寸；Resize 走 dispatch 内动态
 // renderSize/upscaleSize（≤ max 时无需重建上下文）。
@@ -128,7 +132,9 @@ void ReleaseFfxRuntime(FfxRuntime* runtime)
     }
 }
 
-/// 枚举实现（nativeDevice 可为 null；FFX 对 null 设备返回同样的保守列表）
+/// 枚举实现（nativeDevice 可为 null；但 null 设备枚举返回**截断**列表——对端机
+/// RX 9060 XT 实测 2026-11-13：null=2 条 vs 真设备=4 条含 4.1.2。能力判定必须
+/// 传真设备，null 仅作无硬件环境的回退口径）。
 uint32_t EnumerateProvidersImpl(FfxRuntime* runtime, void* nativeDevice,
     ZupProviderVersion* out, uint32_t capacity, bool verbose)
 {

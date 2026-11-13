@@ -9903,8 +9903,11 @@ static int RunFsrMode(FsrMode mode)
     }
     caps.fsrRuntimePresent = zr::ZupFsrRuntimeProbe();
     // B-R6-02：FSR4 能力以 provider 运行时枚举为准（不猜 GPU 代际）；
+    // B-FSR-01：枚举传真设备——FFX 的 null 设备枚举返回截断列表（RX 9060 XT
+    // 实测 2026-11-13：null=2 条 vs 真设备=4 条含 4.1.2），null 会把 FSR4 误判
+    // 为不可用（假阴性）。
     // DLSS 能力 = N 卡 + Streamline 运行时（本机恒 false）
-    caps.fsr4Available = caps.fsrRuntimePresent && zr::ZupFsr4Probe(nullptr);
+    caps.fsr4Available = caps.fsrRuntimePresent && zr::ZupFsr4Probe(device->D3D12Device());
     caps.nvidiaHardware = (caps.vendorId == 0x10DEu);
     caps.dlssRuntimePresent = zr::ZupDlssRuntimeProbe();
     std::printf("zrhi_d3d12_window: --fsr caps: vendor=0x%04X device=0x%04X "
@@ -9913,13 +9916,23 @@ static int RunFsrMode(FsrMode mode)
         caps.fsr4Available ? 1 : 0, caps.nvidiaHardware ? 1 : 0,
         caps.dlssRuntimePresent ? 1 : 0);
     {
+        // provider 枚举对照（B-FSR-01）：null 设备返回截断列表（B-R6-02 的历史
+        // 口径，仅作对照证据），真设备返回完整列表——两行 count 即 FSR4 门控的
+        // 证据链；能力判定以真设备一行为准。
         zr::ZupProviderVersion providers[8] = {};
-        const uint32_t providerCount = zr::ZupFsrEnumerateProviders(nullptr, providers, 8u);
-        std::printf("zrhi_d3d12_window: --fsr provider enumeration (device=null, conservative): "
-                    "count=%u\n",
-            providerCount);
-        for (uint32_t i = 0u; i < providerCount; ++i) {
-            std::printf("  provider[%u] id=0x%llX name=%s\n", i,
+        const uint32_t nullCount = zr::ZupFsrEnumerateProviders(nullptr, providers, 8u);
+        std::printf("zrhi_d3d12_window: --fsr provider enumeration (device=null): count=%u\n",
+            nullCount);
+        for (uint32_t i = 0u; i < nullCount; ++i) {
+            std::printf("  provider[null][%u] id=0x%llX name=%s\n", i,
+                static_cast<unsigned long long>(providers[i].versionId), providers[i].name);
+        }
+        const uint32_t realCount = zr::ZupFsrEnumerateProviders(
+            device->D3D12Device(), providers, 8u);
+        std::printf("zrhi_d3d12_window: --fsr provider enumeration (device=real): count=%u\n",
+            realCount);
+        for (uint32_t i = 0u; i < realCount; ++i) {
+            std::printf("  provider[real][%u] id=0x%llX name=%s\n", i,
                 static_cast<unsigned long long>(providers[i].versionId), providers[i].name);
         }
     }

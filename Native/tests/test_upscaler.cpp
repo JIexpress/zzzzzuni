@@ -13,6 +13,8 @@
 //      motion_vectors.hlsl CBufMotionVectors 镜像）+ MV 像素换算
 //   6. FSR jitter 序列（官方公式：phaseCount 与 Halton(2,3) 已知值）
 //   7. FFX provider 版本选择（B-R6-02：FSR4 只认 4.x；3.1/2.3 回退链）
+//   8. ZupProbeDeviceCaps 探测结构稳定性（B-FSR-01：无硬件环境下字段合法、
+//      布尔自洽、进程内确定性——不断言本机有 FSR4，CI 无 GPU 必须可过）
 //
 // mock 设计：每 backend 独立工厂（CreateMockFsr4/Fsr3/Fsr2/Bilinear），
 // Initialize 结果按 backend 查表注入（g_mockInitResults）——与链的尝试顺序
@@ -740,7 +742,56 @@ TEST_CASE("CreateFsr4Upscaler: instance available, init fails cleanly without de
 }
 
 // =============================================================================
-// 9. Bilinear 资源生命周期（TASK-H-02 D4：中途失败泄漏 / 持久映射未解除）
+// 9. ZupProbeDeviceCaps 探测结构稳定性（TASK-B-FSR-01：不依赖硬件的守恒断言）
+// =============================================================================
+TEST_CASE("ZupProbeDeviceCaps: structure stability (hardware-independent invariants)")
+{
+    // null outCaps → 静默 false（C ABI 侧防呆约定）
+    CHECK_FALSE(zr::ZupProbeDeviceCaps(nullptr));
+
+    zr::UpscalerDeviceCaps caps;
+    REQUIRE(zr::ZupProbeDeviceCaps(&caps));
+
+    // POD 档案布局稳定（2×uint32 + 4×bool 对齐后 12 字节；B-FSR-01 明确不改
+    // 结构——断言防隐式变形，B-FSR-02 若扩字段须同步更新此断言）
+    CHECK(sizeof(zr::UpscalerDeviceCaps) == 12u);
+
+    // 布尔自洽：fsr4Available 必须以 fsrRuntimePresent 为前提（组合门控）
+    if (!caps.fsrRuntimePresent) {
+        CHECK_FALSE(caps.fsr4Available);
+    }
+    // nvidiaHardware 单一事实来源 = vendorId
+    CHECK(caps.nvidiaHardware == (caps.vendorId == 0x10DEu));
+
+    // vendorId 要么为 0（无硬件适配器：CI / 仅软件适配器，探测回退保守口径），
+    // 要么是已知 PCI vendor；deviceId 与 vendorId 同源（一并填充或一并缺席）。
+    // 注意：不断言 fsr4Available 的取值——CI 无 GPU 与真机都必须可过。
+    if (caps.vendorId == 0u) {
+        CHECK(caps.deviceId == 0u);
+    } else {
+        const bool knownVendor = (caps.vendorId == 0x1002u) || (caps.vendorId == 0x1022u)
+            || (caps.vendorId == 0x10DEu) || (caps.vendorId == 0x8086u);
+        CHECK(knownVendor);
+        CHECK(caps.deviceId != 0u);
+    }
+
+    // 枚举契约：null 设备路径写入数不超过 capacity（硬件无关的边界性质）
+    zr::ZupProviderVersion providers[8] = {};
+    CHECK(zr::ZupFsrEnumerateProviders(nullptr, providers, 8u) <= 8u);
+
+    // 进程内确定性：两次探测结论一致（DXGI 枚举序与 FFX 枚举进程内稳定）
+    zr::UpscalerDeviceCaps again;
+    REQUIRE(zr::ZupProbeDeviceCaps(&again));
+    CHECK(again.vendorId == caps.vendorId);
+    CHECK(again.deviceId == caps.deviceId);
+    CHECK(again.fsrRuntimePresent == caps.fsrRuntimePresent);
+    CHECK(again.fsr4Available == caps.fsr4Available);
+    CHECK(again.nvidiaHardware == caps.nvidiaHardware);
+    CHECK(again.dlssRuntimePresent == caps.dlssRuntimePresent);
+}
+
+// =============================================================================
+// 10. Bilinear 资源生命周期（TASK-H-02 D4：中途失败泄漏 / 持久映射未解除）
 // =============================================================================
 namespace {
 
@@ -882,7 +933,7 @@ TEST_CASE("BilinearUpscaler: 中途失败不留资源 / 重复 Initialize 不叠
 }
 
 // =============================================================================
-// 10. Resize 输出上限（TASK-H-02 D2：目标输出超创建上限会写越分配的输出资源）
+// 11. Resize 输出上限（TASK-H-02 D2：目标输出超创建上限会写越分配的输出资源）
 // =============================================================================
 TEST_CASE("ZupResizeWithinLimits: 目标输出超出创建时上限被拒（TASK-H-02 D2）")
 {

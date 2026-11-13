@@ -17,7 +17,8 @@
 //   Dlss    : caps.nvidiaHardware && caps.dlssRuntimePresent（N 卡 + Streamline
 //             运行时；本机 AMD → 恒 false）
 //   Fsr4    : caps.fsr4Available（FFX 运行时 provider 枚举命中 4.x 版本族；
-//             780M 实测未命中——见 Docs/Logs/TASK-B-R6-02.md 受限项）
+//             780M 实测未命中（null 与真设备两路径均无 4.x——RDNA3 iGPU 不注册）
+//             ——见 Docs/Logs/TASK-B-R6-02.md 受限项）
 //   Fsr3    : caps.fsrRuntimePresent
 //   Fsr2    : caps.fsrRuntimePresent（FSR 2 独立仓库已 404 下线；本任务
 //             vendor 的统一运行时内含 FSR2 provider 档位，见 ThirdParty/ffx-fsr/
@@ -60,7 +61,7 @@ enum class UpscalerBackend : uint32_t {
 const char* UpscalerBackendName(UpscalerBackend backend);
 
 /// 设备能力档案（调用方从 DXGI 适配器 + 运行时探测填充；ZupProbeDeviceCaps
-/// 提供免 D3D12 设备的保守探测实现）
+/// 提供探测实现——探测期自建短命 D3D12 设备传真给 FFX 枚举，无硬件回退 null）
 struct UpscalerDeviceCaps {
     uint32_t vendorId = 0;           // PCI vendor id：0x1002/0x1022=AMD、0x10DE=NVIDIA、0x8086=Intel
     uint32_t deviceId = 0;           // PCI device id（代际细分用）
@@ -96,13 +97,17 @@ struct ZupProviderVersion {
 bool ZupSelectProviderVersion(UpscalerBackend backend, const ZupProviderVersion* providers,
     uint32_t count, uint64_t* outVersionId, char* outName, uint32_t outNameCapacity);
 
-/// 枚举 FFX 运行时 provider 版本（nativeDevice 可为 null：FFX 对 null 设备
-/// 返回与真实设备一致的保守列表）。返回写入数；运行时不可用返回 0（静默，
-/// 失败点由 ZupFsrRuntimeProbe 的打印版覆盖）。
+/// 枚举 FFX 运行时 provider 版本。nativeDevice 可为 null（无硬件环境回退），
+/// 但 null 枚举返回**截断**列表——对端机 RX 9060 XT 实测 2026-11-13：null=2 条
+/// vs 真设备=4 条（含 4.1.2）——能力判定必须传真设备，否则 FSR4 假阴性。
+/// 返回写入数；运行时不可用返回 0（静默，失败点由 ZupFsrRuntimeProbe 的打印版
+/// 覆盖）。
 uint32_t ZupFsrEnumerateProviders(void* nativeDevice, ZupProviderVersion* out, uint32_t capacity);
 
-/// FSR 4 可用性探测：枚举命中 4.x provider 即 true（780M/RDNA3 iGPU 实测 false，
-/// 原因见 TASK-B-R6-02 报告：SDK v2.3.0 文档要求 7000/9000 系**离散** GPU）。
+/// FSR 4 可用性探测：枚举命中 4.x provider 即 true。nativeDevice 应传真设备
+/// （null 枚举在 FSR4 支持硬件上返回截断列表 → 假阴性，见 ZupFsrEnumerateProviders）。
+/// 780M/RDNA3 iGPU 实测 false（null 与真设备两路径均无 4.x——SDK v2.3.0 文档
+/// 要求 7000/9000 系**离散** GPU；TASK-B-R6-02 / B-FSR-01）。
 bool ZupFsr4Probe(void* nativeDevice);
 
 // =============================================================================
@@ -254,8 +259,9 @@ bool ZupDlssRuntimeProbe();
 /// Streamline 版本串（编译期头版本；"Streamline <ver> headers" 或 "unavailable"）
 const char* ZupDlssRuntimeVersion();
 
-/// 免 D3D12 设备的保守能力探测（DXGI 首个非软件适配器 + 三条运行时探测）。
-/// outCaps 为 null 时静默返回 false。
+/// 能力探测（DXGI 首个非软件适配器 + 三条运行时探测；FSR4 的 provider 枚举
+/// 在该适配器上建短命 ID3D12Device 传真设备——用完即释，调用方无需设备；
+/// 建备失败/无硬件回退 null 枚举的保守口径）。outCaps 为 null 时静默返回 false。
 bool ZupProbeDeviceCaps(UpscalerDeviceCaps* outCaps);
 
 /// 超分链：注册后端表 → 能力自动选优 → 生命周期状态机
