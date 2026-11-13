@@ -12,6 +12,8 @@
 ; TASK-B-UNITY-03 新增：场景提交七导出（相机 + 网格 + 绘制 + 场景统计）。
 ; TASK-B-UNITY-04 新增：帧同步三导出（双槽资源 / 可读槽位 / 等待耗时统计）。
 ; TASK-B-UNITY-05 新增：整面回读一导出（真实脚印 + 本侧状态转换）。
+; TASK-B-PLANET-05 新增：行星相机原点两导出（Set/GetCameraOrigin；首个行星导出落
+; def——B-PLANET-02 口径"def 随实现任务追加"自此开始；后续行星导出随 04/06 追加）。
 LIBRARY zrender
 EXPORTS
     ZR_ApiVersion
@@ -48,6 +50,8 @@ EXPORTS
     ZR_Unity_BeginScene
     ZR_Unity_EndScene
     ZR_Unity_GetSceneStats
+    ZR_Unity_SetCameraOrigin
+    ZR_Unity_GetCameraOrigin
     ZK_WorldCreate
     ZK_WorldDestroy
     ZK_RegisterComponent

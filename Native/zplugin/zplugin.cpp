@@ -19,6 +19,7 @@
 #endif
 #include <windows.h>
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -543,6 +544,48 @@ int ZR_Unity_GetSceneStats(ZrUnitySceneStats* out)
     out->uploadCount = stats.uploadCount;
     out->sceneFrameCount = stats.sceneFrameCount;
     out->drawTotal = stats.drawTotal;
+    return ZR_UNITY_OK;
+}
+
+// ---- TASK-B-PLANET-05：行星相机原点（zplugin.h 行星声明块组 1，B-PLANET-02 冻结签名）----
+//
+// 协议（设计稿 Docs/Planning/P2-行星ABI设计.md §3.3，权威文本 §14 组 1）：
+//   - SetCameraOrigin：NaN/Inf 任一分量 → ZR_UNITY_ERR_ARGS（zplugin.h ZR_UNITY_ERR_ARGS
+//     的 B-PLANET-02 扩充口径）；同帧多次调用最后一个生效；**跨帧持久**——
+//     BeginScene 只清场景绘制表（zr::unity_target），相机与网格句柄表保留
+//    （zplugin.h 场景提交语义），相机原点同属"保留"侧、不在其清空范围；
+//   - GetCameraOrigin：out 为空 → ZR_UNITY_ERR_NULL；初始 (0,0,0)——未 Set 就
+//     RenderFrame 按行星中心 = 世界原点处理（合法初始态，不报错，§3.3 末条）。
+//   - 线程（设计稿 §8）：渲染线程（与既有 ZR_Unity_* 同约束），锁 = 无（单线程
+//     约定下读写不竞争）——与 zplugin 既有 g_rhiBackend / 网格句柄表同口径。
+//
+// 状态落点：zplugin 进程级静态（无 GPU 触点，设计稿 §8 表；不进 zr::unity_target
+// ——那是 D3D12 目标模块，原点不属于它）。本任务只做存取 + 读回；RenderFrame 的
+// 消费（chunk 模型平移 double 域相减后一次 cast）属 TASK-B-PLANET-04。
+
+namespace {
+double g_planetCameraOrigin[3] = {0.0, 0.0, 0.0}; // 行星中心系绝对坐标（米）
+} // namespace
+
+int ZR_Unity_SetCameraOrigin(double x, double y, double z)
+{
+    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) {
+        return ZR_UNITY_ERR_ARGS; // NaN/Inf 任一分量拒绝；状态保持上一次成功值
+    }
+    g_planetCameraOrigin[0] = x;
+    g_planetCameraOrigin[1] = y;
+    g_planetCameraOrigin[2] = z;
+    return ZR_UNITY_OK;
+}
+
+int ZR_Unity_GetCameraOrigin(double* outOrigin)
+{
+    if (outOrigin == nullptr) {
+        return ZR_UNITY_ERR_NULL;
+    }
+    outOrigin[0] = g_planetCameraOrigin[0];
+    outOrigin[1] = g_planetCameraOrigin[1];
+    outOrigin[2] = g_planetCameraOrigin[2];
     return ZR_UNITY_OK;
 }
 
