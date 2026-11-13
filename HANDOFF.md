@@ -13,7 +13,7 @@
 - **08 对照结论（对端 AI 实测，基线 cdf4eb2=本机 HEAD，无漂移）**：框架要求基本全实现；ZRender 实为"旁路渲染器"（C ABI 只收 float 矩阵+rgba）；未做到=XeSS/FSR3.5/多视图共享可见性；半=Config 代码生成/替代 Unity/满血 bindless/3 周期实测/跨平台。**改进计划口径：不把 ZRender 做成完整管线，只做行星 chunk 专用通道（P2，第二章前，4–8 周）。**
 - **P0 已闭环（B-FSR-01，ae03f62，验收 PASS 11P+1MISSING裁决）**：upscaler_caps.cpp 枚举适配器后建真设备传 `ZupFsr4Probe`。**实测修正——780M(iGPU)+仓内 SDK v2.3.0 即使真设备也无 4.x provider（null=真设备=2 条：3.1.5/2.3.4）**：「FSR4 本机不可用」是硬件真相（B-R6-02 结论成立），假阴性差异只在支持硬件出现（对端 RX 9060 XT null=2 vs 真=4 含 4.1.2）。修复价值=支持硬件上消除假阴性，本机负对照证无误报。350 用例/778,737 断言全绿（+1/+14）；失实注释 4 文件改事实陈述；fg_ffx.cpp/.h 同型遗留移交 B-FSR-02；**阳性对照移交 B-PROBE-01（两机探针，对端补验）**。
 - **本机 env-probe 首跑**：HEAD cdf4eb2 / 556 C# / 6 场景 / 许可证在位；**本机 Build/Windows64 播放器缺 FFX DLL**（对端是手工补的 3 FFX+1 AGS）→ 引擎机玩家包当前不能跑 FSR（属实记录）；原生测试 exe 目录 FFX DLL 齐备，真机验证走 `zrender_test.exe`。
-- **本轮进度（2026-11-14 凌晨）**：B-VIS-01 done（裁决 A，132d183）｜B-FSR-01 done（ae03f62，验收 PASS）｜B-PLANET-01 设计稿交付（`Docs/Planning/P2-行星ABI设计.md` 534 行，D1–D10 决策+B-PLANET-02..12 拆解+§14 可抄签名汇编）**待验收**｜A-CONF-01 施工中｜B-FSR-02 派发中。P2 实施任务（B-PLANET-02..12）待设计稿验收 PASS 后由主控登看板。
+- **本轮进度（2026-11-14 凌晨）**：B-VIS-01 done（132d183）｜B-FSR-01 P0 done（ae03f62，验收 PASS）｜**B-FSR-02 P1 done（ce4bdf4，验收 PASS V1-V10）**：fsr4ProbeMode 三态 + ApiVersion2 + C# 三态文案 + 全仓写死能力审计 15 项（8 改 7 核，含 fg_ffx 移交）——"不支持"从此可追溯到三类原因，未知值兜底「未检测」｜B-PLANET-01 设计稿交付（P2-行星ABI设计.md，534 行）**验收中**｜A-CONF-01 验收中（施工终态 EditMode 1167 全绿）｜待派：B-KERNEL-01、B-PROBE-01（含对端 FG 双设备对照移交项）、B-PROBE-02。P2 实施任务（B-PLANET-02..12）待设计稿验收 PASS 后登看板。
 - **git 现场**：main 领先 origin/main **51+ 提交**未推（推远程需用户确认——AGENTS.md 铁律）。
 
 ## ⚡ 最新-2026-11-09（A-AI-04 闭环——NPC 会自己走去找事做）

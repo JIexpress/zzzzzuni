@@ -4,6 +4,7 @@
 
 | 日期 | 任务 | 结果 | commit |
 |---|---|---|---|
+| 2026-11-14 | B-FSR-02 P1 能力三态诚实化 | done：验收PASS(V1-V10全过)；ZrUpscalerCaps+fsr4ProbeMode(0真设备/1回退/2未探测)+ApiVersion2；C#三态文案+未知兜底；全仓写死能力审计15项(8改7核,含fg_ffx移交)；原生351/778,743+EditMode1167全绿；真机fsr4ProbeMode=0实证；移交：FG双设备对照/provider版本串读口→B-PROBE-01 | ce4bdf4 |
 | 2026-11-14 | B-FSR-01 P0 FSR4真设备探测修复 | done：验收PASS(11P+1MISSING裁决,0FAIL)；350用例/778,737断言(+1/+14)全绿；负对照成立(780M null=真=2条/fsr4=0=硬件真相)；失实注释4文件改事实陈述；fg_ffx同型遗留移交B-FSR-02；阳性对照移交B-PROBE-01对端补验 | ae03f62 |
 | 2026-11-14 | B-VIS-01 共享可见性核实 | done：裁决 A——VisibilitySet viewMask 一次录入/六视图消费(test_shadows 0x1F 断言)；外部审计"未找到"不成立；诚实注记:真 frustum 剔除缺→B-VIS-02 登记 | (本提交) |
 | 2026-11-14 | G-158 交接材料入仓+双机分工 | done：Docs/Planning 四文档+Tools/Probes(env-probe 两机自适应+两机证据存档)+看板新增 9 行(引擎补全轮)；本机探针首跑 10 项取到/3 项 MISSING 如实记录 | (本提交) |
