@@ -6,6 +6,9 @@
 //   2. 分帧预算生效（预算内每 tick 操作数有界、待办跨 tick 推进、近档硬帽）；
 //   3. SetLod 迟滞决策与原生 PlanetLodLevel 边界逐式一致（恰在阈值不切换）；
 //   4. 可见性口径（沿锚点方向的块最先服务）+ 通道门控纪律（关闭=整体关闭）。
+// 第五类（TASK-B-PLANET-14）：排名重建阈值判据——纯海拔爬升 600m→258km 必须触发重建
+//   （B-PLANET-11 缺陷锚点）、贴地微动 <500m 不触发（防过敏感）、阈值边界严格不等式、
+//   旧判据静默而新判据触发的切向判别、稳态零重建、阈值常数选取的陈旧量界。
 //
 // 设备依赖：ChunkCreate/Destroy/SetLod/GetStats/SetWorld/SampleHeight/SetCameraOrigin
 // 均为无 GPU 触点的主线程调用（设计稿 §8），EditMode 裸跑；真渲染路径由
@@ -57,11 +60,26 @@ namespace ZFrame.Render.Tests
             return config;
         }
 
+        /// <summary>带格数覆写的配置（B-PLANET-14 排名判据用例：cells=8/32 下阈值几何不同，
+        /// 见 <see cref="ZrPlanetChunkStreamer.RebuildMoveThresholdMeters"/>）。</summary>
+        private static ZrPlanetStreamConfig SmallConfig(uint cellsPerEdge, int maxWorkMicros, int maxNearOps)
+        {
+            ZrPlanetStreamConfig config = SmallConfig(maxWorkMicros, maxNearOps);
+            config.CellsPerEdge = cellsPerEdge;
+            return config;
+        }
+
         /// <summary>chunk(face,cx,cy) 锚点方向的面坐标（远档 stride/2 中心，与表构建同式）。</summary>
         private static (double u, double v) AnchorUv(uint cx, uint cy)
         {
+            return AnchorUv(2u, cx, cy);
+        }
+
+        /// <summary>可配格数版本（cellsPerEdge=2 时与上式逐位同一表达式）。</summary>
+        private static (double u, double v) AnchorUv(uint cellsPerEdge, uint cx, uint cy)
+        {
             const int stride = (int)ZrPlanetChunkStreamer.TierResFar - 1;
-            const int total = 2 * stride; // cellsPerEdge = 2
+            int total = (int)cellsPerEdge * stride;
             double u = 2.0 * (double)(cx * stride + stride / 2) / total - 1.0;
             double v = 2.0 * (double)(cy * stride + stride / 2) / total - 1.0;
             return (u, v);
@@ -71,10 +89,52 @@ namespace ZFrame.Render.Tests
         private static (double x, double y, double z) CameraOverAnchor(
             int face, uint cx, uint cy, double altitude)
         {
-            (double u, double v) = AnchorUv(cx, cy);
+            return CameraOverAnchor(2u, face, cx, cy, altitude);
+        }
+
+        /// <summary>可配格数版本。</summary>
+        private static (double x, double y, double z) CameraOverAnchor(
+            uint cellsPerEdge, int face, uint cx, uint cy, double altitude)
+        {
+            (double u, double v) = AnchorUv(cellsPerEdge, cx, cy);
             ZrPlanetChunkStreamer.CubeSphereDir(face, u, v, out double dx, out double dy, out double dz);
             double r = ZrPlanetChunkStreamer.NativePlanetRadiusMeters + altitude;
             return (dx * r, dy * r, dz * r);
+        }
+
+        /// <summary>
+        /// 反复 Tick 直到 LastOps 清空（收敛）。maxTicks 耗尽仍有待办视为失败（预算语义
+        /// 或用例参数变化——不许静默吞掉未收敛态）。
+        /// </summary>
+        private static void Converge(ZrPlanetChunkStreamer streamer,
+            double camX, double camY, double camZ, int maxTicks)
+        {
+            for (int i = 0; i < maxTicks && streamer.LastOps.Count > 0; i++)
+            {
+                streamer.Tick(camX, camY, camZ);
+            }
+
+            Assert.AreEqual(0, streamer.LastOps.Count,
+                $"收敛循环（{maxTicks} tick）后仍有待办——预算语义或用例参数变化");
+        }
+
+        /// <summary>
+        /// 相机位置处朝 +x 的单位切向量（e1 去掉沿相机方向 d 的分量后归一化；与相机位置
+        /// 正交——沿它移动不改变离行星中心的距离到二阶小量）。B-PLANET-14 切向判据用例用。
+        /// </summary>
+        private static (double x, double y, double z) TangentTowardX(
+            double posX, double posY, double posZ)
+        {
+            double len = Math.Sqrt(posX * posX + posY * posY + posZ * posZ);
+            double dx = posX / len;
+            double dy = posY / len;
+            double dz = posZ / len;
+            double dot = dx; // e1·d
+            double tx = 1.0 - dot * dx;
+            double ty = -dot * dy;
+            double tz = -dot * dz;
+            double invLen = 1.0 / Math.Sqrt(tx * tx + ty * ty + tz * tz);
+            return (tx * invLen, ty * invLen, tz * invLen);
         }
 
         // ---- SetLod 迟滞决策（与原生 PlanetLodLevel 逐式镜像）--------------------------
@@ -391,6 +451,373 @@ namespace ZFrame.Render.Tests
             finally
             {
                 streamer.Dispose();
+            }
+        }
+
+        // ---- 排名重建位移幅值判据（TASK-B-PLANET-14）-------------------------------------
+        //
+        // 缺陷：B-PLANET-07 重建判据 = turn>四分之一块角 ‖ lenDrift>5%，纯海拔爬升
+        // 600m→258km 时 turn=0、lenDrift=4.04%<5%——期望集永远停留贴地集
+        // （B-PLANET-11 实测 live=4，中档视野缺 chunk）。修复 = 加第三条判据
+        // |ΔcamRel| > max(500m, 2%×chunk 弧长)（选型与常数依据见 streamer 类头注释块）。
+        // 本组用例钉住：阈值口径（3 条）、缺陷复现锚点（爬升触发 ×2）、防过敏感锚点
+        // （贴地微动 ×2）、边界严格性、跨 tick 累计、切向判据（旧判据静默而新判据触发）、
+        // 稳态零重建、常数选取的陈旧量界。
+
+        /// <summary>cells=32 阈值参考值：0.02 × 6371km × (π/2)/32 = 6254.71m（chunk 弧长
+        /// 312.7km 的 2%——与 B-PLANET-11 施工报告引用的 chunk 弧长同式同值）。</summary>
+        private const double DefaultGridThresholdMeters = 6254.7146;
+
+        [Test]
+        public void RebuildMoveThreshold_DefaultGrid_IsTwoPercentChunkArc()
+        {
+            double chunkArc = ZrPlanetChunkStreamer.NativePlanetRadiusMeters
+                * (Math.PI / 2.0) / 32u;
+            Assert.AreEqual(312_735.7, chunkArc, 0.1,
+                "chunk 赤道弧长必须为 312.7km（B-PLANET-11 引用口径）");
+            Assert.AreEqual(chunkArc * 0.02, ZrPlanetChunkStreamer.RebuildMoveThresholdMeters(32u), 1e-6,
+                "生产格数阈值 = 2% × chunk 弧长");
+            Assert.AreEqual(DefaultGridThresholdMeters,
+                ZrPlanetChunkStreamer.RebuildMoveThresholdMeters(32u), 1e-3);
+            Assert.Greater(ZrPlanetChunkStreamer.RebuildMoveThresholdMeters(32u), 500.0,
+                "生产格数下 500m 地板不生效（2% 弧长项主导）");
+        }
+
+        [Test]
+        public void RebuildMoveThreshold_FloorActive_OnDenseGrids()
+        {
+            // 地板边界：cells≤400 时 2% 弧长项 ≥ 500.4m（地板不生效），cells≥401 时弧长项
+            // < 500m（地板接管，恰为 500.0）——贴地微动 <500m 永不触发的锚点在稠密格下成立。
+            Assert.AreEqual(500.3772, ZrPlanetChunkStreamer.RebuildMoveThresholdMeters(400u), 1e-3,
+                "cells=400：2% 弧长项仍略高于地板");
+            Assert.AreEqual(500.0, ZrPlanetChunkStreamer.RebuildMoveThresholdMeters(401u), 1e-9,
+                "cells=401：地板恰接管（弧长项 499.13m < 500m）");
+            Assert.AreEqual(500.0, ZrPlanetChunkStreamer.RebuildMoveThresholdMeters(512u), 1e-9);
+            Assert.AreEqual(500.0, ZrPlanetChunkStreamer.RebuildMoveThresholdMeters(4096u), 1e-9,
+                "最稠密格（4096）下阈值 = 地板 500m");
+        }
+
+        [Test]
+        public void RebuildMoveThreshold_MonotonicAcrossGrids_AndClimbAnchor()
+        {
+            // 单调不增（弧长项随 cells 收窄）+ 全域 ≥ 500m 地板 + 缺陷锚点：阈值上界
+            // （cells=1 的 200.15km）必须低于 600m→258km 纯爬升位移 257.4km——任意合法
+            // 格数下缺陷场景都触发。
+            double previous = double.MaxValue;
+            foreach (uint cells in new uint[] { 1u, 2u, 4u, 8u, 16u, 32u, 64u, 128u, 256u, 400u,
+                401u, 512u, 1024u, 2048u, 4096u })
+            {
+                double threshold = ZrPlanetChunkStreamer.RebuildMoveThresholdMeters(cells);
+                Assert.LessOrEqual(threshold, previous, $"cells={cells}：阈值必须随格数单调不增");
+                Assert.GreaterOrEqual(threshold, 500.0, $"cells={cells}：阈值不得低于 500m 地板");
+                previous = threshold;
+            }
+
+            Assert.AreEqual(200_150.8680, ZrPlanetChunkStreamer.RebuildMoveThresholdMeters(1u), 1e-3,
+                "cells=1 极端粗格阈值 = 0.02·R·π/2");
+            Assert.Less(ZrPlanetChunkStreamer.RebuildMoveThresholdMeters(1u), 257_400.0,
+                "阈值全域上界必须低于 258km 纯爬升位移——缺陷锚点与格数无关");
+        }
+
+        [Test]
+        public void Tick_PureAltitudeClimb600mTo258km_TriggersRebuild()
+        {
+            // 缺陷复现（cells=8 锥角口径）：纯径向爬升 turn=0、lenDrift=257.4km/6371.6km
+            // =4.04%<5%——旧判据全静默（旧代码本用例必红）；位移 257.4km > 阈值 25018.86m
+            // → 新判据触发。期望集随爬升扩张（几何复算：5 → 25 块）。
+            var streamer = new ZrPlanetChunkStreamer();
+            streamer.Initialize(SmallConfig(8u, 1_000_000, 8));
+
+            try
+            {
+                (double gx, double gy, double gz) = CameraOverAnchor(8u, 0, 0, 0, 600.0);
+                streamer.Tick(gx, gy, gz);
+                Assert.AreEqual(1, streamer.RankingRebuildCount, "首 tick 建排名");
+                Converge(streamer, gx, gy, gz, 64);
+                long groundCreated = streamer.CreatedTotal;
+                int groundDesired = streamer.DesiredCount;
+                Assert.GreaterOrEqual(groundDesired, 1, "前置：贴地期望集非空");
+                Assert.Greater(groundCreated, 0, "前置：贴地已建块");
+
+                (double hx, double hy, double hz) = CameraOverAnchor(8u, 0, 0, 0, 258_000.0);
+                streamer.Tick(hx, hy, hz);
+                Assert.AreEqual(2, streamer.RankingRebuildCount,
+                    "纯海拔爬升 600m→258km 必须触发排名重建（B-PLANET-11 缺陷锚点；lenDrift=4.04%<5%）");
+
+                Converge(streamer, hx, hy, hz, 256);
+                Assert.Greater(streamer.DesiredCount, groundDesired,
+                    "爬升后期望集必须扩张（中档视野不再缺 chunk）");
+                Assert.Greater(streamer.CreatedTotal, groundCreated, "扩张必须落成新块");
+                Assert.IsTrue(streamer.LastAccountOk, "全程账目恒等");
+
+                Assert.AreEqual(ZrPlanetNative.Ok, ZrPlanetNative.GetStats(out ZrPlanetStatsNative stats));
+                Assert.AreEqual(stats.CreateTotal - stats.DestroyTotal, (ulong)stats.LiveChunks,
+                    "原生账目恒等式");
+                Assert.AreEqual((ulong)streamer.LiveCount, (ulong)stats.LiveChunks,
+                    "托管/原生活跃数一致");
+            }
+            finally
+            {
+                streamer.Dispose();
+            }
+        }
+
+        [Test]
+        public void Tick_PureAltitudeClimb_ProductionGrid_GroundSetExpands()
+        {
+            // 生产格数（cells=32）+ 生产默认配置的缺陷复现：face0 中心方向贴地 600m 的期望集
+            // 恰 4 块（几何复算 = B-PLANET-11 实测 live=4 同口径）；纯爬升到 258km 必须触发
+            // 重建并把期望集扩张到中档覆盖（复算 112 块，断言 ≥100 留 libm 边界余量）。
+            var streamer = new ZrPlanetChunkStreamer();
+            streamer.Initialize(ZrPlanetStreamConfig.CreateDefault(0.0, 0.0, 0.0, 1337u));
+
+            try
+            {
+                double r = ZrPlanetChunkStreamer.NativePlanetRadiusMeters;
+                streamer.Tick(0.0, 0.0, r + 600.0);
+                Converge(streamer, 0.0, 0.0, r + 600.0, 128);
+                Assert.AreEqual(4, streamer.DesiredCount,
+                    "贴地 600m（face0 中心方向）期望集恰 4 块——B-PLANET-11 live=4 缺陷态复现");
+                Assert.AreEqual(4, streamer.LiveCount, "贴地活跃块与期望集一致");
+                long groundCreated = streamer.CreatedTotal;
+
+                streamer.Tick(0.0, 0.0, r + 258_000.0);
+                Assert.AreEqual(2, streamer.RankingRebuildCount,
+                    "生产格数下纯海拔爬升 258km 必须触发重建（本缺陷的主锚点）");
+
+                Converge(streamer, 0.0, 0.0, r + 258_000.0, 512);
+                Assert.GreaterOrEqual(streamer.DesiredCount, 100,
+                    "258km 期望集必须扩张到中档覆盖（复算 112 块）");
+                Assert.Greater(streamer.CreatedTotal, groundCreated, "扩张落成新块");
+                Assert.IsTrue(streamer.LastAccountOk);
+
+                Assert.AreEqual(ZrPlanetNative.Ok, ZrPlanetNative.GetStats(out ZrPlanetStatsNative stats));
+                Assert.AreEqual(stats.CreateTotal - stats.DestroyTotal, (ulong)stats.LiveChunks);
+                Assert.AreEqual((ulong)streamer.LiveCount, (ulong)stats.LiveChunks);
+            }
+            finally
+            {
+                streamer.Dispose();
+            }
+        }
+
+        [Test]
+        public void Tick_GroundTangentialMicroMove499m_DoesNotRebuild()
+        {
+            // 防过敏感锚点（切向臂）：贴地漫游 499m——turn=499/6371.6km=7.8e-5 rad ≪
+            // 0.049（cells=8 四分之一块角）、lenDrift≈0、位移 499 < 阈值 25018.86m →
+            // 三判据全静默；且无重建则排名冻结，不得产生任何操作。
+            var streamer = new ZrPlanetChunkStreamer();
+            streamer.Initialize(SmallConfig(8u, 1_000_000, 8));
+
+            try
+            {
+                (double gx, double gy, double gz) = CameraOverAnchor(8u, 0, 0, 0, 600.0);
+                streamer.Tick(gx, gy, gz);
+                Converge(streamer, gx, gy, gz, 64);
+                long created = streamer.CreatedTotal;
+                int live = streamer.LiveCount;
+                Assert.Greater(live, 0, "前置：贴地已建块");
+
+                streamer.Tick(gx + 499.0, gy, gz);
+                Assert.AreEqual(1, streamer.RankingRebuildCount,
+                    "贴地微动 499m 不得触发重建（防过敏感锚点）");
+                Assert.AreEqual(0, streamer.LastOps.Count, "排名冻结态不得产生任何操作");
+                Assert.AreEqual(live, streamer.LiveCount, "活跃数必须稳定");
+                Assert.AreEqual(created, streamer.CreatedTotal, "Create 计数必须稳定");
+                Assert.IsTrue(streamer.LastAccountOk);
+            }
+            finally
+            {
+                streamer.Dispose();
+            }
+        }
+
+        [Test]
+        public void Tick_GroundRadialMicroMove499m_DoesNotRebuild()
+        {
+            // 防过敏感锚点（径向臂）：贴地爬升 499m——lenDrift=499/6371.6km=7.8e-5 ≪ 5%、
+            // turn=0、位移 499 < 阈值 → 三判据全静默（径向微动是最贴近原缺陷方向的
+            // 反向用例：阈值必须容忍它，否则流式在贴地抖动下空转）。
+            var streamer = new ZrPlanetChunkStreamer();
+            streamer.Initialize(SmallConfig(8u, 1_000_000, 8));
+
+            try
+            {
+                (double gx, double gy, double gz) = CameraOverAnchor(8u, 0, 0, 0, 600.0);
+                streamer.Tick(gx, gy, gz);
+                Converge(streamer, gx, gy, gz, 64);
+                long created = streamer.CreatedTotal;
+                int live = streamer.LiveCount;
+
+                (double ax, double ay, double az) = CameraOverAnchor(8u, 0, 0, 0, 1_099.0);
+                streamer.Tick(ax, ay, az);
+                Assert.AreEqual(1, streamer.RankingRebuildCount,
+                    "贴地径向微动 499m 不得触发重建（防过敏感锚点）");
+                Assert.AreEqual(0, streamer.LastOps.Count);
+                Assert.AreEqual(live, streamer.LiveCount);
+                Assert.AreEqual(created, streamer.CreatedTotal);
+                Assert.IsTrue(streamer.LastAccountOk);
+            }
+            finally
+            {
+                streamer.Dispose();
+            }
+        }
+
+        [Test]
+        public void Tick_DisplacementThresholdBoundary_IsStrict()
+        {
+            // 阈值边界严格不等式（与 DecideLodLevel 的"恰在阈值不切换"同语义）：径向位移
+            // 恰低于阈值（×(1−1e-6)）不触发、恰高于（×(1+1e-6)）触发——旧判据在两个位移
+            // 下都静默（turn=0、lenDrift≈0.39%<5%），触发与否完全由新判据决定。
+            var streamer = new ZrPlanetChunkStreamer();
+            streamer.Initialize(SmallConfig(8u, 1_000_000, 8));
+
+            try
+            {
+                (double gx, double gy, double gz) = CameraOverAnchor(8u, 0, 0, 0, 600.0);
+                streamer.Tick(gx, gy, gz);
+                Converge(streamer, gx, gy, gz, 64);
+
+                double threshold = ZrPlanetChunkStreamer.RebuildMoveThresholdMeters(8u);
+                (double bx, double by, double bz) =
+                    CameraOverAnchor(8u, 0, 0, 0, 600.0 + threshold * (1.0 - 1e-6));
+                streamer.Tick(bx, by, bz);
+                Assert.AreEqual(1, streamer.RankingRebuildCount,
+                    "恰低于位移阈值不得触发（严格不等式）");
+
+                (double ax, double ay, double az) =
+                    CameraOverAnchor(8u, 0, 0, 0, 600.0 + threshold * (1.0 + 1e-6));
+                streamer.Tick(ax, ay, az);
+                Assert.AreEqual(2, streamer.RankingRebuildCount,
+                    "越过位移阈值必须触发（基线冻结在贴地 tick——跨阈以累计位移计）");
+            }
+            finally
+            {
+                streamer.Dispose();
+            }
+        }
+
+        [Test]
+        public void Tick_ContinuousClimb_AccumulatesToThreshold()
+        {
+            // 连续爬升的累计语义（缺陷第二形态——B-PLANET-11 "连续爬升跨不过首档"）：
+            // 单帧 +20km 不过阈（<25018.86m，基线冻结不更新），继续爬到累计 +26km 跨阈
+            // 触发——重建响应累计位移，不要求单帧跳变。
+            var streamer = new ZrPlanetChunkStreamer();
+            streamer.Initialize(SmallConfig(8u, 1_000_000, 8));
+
+            try
+            {
+                (double gx, double gy, double gz) = CameraOverAnchor(8u, 0, 0, 0, 600.0);
+                streamer.Tick(gx, gy, gz);
+                Converge(streamer, gx, gy, gz, 64);
+
+                (double mx, double my, double mz) = CameraOverAnchor(8u, 0, 0, 0, 20_600.0);
+                streamer.Tick(mx, my, mz);
+                Assert.AreEqual(1, streamer.RankingRebuildCount,
+                    "累计 20km < 阈值：不得触发");
+
+                (double hx, double hy, double hz) = CameraOverAnchor(8u, 0, 0, 0, 26_600.0);
+                streamer.Tick(hx, hy, hz);
+                Assert.AreEqual(2, streamer.RankingRebuildCount,
+                    "累计 26km > 阈值：连续爬升必须跨阈触发");
+            }
+            finally
+            {
+                streamer.Dispose();
+            }
+        }
+
+        [Test]
+        public void Tick_TangentialDisplacement_RebuildFiresWithoutDesiredSetChange()
+        {
+            // 切向判据（旧判据静默而新判据触发的判别用例——旧代码本用例必红）：沿与相机
+            // 方向正交的切向移动 30km——turn=0.0047 < 0.049（cells=8 四分之一块角）、
+            // lenDrift=1.1e-5（纯切向，离星距离不变到二阶小量）、位移 30000 > 25018.86m
+            // → 新判据触发。几何复算（TempLogs 探针）：期望集与迟滞带在移动前后均不变、
+            // 活跃块距离变化 ≤30km 不跨 810/990km 迟滞带 → 重建 tick 零操作——重建事件
+            // 只能经 RankingRebuildCount 观测（诊断计数存在的直接依据）。
+            var streamer = new ZrPlanetChunkStreamer();
+            streamer.Initialize(SmallConfig(8u, 1_000_000, 8));
+
+            try
+            {
+                (double gx, double gy, double gz) = CameraOverAnchor(8u, 0, 0, 0, 600.0);
+                streamer.Tick(gx, gy, gz);
+                Converge(streamer, gx, gy, gz, 64);
+                long created = streamer.CreatedTotal;
+                long destroyed = streamer.DestroyedTotal;
+                int live = streamer.LiveCount;
+                int desired = streamer.DesiredCount;
+                Assert.Greater(live, 0, "前置：贴地已建块");
+
+                (double tx, double ty, double tz) = TangentTowardX(gx, gy, gz);
+                streamer.Tick(gx + 30_000.0 * tx, gy + 30_000.0 * ty, gz + 30_000.0 * tz);
+
+                Assert.AreEqual(2, streamer.RankingRebuildCount,
+                    "切向 30km（旧判据全静默）必须经位移判据触发重建");
+                Assert.AreEqual(0, streamer.LastOps.Count,
+                    "期望集不变的重建不得产生操作——触发只能经计数观测");
+                Assert.AreEqual(desired, streamer.DesiredCount, "期望集必须不变");
+                Assert.AreEqual(live, streamer.LiveCount);
+
+                Converge(streamer, gx + 30_000.0 * tx, gy + 30_000.0 * ty, gz + 30_000.0 * tz, 8);
+                Assert.AreEqual(created, streamer.CreatedTotal, "收敛后不得有新创建");
+                Assert.AreEqual(destroyed, streamer.DestroyedTotal, "收敛后不得有销毁");
+                Assert.IsTrue(streamer.LastAccountOk);
+            }
+            finally
+            {
+                streamer.Dispose();
+            }
+        }
+
+        [Test]
+        public void Tick_StationaryCamera_RebuildsExactlyOnce()
+        {
+            // 稳态零重建（噪声免疫）：相机完全不动时只有首 tick 建排名，其后任意多 tick
+            // 不得重建（若有逐 tick 重建，6144 块排序会常驻帧预算——回归即在此暴露）。
+            var streamer = new ZrPlanetChunkStreamer();
+            streamer.Initialize(SmallConfig(8u, 1_000_000, 8));
+
+            try
+            {
+                (double gx, double gy, double gz) = CameraOverAnchor(8u, 0, 0, 0, 600.0);
+                for (int i = 0; i < 32; i++)
+                {
+                    streamer.Tick(gx, gy, gz);
+                }
+
+                Assert.AreEqual(1, streamer.RankingRebuildCount,
+                    "相机不动只允许首次建排名（稳态零重建）");
+                Assert.AreEqual(0, streamer.LastOps.Count, "稳态无操作");
+                Assert.IsTrue(streamer.LastAccountOk);
+            }
+            finally
+            {
+                streamer.Dispose();
+            }
+        }
+
+        [Test]
+        public void RebuildThreshold_StalenessBound_HoldsAcrossGrids()
+        {
+            // 常数选取依据的回归锁定：阈值 T 下"未重建径向位移 T"造成的地平线角增长
+            // acos(R/(R+T))（低空最坏形态）必须 < 半块角 + 0.05 rad（unity_target.cpp (d)
+            // 段剔除裕度）——陈旧排名的期望集偏差始终落在既有剔除包络内。改 0.02/500 任一
+            // 常数若破坏本界，B-PLANET-11 的缺 chunk 覆盖缺口会重现（旧判据 5% lenDrift
+            // 允许陈旧量至 0.3155 rad ≫ cells=32 的包络 0.0745 rad——正是缺陷机理）。
+            double radius = ZrPlanetChunkStreamer.NativePlanetRadiusMeters;
+            for (uint cells = 1u; cells <= 4096u; cells++)
+            {
+                double threshold = ZrPlanetChunkStreamer.RebuildMoveThresholdMeters(cells);
+                double horizonAng = Math.Acos(Math.Min(1.0, radius / (radius + threshold)));
+                double halfChunkAng = (Math.PI / 2.0) / cells * 0.5;
+                Assert.Less(horizonAng, halfChunkAng + 0.05,
+                    $"cells={cells}：阈值 T={threshold:F1}m 的排名陈旧量 {horizonAng:F6} rad " +
+                    $"超出剔除包络（半块角 {halfChunkAng:F6} + 裕度 0.05）——常数选取依据被破坏");
             }
         }
 

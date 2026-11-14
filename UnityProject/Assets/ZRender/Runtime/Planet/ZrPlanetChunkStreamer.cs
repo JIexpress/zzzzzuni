@@ -14,6 +14,10 @@
 //  3. 可见性口径 = 原生地平线曲率剔除的托管镜像（unity_target.cpp 帧首 (d) 段：
 //     horizonAng + chunk 半角 + 0.05 rad 裕度），并额外加一个 chunk 半角的销毁迟滞带，
 //     防在地平线边界上反复 Create/Destroy。
+//  4. 排名重建判据（TASK-B-PLANET-14 扩展）= turn>四分之一块角 ‖ lenDrift>5% ‖
+//     位移幅值>max(500m, 2%×chunk 弧长)——第三条修复"纯海拔爬升 258km 漏判"
+//     （lenDrift 分母是 ≈R 的相机离星距离，5%≈318km 径向漂移，对海拔变化天然钝感；
+//     B-PLANET-11 实测缺陷：期望集停留贴地 live=4）。常数依据见类内常量注释块。
 //
 // G6 双快照同步责任（B-PLANET-04 裁决转交本任务定契约）：<see cref="Initialize"/> 是
 // **全进程唯一**的托管 SetWorld 调用点——zplugin 权威快照与渲染侧镜像在同一次 SetWorld
@@ -145,6 +149,32 @@ namespace ZFrame.Render.Planet
         private const double CullMarginRad = 0.05;
         private const double Pi = 3.14159265358979323846;
 
+        // ---- 排名重建位移幅值判据常数（TASK-B-PLANET-14；依据见 UpdateRanking 注释）----
+        //
+        // 缺陷（B-PLANET-11 实测）：重建判据只有 turn>chunkHalfAng·0.5（贴地 0.703°）与
+        // lenDrift>5% 两条，纯海拔爬升 600m→258km 时 turn=0、lenDrift=4.04%<5%——期望集
+        // 永远停留在贴地集（实测 live=4，中档视野大面积缺 chunk）。lenDrift 的分母是相机
+        // 离行星中心的距离（≈R=6371km 量级），5% 相当于 ~318km 径向漂移才触发——对"海拔"
+        // 这个物理量天然不敏感，靠调相对阈值救不了（分母换成别的相对量只是换装）。
+        //
+        // 修法：加第三条判据——自上次重建起的位移幅值 |ΔcamRel| > 阈值，阈值 =
+        // max(RebuildMinMoveMeters, RebuildMoveChunkFraction × chunk 弧长)，其中
+        // chunk 弧长 = R·(π/2)/cells（一块 chunk 的赤道地表弧长，cells=32 时 312.7km →
+        // 阈值 6.25km）。两个锚点：
+        //  - 600m→258km 纯爬升（位移 257.4km）：> 阈值（cells=32 时 6.25km；阈值上界
+        //    0.02·R·π/2 ≈ 200km 出现在 cells=1 极端粗格，仍 < 257.4km）→ 必触发。
+        //  - 贴地微动 <500m（任意方向）：< RebuildMinMoveMeters（地板对所有 cells 生效）
+        //    → 永不触发；且 500m 爬升使地平线角增长 ≤ acos(R/(R+500)) ≈ 0.0125 rad <
+        //    CullMarginRad，期望集意图不受扰。
+        // 常数敏感性（选 0.02 的依据）：重建间隔内排名的陈旧量 = 未重建径向位移 T 造成
+        // 的地平线角增长 ΔhA = acos(R/(R+T))（低空最坏）。对 T = 0.02·R·π/(2·cells)，
+        // ΔhA < chunkHalfAng + CullMarginRad 对全部 cells 1..4096 成立（cells=32：
+        // 0.0443 < 0.0745 rad）——陈旧量始终落在既有剔除裕度内，流式覆盖不劣化；
+        // 旧判据（5% lenDrift）允许的陈旧量可达 acos(R/(R+318.6km)) ≈ 0.3155 rad ≫
+        // 0.0745——正是缺 chunk 缺陷的机理。
+        private const double RebuildMinMoveMeters = 500.0;
+        private const double RebuildMoveChunkFraction = 0.02;
+
         private readonly struct RankEntry : IComparable<RankEntry>
         {
             public readonly double Cos;
@@ -223,6 +253,13 @@ namespace ZFrame.Render.Planet
         /// <summary>最近一次排名重建后的"必须存在"块数（诊断）。</summary>
         public int DesiredCount { get; private set; }
 
+        /// <summary>
+        /// 排名重建累计次数（诊断/测试，TASK-B-PLANET-14）。重建触发是状态机事件——当
+        /// 位移恰未改变期望集时（如远低于 turn 阈值的切向漂移），操作列表与 DesiredCount
+        /// 都观测不到，本计数是触发与否的直接观测量（锚定测试的判据锚点）。
+        /// </summary>
+        public long RankingRebuildCount { get; private set; }
+
         /// <summary>最近一次 Tick 因预算未清完的待办数（诊断：>0 表示预算在起作用）。</summary>
         public int DeferredWorkCount { get; private set; }
 
@@ -248,6 +285,20 @@ namespace ZFrame.Render.Planet
             }
 
             return (distM < nearDistM - hystM) ? 1 : 0;
+        }
+
+        /// <summary>
+        /// 排名重建的位移幅值阈值（TASK-B-PLANET-14）：max(500m, 2% × chunk 弧长)，其中
+        /// chunk 弧长 = R·(π/2)/cellsPerEdge（一块 chunk 的赤道地表弧长）。纯函数，供
+        /// <see cref="UpdateRanking"/> 与锚定测试共用同一口径（DecideLodLevel 同模式）。
+        /// 常数依据：600m→258km 纯爬升必须触发（位移 257.4km &gt; 全 cells 域阈值上界
+        /// ≈200km）、贴地微动 &lt;500m 永不触发（地板项）；陈旧量界 = acos(R/(R+T)) &lt;
+        /// chunkHalfAng + 0.05 rad 对全部 cells 1..4096 成立（0.02 的选取依据）。
+        /// </summary>
+        internal static double RebuildMoveThresholdMeters(uint cellsPerEdge)
+        {
+            double chunkArcMeters = NativePlanetRadiusMeters * (Pi / 2.0) / cellsPerEdge;
+            return Math.Max(RebuildMinMoveMeters, RebuildMoveChunkFraction * chunkArcMeters);
         }
 
         /// <summary>
@@ -594,7 +645,17 @@ namespace ZFrame.Render.Planet
             }
         }
 
-        /// <summary>相机移动超阈值时重算可见性排名（口径镜像原生地平线剔除 + 半块迟滞带）。</summary>
+        /// <summary>
+        /// 相机移动超阈值时重算可见性排名（口径镜像原生地平线剔除 + 半块迟滞带）。
+        /// 重建判据三条（任一满足即重建；TASK-B-PLANET-14 加第三条）：
+        ///  1. turn > chunkHalfAng·0.5——相机方向漂移超过四分之一块角（B-PLANET-07 原判据）；
+        ///  2. lenDrift > 5%——径向距离相对漂移（B-PLANET-07 原判据；在新判据下对合法
+        ///     轨道（离心距离 ≥ R）被判据 3 支配，仅在对心简并态（lastLen &lt; R）可达，
+        ///     保留为兜底）；
+        ///  3. |ΔcamRel| > max(500m, 2% × chunk 弧长)——自上次重建起的位移幅值
+        ///     （TASK-B-PLANET-14：修复纯海拔爬升 600m→258km 漏判，选型与常数依据见
+        ///     类头注释与 <see cref="RebuildMoveThresholdMeters"/>）。
+        /// </summary>
         private void UpdateRanking(double relX, double relY, double relZ, double camLen)
         {
             double chunkHalfAng = (Pi / 2.0) / (double)_config.CellsPerEdge * 0.5;
@@ -612,7 +673,14 @@ namespace ZFrame.Render.Planet
                     / Math.Max(lastLen * camLen, 1e-12);
                 double turn = Math.Acos(Math.Min(1.0, Math.Max(-1.0, dot)));
                 double lenDrift = lastLen > 0.0 ? Math.Abs(camLen - lastLen) / lastLen : 1.0;
-                rebuild = turn > chunkHalfAng * 0.5 || lenDrift > 0.05;
+                double moveX = relX - _lastCamX;
+                double moveY = relY - _lastCamY;
+                double moveZ = relZ - _lastCamZ;
+                double moveSq = moveX * moveX + moveY * moveY + moveZ * moveZ;
+                double moveLimit = RebuildMoveThresholdMeters(_config.CellsPerEdge);
+                rebuild = turn > chunkHalfAng * 0.5
+                    || lenDrift > 0.05
+                    || moveSq > moveLimit * moveLimit;
             }
 
             if (!rebuild)
@@ -649,6 +717,7 @@ namespace ZFrame.Render.Planet
             _lastCamX = relX;
             _lastCamY = relY;
             _lastCamZ = relZ;
+            RankingRebuildCount++;
         }
 
         private int CountDesired()
