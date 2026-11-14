@@ -57,7 +57,14 @@ namespace ZFrame.View
                 UnityEngine.Debug.LogWarning($"[TouchHaptics] vibration unavailable: {e.GetType().Name}");
             }
 #else
-            Handheld.Vibrate(); // editor/desktop: documented no-op without vibration hardware
+#if UNITY_ANDROID || UNITY_IOS
+            Handheld.Vibrate(); // handheld domains (editor / iOS player; Android players
+                                // take the JNI branch above): documented no-op without
+                                // vibration hardware in the editor
+#else
+            /* Standalone/WebGL 等 player 目标无 Handheld 类型（A-AND-10 潜伏缺陷，
+               TASK-X-HAPTICS-01 最小 diff）：无振动硬件，no-op。 */
+#endif
 #endif
         }
 
