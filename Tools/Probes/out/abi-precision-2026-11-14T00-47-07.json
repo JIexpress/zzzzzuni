@@ -1,0 +1,274 @@
+{
+  "probedAt": "2026-11-14T00:47:07Z",
+  "probe": "abi-precision",
+  "task": "TASK-B-PLANET-10",
+  "outMode": "repo-root",
+  "outFile": "C:\\Users\\1\\Desktop\\zcode\\GameFramework\\Tools\\Probes\\out\\abi-precision-2026-11-14T00-47-07.json",
+  "host": {
+    "computerName": "DESKTOP-08EO3II",
+    "exePath": "C:\\Users\\1\\Desktop\\zcode\\GameFramework\\Native\\build\\bin\\Release\\abi_precision_probe.exe"
+  },
+  "engine": {
+    "apiVersion": 3,
+    "apiVersionExpected": 3,
+    "zrVersion": "0.1.0",
+    "dllPath": "C:\\Users\\1\\Desktop\\zcode\\GameFramework\\Native\\build\\bin\\Release\\zrender.dll",
+    "dllLoaded": true,
+    "linkMode": "zrender.dll via LoadLibrary (C ABI 导出面) + 生产 GenerateChunkVerts via zrhi 静态库白盒钩子（ChunkCreate 内部同函数，零复制零漂移）；钩子上下文由静态 zplugin SetWorld 喂给（与 dll 各自独立实例）"
+  },
+  "setup": {
+    "seed": 1337,
+    "faceId": 0,
+    "cx": 16,
+    "cy": 16,
+    "cellsPerEdge": 32,
+    "lodLevel": 1,
+    "tierRes": 64,
+    "stride": 63,
+    "totalGrid": 2016,
+    "planetRadiusM": 6371000,
+    "centerAbs": [0, -6371000, 0],
+    "anchorAbs": [195756.29134543028, -6175243.7086545695, 6365236.8282643361],
+    "anchorIsGridVertex": true,
+    "anchorVertexIndex": 2015,
+    "chunkArcM": 312735.73989048594,
+    "cellArcM": 4964.0593633410472,
+    "skirtDropM": 99.28118726682095,
+    "vertexCount": 4352,
+    "distancesM": [100, 1000, 10000, 100000],
+    "cameraPlacement": "锚点沿球面法向悬停 D（|target−cam|=D，target=锚点顶点；口径A/B 同一对几何）"
+  },
+  "ulpReference": {
+    "method": "FloatUlpAt 实测（nextafter float）",
+    "ulp100m": 7.62939453125e-06,
+    "ulp1km": 6.103515625e-05,
+    "ulp10km": 0.0009765625,
+    "ulp100km": 0.0078125,
+    "design9Values": {
+      "ulp100m": 7.62939453125e-06,
+      "ulp1km": 6.103515625e-05,
+      "ulp10km": 0.0009765625,
+      "ulp100km": 0.0078125,
+      "note": "设计稿 §9 理论对照值（计算）；本探针实测值应逐位一致"
+    },
+    "doubleUlpAt1e7m": 1.862645149230957e-09,
+    "doubleUlpAt1e7mDesign9": 1.86264514923095703125e-09
+  },
+  "staticDeviation": {
+    "row5VertexLocalMaxM": 0.0078108952438924462,
+    "row5MaxLocalM": 284718.61987791635,
+    "row5UlpAtMaxLocalM": 0.03125,
+    "row5WithinFullUlp": true,
+    "row5WithinHalfUlp": true,
+    "centerVertexLocalAllZero": true,
+    "gridBitwiseMatches": 4096,
+    "gridTotal": 4096,
+    "skirtToleranceMatches": 256,
+    "skirtTotal": 256,
+    "vertexSource": "production GenerateChunkVerts via unit-test hook (zrhi static lib, same source as dll)"
+  },
+  "distances": [
+    {
+      "distanceM": 100,
+      "actualCameraTargetDistM": 99.999999999825988,
+      "ulpAtD": 7.62939453125e-06,
+      "aPureMath": {
+        "correctMaxM": 2.4102628231048584e-06,
+        "correctMaxUlpUnits": 0.31591796875,
+        "correctEuclidM": 2.4137950431507935e-06,
+        "naivePlanetFrameMaxM": 0.40555331483483315,
+        "naivePlanetFrameUlpUnits": 53156.68408203125,
+        "naiveUlpCapM": 0.5,
+        "jitterOriginFrame": {
+          "method": "JitterAudit(D, 1.0, 10.37)——A-WORLD-01 口径 （相机自原点飞 D，近场物体恒前方 10.37m）",
+          "steps": 100,
+          "naiveMaxErrM": 2.746582032031597e-06,
+          "relocatedMaxErrM": 1.1444091718715299e-07,
+          "ulpAtFlightM": 7.62939453125e-06
+        }
+      },
+      "bAbi": {
+        "setCameraOriginRc": 0,
+        "getCameraOriginRc": 0,
+        "originRoundtripBitwise": true,
+        "originRoundtripMaxDiffM": 0,
+        "translationMaxM": 2.4102628231048584e-06,
+        "translationUlpUnits": 0.31591796875,
+        "translationAngularPx1080pHfov60": 4.0077097624505054e-05,
+        "centerVertexMaxM": 2.4102628231048584e-06,
+        "centerVertexAngularPx1080pHfov60": 4.0077097624505054e-05,
+        "chunkMaxM": 0.013436267734505236,
+        "chunkMaxEuclidM": 0.014702587475206535,
+        "chunkMaxVertexIndex": 906,
+        "chunkMaxCamDistM": 170605.515540405,
+        "chunkMaxLocalM": 170604.03330001206,
+        "chunkMaxAngularPx1080pHfov60": 0.0001309536000303566,
+        "scopeNote": "提交口径不含可见性剔除——chunkMax 含近场不可见角点；角偏差（px 列）才是可见性口径"
+      }
+    },
+    {
+      "distanceM": 1000,
+      "actualCameraTargetDistM": 1000.0000000001754,
+      "ulpAtD": 6.103515625e-05,
+      "aPureMath": {
+        "correctMaxM": 8.841976523399353e-06,
+        "correctMaxUlpUnits": 0.144866943359375,
+        "correctEuclidM": 8.8420766791878467e-06,
+        "naivePlanetFrameMaxM": 0.22492215037345886,
+        "naivePlanetFrameUlpUnits": 3685.12451171875,
+        "naiveUlpCapM": 0.5,
+        "jitterOriginFrame": {
+          "method": "JitterAudit(D, 1.0, 10.37)——A-WORLD-01 口径 （相机自原点飞 D，近场物体恒前方 10.37m）",
+          "steps": 1000,
+          "naiveMaxErrM": 4.882812499218403e-06,
+          "relocatedMaxErrM": 1.1444091718715299e-07,
+          "ulpAtFlightM": 6.103515625e-05
+        }
+      },
+      "bAbi": {
+        "setCameraOriginRc": 0,
+        "getCameraOriginRc": 0,
+        "originRoundtripBitwise": true,
+        "originRoundtripMaxDiffM": 0,
+        "translationMaxM": 8.841976523399353e-06,
+        "translationUlpUnits": 0.144866943359375,
+        "translationAngularPx1080pHfov60": 1.4702162474741969e-05,
+        "centerVertexMaxM": 8.841976523399353e-06,
+        "centerVertexAngularPx1080pHfov60": 1.4702162474741969e-05,
+        "chunkMaxM": 0.0139830457046628,
+        "chunkMaxEuclidM": 0.013989095322338404,
+        "chunkMaxVertexIndex": 4319,
+        "chunkMaxCamDistM": 201712.64720650369,
+        "chunkMaxLocalM": 201689.03799145611,
+        "chunkMaxAngularPx1080pHfov60": 0.00011526581056184127,
+        "scopeNote": "提交口径不含可见性剔除——chunkMax 含近场不可见角点；角偏差（px 列）才是可见性口径"
+      }
+    },
+    {
+      "distanceM": 10000,
+      "actualCameraTargetDistM": 9999.9999999999163,
+      "ulpAtD": 0.0009765625,
+      "aPureMath": {
+        "correctMaxM": 0.00033256225287914276,
+        "correctMaxUlpUnits": 0.34054374694824219,
+        "correctEuclidM": 0.0003332346781290648,
+        "naivePlanetFrameMaxM": 0.2492215046659112,
+        "naivePlanetFrameUlpUnits": 255.20282077789307,
+        "naiveUlpCapM": 0.5,
+        "jitterOriginFrame": {
+          "method": "JitterAudit(D, 1.0, 10.37)——A-WORLD-01 口径 （相机自原点飞 D，近场物体恒前方 10.37m）",
+          "steps": 10000,
+          "naiveMaxErrM": 0.0001171875000007816,
+          "relocatedMaxErrM": 1.1444091718715299e-07,
+          "ulpAtFlightM": 0.0009765625
+        }
+      },
+      "bAbi": {
+        "setCameraOriginRc": 0,
+        "getCameraOriginRc": 0,
+        "originRoundtripBitwise": true,
+        "originRoundtripMaxDiffM": 0,
+        "translationMaxM": 0.00033256225287914276,
+        "translationUlpUnits": 0.34054374694824219,
+        "translationAngularPx1080pHfov60": 5.5297412991959922e-05,
+        "centerVertexMaxM": 0.00033256225287914276,
+        "centerVertexAngularPx1080pHfov60": 5.5297412991959922e-05,
+        "chunkMaxM": 0.0085819783271290362,
+        "chunkMaxEuclidM": 0.0090990353194042115,
+        "chunkMaxVertexIndex": 906,
+        "chunkMaxCamDistM": 171041.84176922496,
+        "chunkMaxLocalM": 170604.03330001206,
+        "chunkMaxAngularPx1080pHfov60": 8.3428975300757556e-05,
+        "scopeNote": "提交口径不含可见性剔除——chunkMax 含近场不可见角点；角偏差（px 列）才是可见性口径"
+      }
+    },
+    {
+      "distanceM": 100000,
+      "actualCameraTargetDistM": 100000.00000000004,
+      "ulpAtD": 0.0078125,
+      "aPureMath": {
+        "correctMaxM": 0.001372496597468853,
+        "correctMaxUlpUnits": 0.17567956447601318,
+        "correctEuclidM": 0.0013730492847970693,
+        "naivePlanetFrameMaxM": 0.053315003402531147,
+        "naivePlanetFrameUlpUnits": 6.8243204355239868,
+        "naiveUlpCapM": 0.5,
+        "jitterOriginFrame": {
+          "method": "JitterAudit(D, 1.0, 10.37)——A-WORLD-01 口径 （相机自原点飞 D，近场物体恒前方 10.37m）",
+          "steps": 100000,
+          "naiveMaxErrM": 0.0028124999999992184,
+          "relocatedMaxErrM": 1.1444091718715299e-07,
+          "ulpAtFlightM": 0.0078125
+        }
+      },
+      "bAbi": {
+        "setCameraOriginRc": 0,
+        "getCameraOriginRc": 0,
+        "originRoundtripBitwise": true,
+        "originRoundtripMaxDiffM": 0,
+        "translationMaxM": 0.001372496597468853,
+        "translationUlpUnits": 0.17567956447601318,
+        "translationAngularPx1080pHfov60": 2.2821444864302037e-05,
+        "centerVertexMaxM": 0.001372496597468853,
+        "centerVertexAngularPx1080pHfov60": 2.2821444864302037e-05,
+        "chunkMaxM": 0.015650939982151613,
+        "chunkMaxEuclidM": 0.015703627734741803,
+        "chunkMaxVertexIndex": 4319,
+        "chunkMaxCamDistM": 227004.11397055929,
+        "chunkMaxLocalM": 201689.03799145611,
+        "chunkMaxAngularPx1080pHfov60": 0.00011464062853618997,
+        "scopeNote": "提交口径不含可见性剔除——chunkMax 含近场不可见角点；角偏差（px 列）才是可见性口径"
+      }
+    }
+  ],
+  "sampleHeight": {
+    "samples": 16,
+    "rc": 0,
+    "maxAbsHeightM": 1055.5065335648978,
+    "maxDevM": 5.8231977163814008e-05,
+    "ulpAtMaxHeightM": 0.0001220703125,
+    "withinBudget9Row10": true,
+    "design9RefM": 0.000244140625,
+    "method": "dll ZR_Planet_SampleHeight(float 输出) vs PlanetTerrainHeightM(1337, normalize(pos−center)) double 复刻——seed/中心与 chunk 生成同源"
+  },
+  "stats": {
+    "createRc": 0,
+    "handle": "4294967296",
+    "createTotal": 1,
+    "destroyTotal": 1,
+    "liveAfterCleanup": 0,
+    "accountInvariant": true,
+    "note": "无 RenderFrame——pendingUpload 永不升 GPU，零设备依赖"
+  },
+  "budget9": [
+    { "row": 1, "name": "相机 double 逐帧累计", "status": "NOT_IN_PROBE", "reference": "double ULP@1e7m=2^-29=1.8626e-9 m（计算）", "measured": "doubleUlpAt1e7m 实算=1.862645149230957e-09（确认参照；逐帧累计属托管 WorldPosition——非本探针口径）" },
+    { "row": 2, "name": "浮点原点重定位 4000m", "status": "NOT_IN_PROBE", "reference": "|cam−origin| ≤ 4000m → 下游 float 化幅值封顶", "measured": "托管 WorldOrigin 生产口径（A-WORLD-01 >= 触发）——原生只消费 SetCameraOrigin，其 double 直传在 row3 实测" },
+    { "row": 3, "name": "SetCameraOrigin 跨 ABI", "status": "MEASURED", "reference": "0（double 直传无损）", "measured": "round-trip 逐位 4/4，maxdiff=0 m", "withinBudget": true },
+    { "row": 4, "name": "chunk 锚点 double（绝对语义）", "status": "MEASURED", "reference": "0（设计）", "measured": "desc.originAbs 经 dll ChunkCreate double 直传（账目自证）；顶点级自证在静态同源钩子路径 local(anchor)=0 逐位（锚点=中心格顶点）", "withinBudget": true },
+    { "row": 5, "name": "顶点局部 float=float(posAbs−anchor)", "status": "MEASURED", "reference": "≤ ULP(~221km)=15.6mm（chunk 角点；计算）", "measured": "devMax=0.0078108952438924462 m @ |local|max=284718.61987791635 m（ULP(|local|max)=0.03125 m）", "withinBudgetFullUlp": true, "withinBudgetHalfUlp": true },
+    { "row": 6, "name": "共享边双侧 float 化静态缝", "status": "COVERED_ELSEWHERE", "reference": "≤ ~31mm（2×ULP，估算）", "measured": "本探针不重测——B-PLANET-08 生产路径实测 max 15.93mm （240 顶点对，跨面/同面/双档），达标（估算上界内）；见 Native/tests/test_planet_channel.cpp 测量探针与 TASK-B-PLANET-08 日志" },
+    { "row": 7, "name": "model 平移 float=float(anchor−camOrigin)", "status": "MEASURED", "reference": "近场 ≤ ULP(4km)=0.488mm（仅近场成立）；远景角偏差亚毫像素（相对误差恒 ≈2^-24 rad 封顶）", "measured": "四点 translationMaxM=2.4102628231048584e-06/8.841976523399353e-06/0.00033256225287914276/0.001372496597468853 m（100m/1km/10km/100km）", "nearFieldClaimWithin": true, "angularPx1080pHfov60": [4.0077097624505054e-05, 1.4702162474741969e-05, 5.5297412991959922e-05, 2.2821444864302037e-05] },
+    { "row": 8, "name": "view/proj float（托管相机相对构造）", "status": "NOT_IN_PROBE", "reference": "近场相对误差 <1e-6 m（重定位路径实测）", "measured": "托管侧构造——非本探针口径（test_planet.cpp:36 doctest 先例；A-WORLD-01 托管接线）" },
+    { "row": 9, "name": "GPU 光栅 float32", "status": "NOT_IN_PROBE", "reference": "与现状一致（非新增误差源）", "measured": "RHI 内部——非本探针口径（planet-budget 探针像素口径另测）" },
+    { "row": 10, "name": "高度输出 float（SampleHeight）", "status": "MEASURED", "reference": "≤ ULP(2.4km)≈0.244mm（计算）", "measured": "devMax=5.8231977163814008e-05 m @ max|h|=1055.5065335648978 m（ULP(max|h|)=0.0001220703125 m；n=16）", "withinBudget": true }
+  ],
+  "selfCheck": {
+    "dllLoaded": true,
+    "abiResolved": true,
+    "apiVersion3": true,
+    "vertexBytesFromProductionHook": true,
+    "centerVertexLocalAllZero": true,
+    "gridLocalBitwiseAll": true,
+    "naiveWithinUlpCap": true,
+    "accountInvariant": true,
+    "ulpMatchesDesign9": true
+  },
+  "missing": [
+  ],
+  "references": [
+    { "label": "A-WORLD-01 V6 实测锚点", "value": "float ULP@100km=7.8125mm；float direct error=1.0mm；double+offset 守恒 4.366e-11 m", "source": "Docs/Logs/TASK-A-WORLD-01.md §5.3" },
+    { "label": "设计稿 §9 理论对照值", "value": "ULP(100m)=7.6e-6 / ULP(1km)=6.1e-5 / ULP(10km)=0.98mm / ULP(100km)=7.8125mm；row5=ULP(221km)=15.6mm；row7 近场=ULP(4km)=0.488mm；row10=ULP(2.4km)=0.244mm", "source": "Docs/Planning/P2-行星ABI设计.md §9" },
+    { "label": "B-PLANET-08 顶点缝宽实测（row6 归属）", "value": "VB 回读缝宽 max 15.93mm / 渲染口径（缘上 2m）max ~8mm 级——全部在 §5.1 估算 ≤31mm 内", "source": "Docs/Logs/TASK-B-PLANET-08.md" },
+    { "label": "doctest 既有口径", "value": "naive@100km >1mm ≤ULP=7.8125mm；relocated <1e-6 m；ULP(1km)<1e-4（test_planet.cpp:48）", "source": "Native/tests/test_planet.cpp" }
+  ]
+}

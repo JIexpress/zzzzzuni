@@ -569,6 +569,34 @@ add_custom_command(TARGET fsr4_probe POST_BUILD
         $<TARGET_FILE_DIR:fsr4_probe>
     COMMENT "copy FFX runtime dlls (upscaler + loader + framegeneration + ags) next to fsr4_probe.exe")
 
+# ---- TASK-B-PLANET-10：abi-precision 探针（四点×双口径 double→float 精度实测）--
+# 口径 A（纯数学）：float(objAbs−camAbs) 重定位正确路径 vs float(objAbs)−float(camAbs)
+#   naive 大坐标路径 + JitterAudit（A-WORLD-01 口径）——planet_math.h 生产头。
+# 口径 B（ABI 全链）：zrender.dll LoadLibrary 生产导出面（--planet3 同策）驱动
+#   SetWorld→ChunkCreate→SetCameraOrigin→GetCameraOrigin→SampleHeight；顶点字节 =
+#   生产 GenerateChunkVerts 本体（zrhi 静态库白盒钩子，ChunkCreate 内部同函数）；
+#   模型平移 float(anchor−cam) + viewPos=local+t（unity_target.cpp/planet2.hlsl 口径）。
+# 不进 ctest、不进 zrender_test（精度是测量不是过/不过——设计稿口径，380 用例
+# 零改动）。JSON 落 Tools/Probes/out/（文件名白名单 + out 边界断言照 fsr4_probe）。
+# 纯 CPU + dll 导出面，无 D3D12 设备依赖（ChunkCreate 延迟上传，无 RenderFrame
+# 永不触 GPU）。与窗口程序同类：仅 Release 默认构建。
+add_executable(abi_precision_probe tests/abi_precision_probe.cpp)
+target_link_libraries(abi_precision_probe
+    PRIVATE
+        zkernel
+        zrhi
+        zrender_core
+        zupscaler
+        zplugin
+        d3d12
+        dxgi
+)
+set_target_properties(abi_precision_probe PROPERTIES
+    FOLDER "ZRender/Tests"
+    EXCLUDE_FROM_DEFAULT_BUILD YES
+    EXCLUDE_FROM_DEFAULT_BUILD_RELEASE NO
+)
+
 # ---- TASK-B-R9-01 阶段 0：DXGI 交换链探测 hook（spike，默认不构建）-----------
 # 目的：实证 Unity 2022.3/D3D12 走哪条 DXGI 交换链创建路径（只记录不替换）。
 # 门禁结论为 STOP 时这些目标不进入产品构建：全部 EXCLUDE_FROM_DEFAULT_BUILD，
