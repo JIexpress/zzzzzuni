@@ -4,6 +4,8 @@
 
 | 日期 | 任务 | 结果 | commit |
 |---|---|---|---|
+| 2026-11-14 | B-PLANET-12 IL2CPP+Android(P2末段) | done：验收PASS(T1-T7)；B 段核心 C# 高度纯函数移植 **804 点 float 位模式逐位相等 0 位差**；Android APK 38.76MB(IL2CPP+ARM64)构建成功；P/Invoke 生成码实锤懒解析无需 link.xml；PlanetRuntimeProbe 双模式进包；A 段 Windows IL2CPP 构建 MISSING(Tuanjie 仅 Mono 变体，链路就绪补装后一条命令补验)；M2 编译债转 X-HAPTICS-01 | da54772 |
+| 2026-11-14 | X-HAPTICS-01 TouchHaptics 平台门 | done：捎带验收PASS(H1)；Windows Standalone CS0103 消除(Mono Player 全链 build+smoke PASS)；手持域行为零变化；A-AND-10 潜伏编译债清偿 | 1161c40 |
 | 2026-11-14 | B-PLANET-11 编辑器验收集成 | done：验收PASS(Q1-Q7)；三档截图(near/mid曲率/far limb)+三变体行走(1km/5km/50km，23 次重定位 camAbs 逐位守恒)+跳变三层全绿；PlayMode 114/114(+4)；**发现多相机管线缺口**→B-PLANET-15；B-PLANET-07 补遗 4e24c81 | 9598c90 |
 | 2026-11-14 | B-PLANET-10 abi-precision 探针 | done：验收PASS(P1-P7)；四点×双口径 ULP 实测——正确路径 0.145~0.341 ULP 全达标(§9 预算 5 环节亲测+4 归属)；naive 对照差 38.85×~1.68e5×(双原点价值量化)；ULP(D) 理论逐位；两次独立跑逐位 | 1329dd6 |
 | 2026-11-14 | B-PLANET-09 planet-budget 探针 | done：验收PASS(N1-N7)；1080p 四组数字(帧耗 p50=1.49ms/MET 余量 22×，口径限定 30-chunk 场景；接缝零泄漏；**D9 MISSING 清零**贴地偏差 197.8m→碰撞必须贴纯函数的设计输入)；附带实证 X-DIAG-03 根因并修复(绿通道差 18.99→0.03) | 35fb6ee |
