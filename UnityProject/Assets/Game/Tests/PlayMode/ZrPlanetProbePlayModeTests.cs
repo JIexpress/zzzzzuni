@@ -35,6 +35,27 @@
 // 贴地锚定纯函数）。50km ≪ chunk 弧长 312.7km（不跨流式格边界，设计稿 §10 如实注记）；
 // 相机方向转动 50km/R = 0.449° < 排名重建阈值 chunkHalfAng·0.5 = 0.703°——行走全程
 // 期望零 chunk 操作（账目冻结态下考验逐帧量化一致性 + 重定位联动）。
+//
+// TASK-B-PLANET-15（S 级）两项补强：
+//   1. 内容锚断言：B-PLANET-11 验收发现 nonBlack>0.2 对"池化陈旧内存"恒真（污染样本
+//      是人群场景，亮度判据全过）——本轮给全部像素证据加行星特征锚：高程带绿色域占比
+//      （近/远/行走）+ limb 圆盘几何（远档四角清屏色/盘心地形）+ 天空/地形带（近/中）
+//      + 管线回读对照（RT 中心像素 == 原生共享纹理中心回读的 sRGB 变换值——探针相机
+//      跌出 cameras[0] 时 RT 停在池化陈旧内存，此锚必失配）。标定依据：9598c90 验收
+//      修复版探针 PNG（TempLogs/acc-p11-myfixture-pngs）与污染样本
+//      （TempLogs/acc-p11-construction-pngs）离线解码对比 + probe.log 中心回读逐位
+//      sRGB 复算（见各常量注释）。
+//   2. 双相机场景用例：第二相机（带 RT——污染场景形态）存在时，主相机渲染不受影响
+//      （同位姿重渲染逐像素一致）+ 第二相机被管线显式跳过并打一行日志（ZRenderPipeline
+//      选型 b 的 PlayMode 侧取证）。探针相机 depth=-1000（唯一最小）保证 SRP 相机数组
+//      （按 depth 升序）恒以探针为 cameras[0]——B-PLANET-11 污染的直接根因是探针相机
+//      与泄漏相机同为默认 depth 0、排序并列后泄漏相机（先建）排前。
+//
+// TASK-B-PLANET-15 接管轮（2026-11-15）：depth=-1000 只解决相机排序，不解决**场景泄漏**——
+// 验收实证：同一份 fixture 独跑 5/5 绿、全量套件 5/5 红，差别是前序场景类用例
+// LoadSceneAsync("SCN_Game") 后未卸载（探针帧里 renderer=54 可读=6，隔离时 0）。本轮在
+// fixture 启动时做显式环境隔离（空场景 + 销毁遗留根对象 + 关掉非探针相机 + 断言 Renderer
+// 为 0），环境不干净就红，不再静默取证；fixture 结束拆场景，不污染后续用例。
 
 using System;
 using System.Collections;
@@ -46,6 +67,7 @@ using Game.View.World;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 using ZFrame.Render;
 using ZFrame.Render.Bindings;
@@ -103,6 +125,49 @@ namespace Game.View.PlayMode.Tests
         /// <summary>重定位绝对位置守恒容差（A-WORLD-01 V3：float 往返量化，1e-3m）。</summary>
         private const double RebaseDriftToleranceMeters = 1e-3;
 
+        // ---- TASK-B-PLANET-15 内容锚口径 ---------------------------------------------
+        // 标定：9598c90 验收修复版探针 PNG 离线解码（TempLogs/acc-p11-myfixture-pngs，
+        // 解码脚本 TempLogs/task-b-planet-15/decode_png.py）+ 污染样本对照
+        // （TempLogs/acc-p11-construction-pngs）+ probe.log 原生中心回读 sRGB 复算。
+
+        /// <summary>探针相机渲染深度：唯一最小值。SRP 的 cameras 数组按 depth 升序排布，
+        /// 泄漏相机（既有场景类用例遗留，默认 depth 0）与探针（原默认 0）并列时先建者
+        /// 排前——B-PLANET-11 污染场景里探针因此跌出 cameras[0]。-1000 消除并列：无论
+        /// 会话里有几台遗留相机，探针恒居 cameras[0]，双相机场景取证正确（简报判据 2）。</summary>
+        private const float ProbeCameraDepth = -1000f;
+
+        /// <summary>行星特征色（高程带绿色域）占比下限——近档/行走贴地位姿。标定：正确帧
+        /// 实测 0.5472（planet_ed_near.png），池化污染样本（人群场景）同谓词实测 0.0000；
+        /// 取 0.15 ≈ 实测的 1/3.6，绿域缺失（污染/陈旧内存）必然失配。</summary>
+        private const double PlanetGreenFractionFloorNear = 0.15;
+
+        /// <summary>行星特征色（绿色域）占比下限——远档天底圆盘。标定：正确帧实测 0.1166
+        /// （绿/米双色高程带铺盘），取 0.04（≈1/2.9 余量）。中档不设绿锚：400km 距离雾把
+        /// 地形压成雾色平面，正确帧实测同为 0.0000（物理行为，非污染）。</summary>
+        private const double PlanetGreenFractionFloorFar = 0.04;
+
+        /// <summary>清屏色（读回域）：zrhi_d3d12_unity_target.cpp kClearColor={0.05,0.10,0.15}
+        /// 的 8-bit UNORM 值 (13,26,38) 经线性→sRGB 读回变换后的 (64,90,108)。注意：它不是
+        /// "污染特征"——正确行星帧的天空/盘外区域正是此色（生产通道无天穹，设计稿 §12-5），
+        /// 池化污染样本同样含它；它只用于 limb 圆盘几何锚（盘外=清屏色、盘心=地形色）。</summary>
+        private static readonly int[] ClearScreenRgb = { 64, 90, 108 };
+
+        /// <summary>清屏色比对容差（8-bit 通道）。</summary>
+        private const int ClearScreenTolerance = 3;
+
+        /// <summary>天空/地形带断言的行带高度（1080p 的 5% = 54 行）。</summary>
+        private const int SkyBandRows = CaptureHeight / 20;
+
+        /// <summary>limb 圆盘几何锚的角部 patch 边长（px）。</summary>
+        private const int LimbCornerPatchPx = 48;
+
+        /// <summary>limb 圆盘几何锚的盘心 patch 半边长（px）。</summary>
+        private const int LimbCenterPatchHalfPx = 20;
+
+        /// <summary>双相机用例：第二相机加入前后同位姿重渲染的移动像素占比上限
+        /// （实测 ≈6e-6——同 1km 复访量级；0.02 与 1km 复访上限同口径）。</summary>
+        private const double DualCameraUnaffectedMovedLimit = 0.02;
+
         // 行走几何限定在 face0 u 轴测地线上（face0 基取自 CubeSphereDir：
         // n=(0,0,1)，t1=(1,0,0)——弧长 50km ≪ chunk 弧长 312.7km，不跨流式格边界）。
 
@@ -134,6 +199,20 @@ namespace Game.View.PlayMode.Tests
         private Color32[] _lastCapture;
         private float _jumpMagnitude;
 
+        // TASK-B-PLANET-15：多相机显式跳过日志的捕获窗（UnitySetUp 起、UnityTearDown 止）。
+        // 覆盖"本测试管线实例的第一次多相机 Render"——无论那发生在 SetUp 首帧（全量套件
+        // 泄漏相机会话）还是双相机用例加入第二相机的那一帧（fixture 隔离会话），两种
+        // 会话形态下断言等价成立（日志每管线实例只打一次，见 ZRenderPipeline 选型 b）。
+        private readonly List<string> _multiCameraLogWindow = new List<string>(4);
+
+        // TASK-B-PLANET-15 接管轮：环境隔离状态（~ProbeEmpty 场景 + 探针对象名前缀）。
+        private const string ProbeSceneName = "~ProbeEmpty";
+        private const string ProbeObjectPrefix = "~PlanetProbe";
+
+        private Scene _probeScene;
+        private bool _probeSceneOwned;
+        private string _isolationSummary = string.Empty;
+
         // ---- 装备生命周期 -----------------------------------------------------------
 
         [UnitySetUp]
@@ -144,6 +223,11 @@ namespace Game.View.PlayMode.Tests
             {
                 yield break; // 各用例开头 Assert.Ignore（SetUp 里不做失败判定）
             }
+
+            // 环境隔离必须发生在切换管线**之前**：ZRenderPipeline 实例首次 Render 时扫一次
+            // 场景（ZRenderSceneBridge.Rescan），泄漏物件若在首次扫描时还在，会整场留在
+            // 提交表里，事后销毁救不回来。
+            yield return IsolateEnvironmentAsync();
 
             // SRP 切换（与 ZRenderBoot.TryEnableFromCommandLine 同一机制，用后即还）。
             _prevDefaultPipeline = GraphicsSettings.defaultRenderPipeline;
@@ -185,7 +269,14 @@ namespace Game.View.PlayMode.Tests
             _baseCreateTotal = baseStats.CreateTotal;
             _baseDestroyTotal = baseStats.DestroyTotal;
 
+            // 多相机日志捕获窗：先订阅再装配/渲染（ZRenderPipeline 选型 b 的日志在
+            // 第一次多相机 Render 时打一次——窗口必须覆盖 SetUp 的前两帧）。
+            _multiCameraLogWindow.Clear();
+            Application.logMessageReceived += OnProbeLogMessageReceived;
+
             BuildRig();
+            DisableForeignCameras();      // 除探针相机外全关（不依赖 depth 排序）
+            AssertEnvironmentClean("setup");
 
             yield return null;
             yield return null; // 门控 → streamer.Initialize（SetWorld 一次）→ 首轮 Tick
@@ -194,6 +285,7 @@ namespace Game.View.PlayMode.Tests
         [UnityTearDown]
         public IEnumerator TearDownProbe()
         {
+            Application.logMessageReceived -= OnProbeLogMessageReceived;
             DestroyRig();
             ZrPlanetNative.ClearAll();
 
@@ -228,6 +320,200 @@ namespace Game.View.PlayMode.Tests
             }
 
             yield return null; // URP 还原生效一帧（后续 URP 像素用例不受影响）
+
+            // 隔离场景拆掉（先让上一行的销毁生效，再卸载场景——否则会卸掉正在销毁的宿主）。
+            yield return UnloadProbeSceneAsync();
+        }
+
+        // ---- 环境隔离（TASK-B-PLANET-15 接管轮）--------------------------------------
+        // 取证前提：探针帧只能由"只有探针自己"的场景产生。全量套件里前序用例
+        // （AffordanceScenePlayModeTests / SurvivalLoopPlayModeTests 等）LoadSceneAsync
+        // ("SCN_Game") 后不卸载，探针帧被 54 个遗留 renderer 占据，绿域锚 0.0——
+        // depth 排序补丁管不到这一层。这里把隔离做成 fixture 的**前置硬条件**。
+
+        /// <summary>新建空场景 + 清空遗留场景根对象（隔离第 1/2 步）。
+        /// 保留：探针自身；DontDestroyOnLoad 里**无渲染物**的持久管理器（框架单例，不是
+        /// 污染源，误删会打坏后续用例）。销毁：其余全部场景根（含带渲染物/相机的持久根）。</summary>
+        private IEnumerator IsolateEnvironmentAsync()
+        {
+            _probeScene = SceneManager.CreateScene(ProbeSceneName);
+            _probeSceneOwned = _probeScene.IsValid();
+            if (_probeSceneOwned)
+            {
+                SceneManager.SetActiveScene(_probeScene); // 此后 new GameObject 都落这里
+            }
+
+            int renderersBefore = UnityEngine.Object.FindObjectsOfType<Renderer>(true).Length;
+            int destroyedRoots = 0;
+            int keptPersistent = 0;
+            Transform[] transforms = UnityEngine.Object.FindObjectsOfType<Transform>(true);
+            for (int i = 0; i < transforms.Length; i++)
+            {
+                Transform transform = transforms[i];
+                if (transform == null || transform.parent != null)
+                {
+                    continue; // 只处理场景根（子物件随根一起销毁，避免逐个 Destroy 抖动）
+                }
+
+                GameObject go = transform.gameObject;
+                if (go.scene == _probeScene || IsProbeObject(go))
+                {
+                    continue;
+                }
+
+                if (IsPersistentScene(go.scene) && !HasVisualContent(go))
+                {
+                    keptPersistent++;
+                    continue;
+                }
+
+                UnityEngine.Object.Destroy(go);
+                destroyedRoots++;
+            }
+
+            // Destroy 延迟到帧末：两帧后残留才是真实残留（断言才有意义）。
+            yield return null;
+            yield return null;
+
+            _isolationSummary =
+                $"隔离前 renderer={renderersBefore} 销毁根={destroyedRoots} 保留持久管理器={keptPersistent}";
+            TestContext.Out.WriteLine($"[B-PLANET-15] isolate(pre): {_isolationSummary}");
+        }
+
+        /// <summary>关掉除探针相机以外的全部相机（隔离第 3 步）。用 FindObjectsOfType(true)
+        /// 而不是 Camera.allCameras：后者只含 enabled 相机，已禁用的泄漏相机也要按住，
+        /// 免得后续用例/系统把它的 enabled 打开（不依赖 depth 排序）。</summary>
+        private void DisableForeignCameras()
+        {
+            int activeBefore = Camera.allCameras.Length;
+            Camera[] cameras = UnityEngine.Object.FindObjectsOfType<Camera>(true);
+            int disabled = 0;
+            for (int i = 0; i < cameras.Length; i++)
+            {
+                Camera camera = cameras[i];
+                if (camera == null || camera == _camera)
+                {
+                    continue;
+                }
+
+                if (camera.enabled)
+                {
+                    camera.enabled = false;
+                    disabled++;
+                }
+            }
+
+            TestContext.Out.WriteLine(
+                $"[B-PLANET-15] isolate(cameras): allCameras {activeBefore} → {Camera.allCameras.Length}，" +
+                $"本帧禁用={disabled}");
+        }
+
+        /// <summary>隔离结果硬断言（第 4 步）：除探针自身外全局不得有 Renderer，启用相机只能是
+        /// 探针相机。不满足就 Assert.Fail 并点名残留对象/场景——**环境不干净必须红**，绝不
+        /// 静默继续取证（B-PLANET-11 的教训：脏环境的画面照样 nonBlack，锚才发现是污染）。</summary>
+        private void AssertEnvironmentClean(string phase)
+        {
+            Renderer[] renderers = UnityEngine.Object.FindObjectsOfType<Renderer>(true);
+            int foreign = 0;
+            StringBuilder residue = new StringBuilder();
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                Renderer renderer = renderers[i];
+                if (renderer == null || IsProbeObject(renderer.gameObject))
+                {
+                    continue;
+                }
+
+                foreign++;
+                if (residue.Length < 4000)
+                {
+                    GameObject go = renderer.gameObject;
+                    string sceneName = go.scene.IsValid() ? go.scene.name : "<无场景>";
+                    residue.Append($"\n  - {renderer.GetType().Name} '{go.name}'（场景='{sceneName}'）");
+                }
+            }
+
+            string foreignCamera = "<none>";
+            Camera[] cameras = Camera.allCameras;
+            for (int i = 0; i < cameras.Length; i++)
+            {
+                if (cameras[i] != null && cameras[i] != _camera)
+                {
+                    foreignCamera = cameras[i].name;
+                    break;
+                }
+            }
+
+            TestContext.Out.WriteLine(
+                $"[B-PLANET-15] isolate({phase}): renderer={renderers.Length} 非探针残留={foreign} " +
+                $"启用相机={cameras.Length} 场景数={SceneManager.sceneCount} " +
+                $"探针场景='{(_probeScene.IsValid() ? _probeScene.name : "<none>")}' {_isolationSummary}");
+
+            Assert.AreEqual(0, foreign,
+                $"环境隔离失败（{phase}）：探针取证要求场景里只有探针自身的物件，现存 {foreign} 个" +
+                "非探针 Renderer——全量套件下前序用例遗留的 SCN_Game 场景会使行星绿域锚静默失效" +
+                $"（B-PLANET-11 污染根因），环境不干净不允许继续取证。残留对象：{residue}");
+
+            Assert.AreEqual("<none>", foreignCamera,
+                $"环境隔离失败（{phase}）：除探针相机外不得有启用相机（现存 '{foreignCamera}'）——" +
+                "残留相机会抢 cameras[0]，行星通道画面落不到探针 RT 上");
+        }
+
+        /// <summary>拆隔离场景（fixture 结束不污染后续用例）。只剩探针场景时 Unity 不允许
+        /// 卸载最后一个场景——此时留空场景，对后续用例等价于空场。</summary>
+        private IEnumerator UnloadProbeSceneAsync()
+        {
+            if (!_probeSceneOwned || !_probeScene.IsValid())
+            {
+                _probeSceneOwned = false;
+                yield break;
+            }
+
+            if (SceneManager.sceneCount <= 1)
+            {
+                TestContext.Out.WriteLine(
+                    "[B-PLANET-15] isolate(teardown): 只剩探针场景，保留空场景（Unity 不允许卸载最后一个场景）");
+                _probeSceneOwned = false;
+                yield break;
+            }
+
+            AsyncOperation unload = SceneManager.UnloadSceneAsync(_probeScene);
+            if (unload != null)
+            {
+                while (!unload.isDone)
+                {
+                    yield return null;
+                }
+            }
+
+            TestContext.Out.WriteLine(
+                $"[B-PLANET-15] isolate(teardown): 已卸载 '{ProbeSceneName}'，剩余场景数={SceneManager.sceneCount}");
+            _probeSceneOwned = false;
+        }
+
+        /// <summary>探针自身（含双相机用例临时创建的 ~PlanetProbeSecondCamera）。</summary>
+        private static bool IsProbeObject(GameObject go)
+        {
+            if (go == null)
+            {
+                return false;
+            }
+
+            Transform root = go.transform.root;
+            return root != null && root.name.StartsWith(ProbeObjectPrefix, StringComparison.Ordinal);
+        }
+
+        /// <summary>DontDestroyOnLoad 场景（Unity 用它装跨场景常驻对象）。</summary>
+        private static bool IsPersistentScene(Scene scene)
+        {
+            return scene.IsValid() && string.Equals(scene.name, "DontDestroyOnLoad", StringComparison.Ordinal);
+        }
+
+        /// <summary>该根对象下是否有会入画的东西（Renderer/Camera）。有 = 污染源，销毁。</summary>
+        private static bool HasVisualContent(GameObject go)
+        {
+            return go.GetComponentInChildren<Renderer>(true) != null
+                || go.GetComponentInChildren<Camera>(true) != null;
         }
 
         // ---- 用例 1：三档截图（1080p）-----------------------------------------------
@@ -252,6 +538,9 @@ namespace Game.View.PlayMode.Tests
             yield return CaptureLumaAsync();
             double nonBlack = NonBlackFraction(_lastCapture);
             Assert.Greater(nonBlack, 0.2, "近档帧必须画出地形（非清屏像素占比）");
+            AssertPlanetGreenAnchor("near", PlanetGreenFractionFloorNear);
+            AssertBandAnchors("near", expectSkyTop: true, expectTerrainBottom: true);
+            yield return AssertCaptureMatchesPipelineCenterAsync("near");
             TestContext.Out.WriteLine(
                 $"[B-PLANET-11] near(600m): nonBlack={nonBlack:F3} live={_lastStats.LiveChunks} " +
                 $"drawn={_lastStats.DrawnLastFrame} culled={_lastStats.CulledLastFrame} " +
@@ -264,6 +553,9 @@ namespace Game.View.PlayMode.Tests
             yield return CaptureLumaAsync();
             nonBlack = NonBlackFraction(_lastCapture);
             Assert.Greater(nonBlack, 0.2, "中档帧必须画出地形（非清屏像素占比）");
+            // 中档无绿域锚：距离雾把地形压成雾色平面（正确帧绿色域实测 0.0000，非污染）。
+            AssertBandAnchors("mid", expectSkyTop: true, expectTerrainBottom: true);
+            yield return AssertCaptureMatchesPipelineCenterAsync("mid");
             TestContext.Out.WriteLine(
                 $"[B-PLANET-11] mid(400km): nonBlack={nonBlack:F3} live={_lastStats.LiveChunks} " +
                 $"drawn={_lastStats.DrawnLastFrame} culled={_lastStats.CulledLastFrame} " +
@@ -277,6 +569,9 @@ namespace Game.View.PlayMode.Tests
             nonBlack = NonBlackFraction(_lastCapture);
             Assert.Greater(nonBlack, 0.2, "远档帧必须画出行星圆盘（非清屏像素占比）");
             Assert.AreEqual(0u, _lastStats.SeamCheckFails, "远档全程共享边核查不得失败");
+            AssertPlanetGreenAnchor("far", PlanetGreenFractionFloorFar);
+            AssertLimbDiskAnchors("far");
+            yield return AssertCaptureMatchesPipelineCenterAsync("far");
             TestContext.Out.WriteLine(
                 $"[B-PLANET-11] far(8000km): nonBlack={nonBlack:F3} live={_lastStats.LiveChunks} " +
                 $"drawn={_lastStats.DrawnLastFrame} culled={_lastStats.CulledLastFrame} " +
@@ -391,6 +686,94 @@ namespace Game.View.PlayMode.Tests
                 $"{ctx.Tag} 单帧粗跳变：任意帧不得出现全幅位移级的不连续");
         }
 
+        // ---- 用例 5：双相机场景（TASK-B-PLANET-15）-----------------------------------
+
+        /// <summary>双相机场景取证（B-PLANET-11 污染场景形态的正面用例）：
+        /// 1) 主相机渲染不受影响：第二相机（带 RT）加入前后，探针相机同位姿重渲染逐像素
+        ///    一致（movedFraction 实测 ≈6e-6）+ 内容锚全绿——管线仍渲 cameras[0]（探针
+        ///    相机 depth=-1000 恒居首，第二相机 depth=-999 只作被跳过的 cameras[1]）；
+        /// 2) 第二相机被显式跳过且有日志：多相机会话首帧打一行「[ZRender] 多相机会话」
+        ///    日志（每管线实例一次）——静默降级变显式可诊断（ZRenderPipeline 选型 b）。
+        /// 日志断言用捕获窗（UnitySetUp 订阅起）而非 LogAssert：窗覆盖本测试管线实例的
+        /// 第一次多相机 Render——fixture 隔离会话落在加入第二相机的那帧，全量套件泄漏
+        /// 相机会话落在 SetUp 首帧，两种形态断言等价成立。</summary>
+        [UnityTest]
+        public IEnumerator Probe_DualCamera_MainCameraUnaffected_SecondCameraExplicitlySkipped()
+        {
+            if (!_d3d12Ready)
+            {
+                Assert.Ignore("共享目标只在 D3D12 下可用；该路径由 Player 现场验证");
+                yield break;
+            }
+
+            Assert.IsTrue(_probePipelineAsset == GraphicsSettings.currentRenderPipeline,
+                "探针必须在 ZRender 管线下跑（GraphicsSettings.currentRenderPipeline）");
+            Assert.IsFalse(_driver.GateFailed, "门控不得失败");
+
+            // 基线（fixture 隔离会话此时的单相机会话）：贴地姿态收敛 + 全套内容锚。
+            yield return PoseAndSettleAsync(0.0, GroundAltMeters, NearPitchDeg, 10f, 400_000f);
+            yield return AssertFrameCoverageAsync("dualcam-base");
+            yield return CaptureLumaAsync();
+            Color32[] baseline = _lastCapture;
+            AssertPlanetGreenAnchor("dualcam-base", PlanetGreenFractionFloorNear);
+            yield return AssertCaptureMatchesPipelineCenterAsync("dualcam-base");
+
+            // 第二相机：RT 相机形态（与探针同形），depth 只比探针高一档 → SRP 升序排布
+            // 下的 cameras[1]。若会话里另有泄漏相机（depth 0），它们排第二相机之后，
+            // 不影响本用例的 cameras[0]/cameras[1] 语义。
+            GameObject secondGo = new GameObject("~PlanetProbeSecondCamera");
+            Camera secondCamera = secondGo.AddComponent<Camera>();
+            secondCamera.depth = ProbeCameraDepth + 1f;
+            secondCamera.clearFlags = CameraClearFlags.SolidColor;
+            secondCamera.backgroundColor = new Color(0f, 0f, 0f, 1f);
+            secondCamera.allowHDR = false;
+            secondCamera.allowMSAA = false;
+            RenderTexture secondTarget = new RenderTexture(64, 64, 0, RenderTextureFormat.ARGB32)
+            {
+                name = "~PlanetProbeSecondRT",
+            };
+            secondTarget.Create();
+            secondCamera.targetTexture = secondTarget;
+
+            try
+            {
+                yield return null;
+                yield return null; // 多相机首帧：管线打显式跳过日志；探针相机照常渲染
+
+                Assert.Greater(_multiCameraLogWindow.Count, 0,
+                    "多相机会话必须有「[ZRender] 多相机会话」显式跳过日志" +
+                    "（ZRenderPipeline 选型 b：静默降级已禁）");
+                foreach (string line in _multiCameraLogWindow)
+                {
+                    TestContext.Out.WriteLine($"[B-PLANET-15] multi-camera log: {line}");
+                }
+
+                yield return CaptureLumaAsync();
+                double meanAbs = FrameDiff(baseline, _lastCapture, out double moved);
+                Assert.Less(moved, DualCameraUnaffectedMovedLimit,
+                    $"第二相机加入后主相机同位姿重渲染必须逐像素不受影响（moved={moved:F6}）");
+                Assert.Greater(PlanetGreenFraction(_lastCapture), PlanetGreenFractionFloorNear,
+                    "第二相机加入后行星绿色域内容锚必须仍然成立");
+                yield return AssertCaptureMatchesPipelineCenterAsync("dualcam-dual");
+                TestContext.Out.WriteLine(
+                    $"[B-PLANET-15] dualcam: moved={moved:F6} meanAbs={meanAbs:F4} " +
+                    $"green={PlanetGreenFraction(_lastCapture):F4} secondDepth={secondCamera.depth}");
+            }
+            finally
+            {
+                if (secondCamera != null)
+                {
+                    secondCamera.targetTexture = null;
+                }
+
+                UnityEngine.Object.Destroy(secondGo);
+                secondTarget.Release();
+                UnityEngine.Object.Destroy(secondTarget);
+            }
+
+            yield return null; // 清场帧：第二相机销毁生效（后续用例回到单相机会话）
+        }
+
         // ---- 行走机制 ----------------------------------------------------------------
 
         /// <summary>单变体完整协议：起点收敛 → 前照（全分辨率亮度 + 半分辨率 PNG）→
@@ -405,6 +788,10 @@ namespace Game.View.PlayMode.Tests
             ctx.RebaseCountStart = _origin.RebaseCount;
             yield return CaptureLumaAsync();
             ctx.BeforePixels = _lastCapture;
+            // TASK-B-PLANET-15 内容锚：行走取证帧也必须有行星绿色域（贴地位姿，实测
+            // 0.5472）——行走三层像素判据（复访/rebase 连续性/单帧粗跳变）全是自比对照，
+            // 无内容锚时池化陈旧内存的"零移动"也能蒙混过关（B-PLANET-11 验收盲区）。
+            AssertPlanetGreenAnchor(ctx.Tag + ":before", PlanetGreenFractionFloorNear);
             yield return WritePngAsync(ctx.Tag + "_before.png", _evidenceTarget);
 
             double stepArc = ctx.LengthMeters / ctx.Steps;
@@ -752,6 +1139,11 @@ namespace Game.View.PlayMode.Tests
             _cameraGo = new GameObject("~PlanetProbeCamera");
             _cameraGo.tag = "MainCamera";
             _camera = _cameraGo.AddComponent<Camera>();
+            // TASK-B-PLANET-15：唯一最小深度。SRP cameras 数组按 depth 升序排布——
+            // 泄漏相机（既有场景类用例遗留，默认 0）与探针并列 0 时先建者排前，探针跌出
+            // cameras[0] → 行星 blit 落别处、探针 RT 停在池化陈旧内存（B-PLANET-11 污染
+            // 根因）。-1000 消除并列：双相机/泄漏会话下探针恒居 cameras[0]。
+            _camera.depth = ProbeCameraDepth;
             _camera.clearFlags = CameraClearFlags.SolidColor;
             _camera.backgroundColor = new Color(0f, 0f, 0f, 1f);
             _camera.allowHDR = false;
@@ -872,6 +1264,235 @@ namespace Game.View.PlayMode.Tests
             }
 
             return (double)lit / pixels.Length;
+        }
+
+        // ---- 内容锚（TASK-B-PLANET-15）-----------------------------------------------
+        // 盲区背景：B-PLANET-11 验收发现 nonBlack>0.2 对池化陈旧内存恒真（污染样本是
+        // 人群场景），三档截图被静默替换。本节锚把"画面必须含有行星特征"变成显式断言。
+
+        /// <summary>多相机显式跳过日志捕获回调（选型 b 的 PlayMode 侧证据）。</summary>
+        private void OnProbeLogMessageReceived(string condition, string stackTrace, LogType type)
+        {
+            if (condition != null && condition.Contains("[ZRender] 多相机会话"))
+            {
+                _multiCameraLogWindow.Add(condition);
+            }
+        }
+
+        /// <summary>行星特征色占比：高程带绿色域判定——绿通道显著高于红/蓝且足够亮。
+        /// 谓词标定：planet2.hlsl 草地基色 float3(0.18,0.30,0.15) 与实测地形绿（读回域
+        /// (108,135,106)/(119,153,143)/(110,131,98)，9598c90 探针 PNG）全落谓词内；池化
+        /// 污染签名（灰 (130,133,139)——r≈g≈b；天空/清屏 (64,90,108)、雾 (132,146,164)
+        /// ——b&gt;g）全被拒（污染样本同谓词实测 0.0000）。</summary>
+        private static double PlanetGreenFraction(Color32[] pixels)
+        {
+            int green = 0;
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                Color32 p = pixels[i];
+                if (p.g >= 24 && p.g > p.r + 6 && p.g > p.b + 6)
+                {
+                    green++;
+                }
+            }
+
+            return (double)green / pixels.Length;
+        }
+
+        /// <summary>绿色域内容锚（下限见各档常量注释；实测值打印进 xml 供复核）。</summary>
+        private void AssertPlanetGreenAnchor(string label, double floor)
+        {
+            double green = PlanetGreenFraction(_lastCapture);
+            Assert.Greater(green, floor,
+                $"{label} 内容锚：行星特征色（高程带绿色域）必须出现——" +
+                "nonBlack 对池化陈旧内存恒真的盲区已封（B-PLANET-11 验收缺陷）");
+            TestContext.Out.WriteLine($"[B-PLANET-15] {label}: greenFrac={green:F4} (floor={floor})");
+        }
+
+        /// <summary>清屏色（读回域 sRGB 值 (64,90,108)±3）判定。</summary>
+        private static bool IsClearScreenLike(Color32 p)
+        {
+            return Math.Abs(p.r - ClearScreenRgb[0]) <= ClearScreenTolerance
+                && Math.Abs(p.g - ClearScreenRgb[1]) <= ClearScreenTolerance
+                && Math.Abs(p.b - ClearScreenRgb[2]) <= ClearScreenTolerance;
+        }
+
+        /// <summary>行带 [y0,y1) 内满足 match 的像素占比。行 0 = 图像底部（GetPixels32
+        /// 行序，与 PNG 的顶行 0 相反——PNG 顶带 = 本函数的 [H-54,H) 带）。</summary>
+        private static double BandFraction(Color32[] pixels, int width, int y0, int y1,
+            Func<Color32, bool> match)
+        {
+            long hit = 0;
+            long total = 0;
+            for (int y = y0; y < y1; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    total++;
+                    if (match(pixels[y * width + x]))
+                    {
+                        hit++;
+                    }
+                }
+            }
+
+            return total > 0 ? (double)hit / total : 0.0;
+        }
+
+        /// <summary>角部 patch 内清屏色占比。行 0 = 底部；角部对称，翻转不敏感。</summary>
+        private static double CornerClearFraction(Color32[] pixels, int width, int height,
+            bool left, bool bottom)
+        {
+            int x0 = left ? 0 : width - LimbCornerPatchPx;
+            int y0 = bottom ? 0 : height - LimbCornerPatchPx;
+            long hit = 0;
+            long total = 0;
+            for (int y = y0; y < y0 + LimbCornerPatchPx; y++)
+            {
+                for (int x = x0; x < x0 + LimbCornerPatchPx; x++)
+                {
+                    total++;
+                    if (IsClearScreenLike(pixels[y * width + x]))
+                    {
+                        hit++;
+                    }
+                }
+            }
+
+            return (double)hit / total;
+        }
+
+        /// <summary>盘心 patch（中心 ±<see cref="LimbCenterPatchHalfPx"/>）内清屏色占比。</summary>
+        private static double CenterPatchClearFraction(Color32[] pixels, int width, int height)
+        {
+            int cx = width / 2;
+            int cy = height / 2;
+            long hit = 0;
+            long total = 0;
+            for (int y = cy - LimbCenterPatchHalfPx; y < cy + LimbCenterPatchHalfPx; y++)
+            {
+                for (int x = cx - LimbCenterPatchHalfPx; x < cx + LimbCenterPatchHalfPx; x++)
+                {
+                    total++;
+                    if (IsClearScreenLike(pixels[y * width + x]))
+                    {
+                        hit++;
+                    }
+                }
+            }
+
+            return (double)hit / total;
+        }
+
+        /// <summary>天空/地形带几何锚（近/中档）：生产通道无天穹（设计稿 §12-5）——画面
+        /// 顶部行带必须是清屏色带；底部行带必须是地形（非整幅清屏）。标定：正确帧顶/底带
+        /// 清屏占比实测 1.0000/0.0000（9598c90 near/mid PNG）。</summary>
+        private void AssertBandAnchors(string label, bool expectSkyTop, bool expectTerrainBottom)
+        {
+            double skyTop = BandFraction(_lastCapture, CaptureWidth,
+                CaptureHeight - SkyBandRows, CaptureHeight, IsClearScreenLike);
+            double bottomClear = BandFraction(_lastCapture, CaptureWidth,
+                0, SkyBandRows, IsClearScreenLike);
+            if (expectSkyTop)
+            {
+                Assert.GreaterOrEqual(skyTop, 0.95,
+                    $"{label} 内容锚：画面顶部行带必须是清屏色带（生产通道无天穹——设计稿 §12-5）");
+            }
+
+            if (expectTerrainBottom)
+            {
+                Assert.LessOrEqual(bottomClear, 0.05,
+                    $"{label} 内容锚：画面底部行带必须是地形/雾面（不得整幅清屏——池化空白 RT 在此失配）");
+            }
+
+            TestContext.Out.WriteLine(
+                $"[B-PLANET-15] {label}: skyTopClear={skyTop:F4} bottomClear={bottomClear:F4}");
+        }
+
+        /// <summary>limb 圆盘几何锚（远档天底）：盘外（四角 48px patch）= 清屏色（实测
+        /// 1.0000），盘心（±20px patch）= 地形非清屏色（实测 0.0000），圆盘非清屏覆盖
+        /// ≥0.08（实测 0.1921）——圆盘形状/无泄漏/入画三合一。</summary>
+        private void AssertLimbDiskAnchors(string label)
+        {
+            double tl = CornerClearFraction(_lastCapture, CaptureWidth, CaptureHeight, true, false);
+            double tr = CornerClearFraction(_lastCapture, CaptureWidth, CaptureHeight, false, false);
+            double bl = CornerClearFraction(_lastCapture, CaptureWidth, CaptureHeight, true, true);
+            double br = CornerClearFraction(_lastCapture, CaptureWidth, CaptureHeight, false, true);
+            double centerClear = CenterPatchClearFraction(_lastCapture, CaptureWidth, CaptureHeight);
+            double disk = 1.0 - BandFraction(_lastCapture, CaptureWidth, 0, CaptureHeight, IsClearScreenLike);
+            Assert.GreaterOrEqual(tl, 0.95, $"{label} 内容锚：limb 盘外左上角必须是清屏色");
+            Assert.GreaterOrEqual(tr, 0.95, $"{label} 内容锚：limb 盘外右上角必须是清屏色");
+            Assert.GreaterOrEqual(bl, 0.95, $"{label} 内容锚：limb 盘外左下角必须是清屏色");
+            Assert.GreaterOrEqual(br, 0.95, $"{label} 内容锚：limb 盘外右下角必须是清屏色");
+            Assert.LessOrEqual(centerClear, 0.05, $"{label} 内容锚：盘心必须是地形（非清屏色）");
+            Assert.GreaterOrEqual(disk, 0.08,
+                $"{label} 内容锚：行星圆盘必须入画（非清屏覆盖实测 0.1921；池化陈旧内存/整幅清屏在此失配）");
+            TestContext.Out.WriteLine(
+                $"[B-PLANET-15] {label}: limb corners(tl/tr/bl/br)={tl:F3}/{tr:F3}/{bl:F3}/{br:F3} " +
+                $"centerClear={centerClear:F4} diskFrac={disk:F4}");
+        }
+
+        /// <summary>线性 8-bit → sRGB 8-bit（IEC 61966-2-1 精确公式）。项目为 Linear
+        /// 色彩空间：原生共享纹理（UNORM 直出）经 blit 进 sRGB RT，ReadPixels 回读即
+        /// sRGB 编码值——标定：probe.log 回读 (47,81,70)/(40,58,31) 经本式与探针 PNG
+        /// 中心 (119,153,143)/(110,131,98) 六通道逐位复算全中。</summary>
+        private static int SrgbEncode(byte linear)
+        {
+            double c = linear / 255.0;
+            double s = c <= 0.0031308 ? 12.92 * c : 1.055 * Math.Pow(c, 1.0 / 2.4) - 0.055;
+            return (int)Math.Round(s * 255.0);
+        }
+
+        /// <summary>管线回读对照锚（污染探测器）：探针 RT 中心像素必须等于原生共享纹理
+        /// 中心像素回读（ZrUnityTargetStatsNative.CenterRGBA——原生 RenderFrame 自己的
+        /// 1×1 readback）的 sRGB 变换值 ±1。注意原生回读是**每 kReadbackInterval=30 帧
+        /// 一次的诊断采样**（zrhi_d3d12_unity_target.cpp:50，非逐帧镜像）——所以先轮询
+        /// 等一次**新鲜**回读（ReadbackCount 递增，≤90 帧）：新鲜回读的源帧恰为本帧渲染
+        /// 所 blit 的同一帧（帧首消费 = 上上帧内容 = RT 现内容），静止位姿下逐位可比。
+        /// 探针相机不是 cameras[0]（B-PLANET-11 污染场景）时 RT 停在池化陈旧内存，此锚
+        /// 必失配。调用前提：SettleAsync 后的静止位姿（±1 = blit 浮点采样舍入界）。</summary>
+        private IEnumerator AssertCaptureMatchesPipelineCenterAsync(string label)
+        {
+            Assert.AreEqual(ZrUnityTargetNative.Ok,
+                ZrUnityTargetNative.GetTargetStats(out ZrUnityTargetStatsNative before),
+                $"[{label}] 取原生目标统计失败（共享目标未就绪？）");
+            uint freshCount = before.ReadbackCount + 1u;
+            ZrUnityTargetStatsNative stats = before;
+            bool fresh = false;
+            for (int guard = 0; guard < 90; guard++)
+            {
+                yield return null;
+                Assert.AreEqual(ZrUnityTargetNative.Ok,
+                    ZrUnityTargetNative.GetTargetStats(out stats));
+                if (stats.ReadbackCount >= freshCount)
+                {
+                    fresh = true;
+                    break;
+                }
+            }
+
+            Assert.IsTrue(fresh,
+                $"[{label}] 90 帧内未等到一次新鲜中心回读（kReadbackInterval=30 节拍失效？）");
+            Assert.IsNotNull(stats.CenterRGBA, $"[{label}] 原生中心回读缺失");
+            Assert.AreEqual(4, stats.CenterRGBA.Length, $"[{label}] 原生中心回读布局异常");
+
+            Color32 center = _lastCapture[(CaptureHeight / 2) * CaptureWidth + (CaptureWidth / 2)];
+            int expectR = SrgbEncode((byte)stats.CenterRGBA[0]);
+            int expectG = SrgbEncode((byte)stats.CenterRGBA[1]);
+            int expectB = SrgbEncode((byte)stats.CenterRGBA[2]);
+            Assert.LessOrEqual(Math.Abs(center.r - expectR), 1,
+                $"[{label}] 内容锚：RT 中心 R={center.r} 必须=原生回读 R={stats.CenterRGBA[0]} 的 " +
+                $"sRGB 变换值 {expectR}±1（池化陈旧内存/贴错目标在此失配——B-PLANET-11 污染探测器）");
+            Assert.LessOrEqual(Math.Abs(center.g - expectG), 1,
+                $"[{label}] 内容锚：RT 中心 G={center.g} 必须=原生回读 G={stats.CenterRGBA[1]} 的 " +
+                $"sRGB 变换值 {expectG}±1");
+            Assert.LessOrEqual(Math.Abs(center.b - expectB), 1,
+                $"[{label}] 内容锚：RT 中心 B={center.b} 必须=原生回读 B={stats.CenterRGBA[2]} 的 " +
+                $"sRGB 变换值 {expectB}±1");
+            TestContext.Out.WriteLine(
+                $"[B-PLANET-15] {label}: center-anchor rt=({center.r},{center.g},{center.b}) " +
+                $"native=({stats.CenterRGBA[0]},{stats.CenterRGBA[1]},{stats.CenterRGBA[2]}) " +
+                $"srgb=({expectR},{expectG},{expectB}) readbackCount={stats.ReadbackCount}");
         }
 
         /// <summary>两帧亮度差统计（0..255 亮度尺）：均值绝对差 + 移动像素占比。</summary>

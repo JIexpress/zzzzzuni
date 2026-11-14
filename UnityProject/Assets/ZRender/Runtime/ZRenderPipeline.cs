@@ -48,6 +48,7 @@ namespace ZFrame.Render
         private bool _nativeReady;
         private bool _gateLogged;
         private bool _renderErrorLogged;
+        private bool _multiCameraSkipLogged;
 
         /// <summary>已创建的外部纹理总数（诊断/测试：与销毁数之差必须 ≤ 槽位数）。</summary>
         internal int CreatedExternalTextureCount => _createdExternalTextures;
@@ -97,6 +98,30 @@ namespace ZFrame.Render
             {
                 context.Submit();
                 return;
+            }
+
+            // ---- 多相机策略（TASK-B-PLANET-15，选型 b：显式跳过 + 首帧一行日志）--------
+            // 行星通道 v1 是单槽架构：共享目标 ×2 槽是"同一幅主画面"的双缓冲，scene
+            // 提交与 blit 都只认 cameras[0]（B-PLANET-11 验收缺陷原口径 :112 Submit /
+            // :153 SetupCameraProperties / :156 Blit→CameraTarget）。多相机逐相机走行星
+            // 通道属后续需求（选型 a，需双槽架构评估）。这里把"只渲 cameras[0]、其余相机
+            // 不渲"从静默行为变成显式策略：首帧打一行日志（每管线实例一次，不刷屏）。
+            // 没有这行日志时，第二相机（如带 RT 的探针相机）的目标永不被管线写入，
+            // ReadPixels 读到的是池化陈旧内存且无任何线索——B-PLANET-11 验收发现的
+            // 证据链污染根因（S 级 B-PLANET-15）。
+            if (cameras.Length > 1 && !_multiCameraSkipLogged)
+            {
+                _multiCameraSkipLogged = true;
+                var skippedNames = new string[cameras.Length - 1];
+                for (int i = 1; i < cameras.Length; i++)
+                {
+                    skippedNames[i - 1] = cameras[i] != null ? cameras[i].name : "<null>";
+                }
+
+                Debug.Log(
+                    $"[ZRender] 多相机会话（{cameras.Length} 台）：只渲染 cameras[0]=" +
+                    $"'{(cameras[0] != null ? cameras[0].name : "<null>")}'" +
+                    $"（行星通道单槽架构，其余相机显式跳过：不渲染、不贴屏）：{string.Join(", ", skippedNames)}");
             }
 
             if (!EnsureNativeTarget())
