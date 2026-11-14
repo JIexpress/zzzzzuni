@@ -4,7 +4,18 @@
 > ⚡ **给下一个 LLM 主控**：先读 `Docs/LLM-HANDOFF-NOTES.md`——132 个任务沉淀的全部操作手册（派发模板/变异验证法/故障处置手册/技术坑备忘/工具调用技巧/额度管理），照做即可满血接力。
 > 历史交接记录已归档 git 历史（`git show G-113:HANDOFF.md`），WORKLOG.md 有全部任务索引。
 
-**快照时间**: 2026-11-14（**双机分工确立+U盘交接材料入仓 G-158；引擎补全轮启动**）｜**刷新者**: 主控（ZCode，GLM 会话）｜**仓库**: `C:\Users\1\Desktop\zcode\GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni
+**快照时间**: 2026-11-15（**接管轮：B-PLANET-15 闭环，P2 后续清零第一刀**）｜**刷新者**: 主控（WorkBuddy 接管 GLM 会话）｜**仓库**: `C://Users//1//Desktop//zcode//GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni
+
+## ⚡ 最新（2026-11-15，接管轮：B-PLANET-15 闭环）
+
+- **接管方式**：读 U 盘三份文档（07 清单 / 08 需求对照 / ZRender 改进计划）+ 上一会话本地工作记忆（`C://Users//1//.zcode//cli//memories//projects//zcode-6da466a520fe1fb1//memory//zframe-zrender-project.md`，末条 11-14 P2 收官）+ HANDOFF + git 现场。上一会话留下 **B-PLANET-15 未提交半成品**，本轮接手完成。
+- **B-PLANET-15 done（6423b82）**：多相机选型 b——管线仍只渲 `cameras[0]`，其余相机**首帧一行日志显式跳过**（不再静默）；探针加**内容锚**（limb 四角清屏/盘心地形/圆盘占比/RT 中心与原生 1×1 回读 sRGB 互证），杜绝 `nonBlack>0.2` 恒真。
+- **验收抓到的真问题（本轮最有价值的一条）**：探针 fixture **独跑 5/5 绿、全量 5 红**——根因不是相机排序，是**前序用例 `LoadSceneAsync("SCN_Game")` 不卸载**，探针帧被遗留场景占据（`renderer=54 可读=6` vs 隔离 `0`）。修法：fixture 显式 `CreateScene("~ProbeEmpty")` + 销毁其余场景根对象 + 关掉非探针相机 + **断言 `Renderer` 计数为 0，环境不脏才继续**。修后全量 **115/115 两轮同形**。
+- **测试家底**：EditMode **1235**、PlayMode **115**、原生 380/823,621、arch 27/0、naming 0 违规。
+- **看板校准**：B-PLANET-02 / B-PROBE-01 重复且误标 todo（实为 done f5e6aa1 / 74ec9bd），已去重并改正；统计改为行扫描口径 **done 169 / todo 5 / held 1**。
+- **git 现场**：HEAD `36545bc`（含 chore 版本号同步），工作区干净；**领先 origin/main 6 提交**（按 AGENTS 铁律，推远程待用户确认）。
+- **剩余 5 条 todo**：A-CONF-02（表类薄壳）、B-VIS-02（真视锥）、X-DIAG-02（`test_zfg_env -s` 基线 SIGSEGV）、B-PLANET-13（裙边深度口径裁决）、X-DIAG-03（Parity 条纹，根因已实证待收尾）。
+- **补验待办（需另一台机/设备）**：fsr4 对端阳性 + 双机帧耗；Android 设备冒烟（APK 就绪）；Windows IL2CPP 模块补装。
 
 ## ⚡ 最新（2026-11-14，双机分工 + 材料入仓 + P0 派发）
 

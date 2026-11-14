@@ -94,7 +94,7 @@
 | A-R9-19 | A/URP | 色彩管线迁移（Gamma→Linear + HDR 两档 Tonemapping） | done(主控实跑验收；Linear 下 1102+88 全绿；ZRender 桥改 UNORM 视图；两档重新分层差1.48x；灯光接受新基准未重标定) | Docs/Logs/TASK-A-R9-19.md | 82daf86 |
 | A-AI-05 | A/AI | NPC 自主模式（G 键开关）+ 预约态（到达才占） | held(暂缓：简报已写、未动工；用户进入正式游戏开发，此功能后置。无半成品代码，恢复时按简报直接派施工) | Docs/Logs/TASK-A-AI-05.md | — |
 
-**统计**：done 144 ／ doing 0 ／ todo 0 ／ blocked 0 ／ held 1（2026-11-09：A-AI-05 登记为 held——简报已写未动工，暂缓后置）
+**统计**（行扫描口径，2026-11-15 接管轮校准并去重）：done 169 ／ doing 0 ／ todo 5 ／ blocked 0 ／ held 1（余：A-CONF-02 / B-VIS-02 / X-DIAG-02 / B-PLANET-13 / X-DIAG-03；held=A-AI-05）
 
 > **2026-10-28 G-64 文档对齐（接管）**：修三处失真 ①R8 六行原被追加在「里程碑对照」标题**下方**导致表格断裂、`B-R8-03` 仍挂 `doing`（实际已 PASS，commit `be2adcf`）——已并入主表并改正状态
 > ②`HANDOFF.md` 表头仍写「R8 推进 3/4、B-R8-02 待派」（实际 47 任务全闭环）③`README.md` 与 HANDOFF 注意事项里的任务数/用例数/`TestReport.txt` 是否入库均过期。
@@ -187,29 +187,27 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | G-158 | 治理 | U盘交接材料入仓(Docs/Planning四文档)+Tools/Probes探针家底转移+双机分工登记(本机=引擎机/对端=游戏机) | done | Docs/Planning/ | (本提交) |
 | B-FSR-01 | B/FSR | P0修复:FSR4探测传空设备假阴性——枚举适配器后建真设备再问(改进计划P0/08对照#16) | done(验收PASS:11P+1MISSING按裁决,0FAIL;350用例全绿;负对照成立=硬件真相;阳性移交B-PROBE-01对端补验) | Docs/Logs/TASK-B-FSR-01.md | ae03f62 |
 | B-FSR-02 | B/FSR | P1能力三态诚实化(probeMode)+全仓写死能力表面审计(demo/设置页/失实注释)(改进计划P1) | done(验收PASS V1-V10;ApiVersion2;审计15项8改7核;真机probeMode=0实证) | Docs/Logs/TASK-B-FSR-02.md | ce4bdf4 |
-| B-PROBE-01 | B/PROBE | fsr4-probe探针:真设备/null对照可复核工具+本机存档(改进计划§5) | todo | Docs/Logs/TASK-B-PROBE-01.md | |
+| B-PROBE-01 | B/PROBE | fsr4-probe 两机可跑探针 | done(74ec9bd，验收 PASS F1-F7；null/真设备对照+JSON 存档；本机负对照三方互证；对端阳性待补验) | Docs/Logs/TASK-B-PROBE-01.md | 74ec9bd |
 | B-PROBE-02 | B/PROBE | linear-bridge探针:ZRender vs URP同机位亮度差数字化(改进计划§5) | done(验收PASS L1-L6;方向性发现:桥输出较URP亮12.5%复合差,'略暗'形容词被实测推翻;逐位可复现) | Docs/Logs/TASK-B-PROBE-02.md | 72126a0 |
 | A-CONF-01 | A/CONF | Config CSV→C#行类型代码生成器(08对照#11半项补全) | done(验收PASS V1-V10;四通道;EditMode 1167全绿;架构26/0;08对照#11改判已实现) | Docs/Logs/TASK-A-CONF-01.md | d15faad |
 | A-CONF-02 | A/CONF | 表类薄壳+注册行自动化(连表类也零手写;A-CONF-01遗留§6.1) | todo | (简报待写) | |
 | X-NAMES-01 | X/HYG | 资产命名规则扩容(T_/ENV_ 前缀)或 T_ENV_*.png 改名——清 6 处存量红灯(A-CONT-01 42f5a26 引入) | done(验收PASS N1-N5;naming段0违规;负例不放宽) | Docs/Logs/TASK-X-NAMES-01.md | 42e981f |
 | X-ARCH-01 | X/HYG | 架构矩阵补登记ZFrame.Render.Probes(B-PROBE-02债;验收捎带制) | done(捎带验收PASS;arch 27/0;EditMode 1182/0) | Docs/Logs/TASK-X-ARCH-01.md | c9a7d0c |
 | B-KERNEL-01 | B/KERNEL | 组件定位周期实测断言+文档BMI2/POPCNT表述纠正(08对照#7) | done(验收PASS K1-K7变异亲做;实测4~5/5,目标3未达如实记;353全绿) | Docs/Logs/TASK-B-KERNEL-01.md | fcbcb95 |
-| B-PLANET-02 | B/PLANET | 行星ABI头落地(zplugin.h+def+ApiVersion 2→3+Bindings声明+ERR_ARGS注释同步) | done(验收PASS P1-P7;§14↔头文件零签名偏离;接口冻结) | Docs/Logs/TASK-B-PLANET-02.md | f5e6aa1 |
+| B-PLANET-02 | B/PLANET | 行星ABI头落地 | done(f5e6aa1，验收 PASS P1-P7；ApiVersion=3、§14 汇编入 zplugin.h、6 链同步、def 零 diff) | Docs/Logs/TASK-B-PLANET-02.md | f5e6aa1 |
 | B-VIS-01 | B/VIS | 多视图共享可见性核实:B-R4-02交付范围审计,裁决是否需补实现(08对照#4) | done(裁决A:需求已满足,VisibilitySet一次录入六视图消费;注记:真frustum剔除缺→B-VIS-02) | Docs/Logs/TASK-B-VIS-01.md | (本提交) |
 | B-VIS-02 | B/VIS | 真视锥剔除纯函数CullToViewMask+帧内录入/消费计数断言(不挡路,核实任务衍生加固) | todo | Docs/Logs/TASK-B-VIS-02.md | |
 | B-PLANET-01 | B/PLANET | P2拆解+行星ABI设计稿(double原点/chunk句柄/LOD邻居/高度采样)(改进计划P2) | done(验收FAIL一轮→修订R1→复验PASS;F1-F7全落地;46导出裁决正确;D8接受) | Docs/Logs/TASK-B-PLANET-01.md | 80d82bc |
-| B-PLANET-02 | B/PLANET | 行星ABI头落地(zplugin.h+def+ApiVersion 2→3+Bindings声明+ERR_ARGS注释同步) | todo | (简报待写) | |
 | B-PLANET-03 | B/PLANET | 行星数学生产化(planet_math §①③④提升,语义零改动) | done(验收PASS Z1-Z6,独立worktree基线逐位回归;Native/zplanet/ 在库) | Docs/Logs/TASK-B-PLANET-03.md | 11a477f |
 | B-PLANET-04 | B/PLANET | chunk通道生产实现(句柄表/生成/上传/RenderFrame集成/剔除移植/着色器) | done(验收PASS E1-E10变异亲做;56导出;--planet3真渲染306K像素;12864顶点账目恒等式;单chunk近档7.4ms实测) | Docs/Logs/TASK-B-PLANET-04.md | 8b03db6 |
 | B-PLANET-05 | B/PLANET | SetCameraOrigin+round-trip doctest | done(验收PASS C1-C7;def 46→48 dumpbin实证;五组doctest全绿) | Docs/Logs/TASK-B-PLANET-05.md | 3d3ac1c |
 | B-PLANET-06 | B/PLANET | SetWorld+SampleHeight(含与chunk顶点逐位一致断言) | done(验收PASS D1-D10;12864顶点0失配;并发38400次零撕裂;def 48→50) | Docs/Logs/TASK-B-PLANET-06.md | 63fa2f4 |
 | B-PLANET-07 | B/PLANET | Unity托管桥(流式管理器+WorldOrigin接线;首个生产消费者) | done(验收PASS J1-J8;EditMode 1211/1211(+29);账目A1-A12;唯一边界铁律保持) | Docs/Logs/TASK-B-PLANET-07.md | b73c0c5 |
-| B-PROBE-01 | B/PROBE | fsr4-probe探针:真设备/null对照可复核工具+本机存档(改进计划§5) | done(验收PASS F1-F7;三方逐位互证;便携模式亲测;FG族首次有数;阳性MISSING=对端补验) | Docs/Logs/TASK-B-PROBE-01.md | 74ec9bd |
 | B-PLANET-08 | B/PLANET | 接缝专项(float缝宽实测+neighborMask行为定版) | done(验收PASS M1-M7;VB缝宽MISSING清零240对三层口径;定版A维持裙边;G4-R1门远档税920ms→0.019ms) | Docs/Logs/TASK-B-PLANET-08.md | dce7e49 |
 | B-PLANET-09 | B/PLANET | planet-budget探针(1080p/接缝/贴地扫描/双机) | done(验收PASS N1-N7;1080p MET余量22×口径限定;D9 MISSING清零197.8m设计输入;附带修X-DIAG-03根因) | Docs/Logs/TASK-B-PLANET-09.md | 35fb6ee |
 | B-PLANET-10 | B/PLANET | abi-precision探针(四点ULP双口径) | done(验收PASS P1-P7;正确路径0.145~0.341ULP达标;naive对照38.85×~1.68e5×;§9预算5环节亲测过) | Docs/Logs/TASK-B-PLANET-10.md | 1329dd6 |
 | B-PLANET-11 | B/PLANET | 编辑器内验收集成(三档截图/1km行走/账目断言) | done(验收PASS Q1-Q7;三档+9PNG;50km 23次重定位逐位守恒;PlayMode 114/114;发现多相机管线缺口→B-PLANET-15) | Docs/Logs/TASK-B-PLANET-11.md | 9598c90 |
-| B-PLANET-15 | B/PLANET | ZRenderPipeline 多相机渲染策略(现只渲cameras[0],第二相机RT不写入——B-PLANET-11验收发现)+探针内容锚断言 | todo | (简报待写) | |
+| B-PLANET-15 | B/PLANET | ZRenderPipeline 多相机渲染策略 + 探针内容锚 | done(6423b82；选型b 显式跳过+首帧一行日志；探针加 limb/盘心/RT-原生中心锚；取证隔离修全量泄漏根因 renderer=54→0；EditMode 1235/PlayMode 115 两轮；验收 PASS+变异复红) | Docs/Logs/TASK-B-PLANET-15.md | 6423b82 |
 | B-PLANET-12 | B/PLANET | IL2CPP+Android各一次(Android按D8裁决=托管等效实现) | done(验收PASS T1-T7;C#移植804点逐位0位差;APK 38.76MB构建成功;P/Invoke生成码实锤;M1/M3按MISSING闭环) | Docs/Logs/TASK-B-PLANET-12.md | da54772 |
 | X-HAPTICS-01 | X/HYG | TouchHaptics平台条件化修复(Windows Player编译债CS0103,A-AND-10潜伏;4行最小diff主控批准) | done(捎带验收PASS H1;Mono Player全链编译PASS CS0103归零;手持域零变化) | Docs/Logs/TASK-X-HAPTICS-01.md | 1161c40 |
 | B-PLANET-14 | B/PLANET | 流式排名重建阈值修复:纯海拔爬升258km不触发UpdateRanking(lenDrift>5%逻辑缺陷,B-PLANET-11发现)——加入径向/位移幅值判据 | done(验收PASS B1-B7;第三判据累计位移;12锚定测试;EditMode 1235全绿) | Docs/Logs/TASK-B-PLANET-14.md | 41adfdd |
