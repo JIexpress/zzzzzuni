@@ -10,7 +10,7 @@
 | `env-probe.js` | 引擎提交、C#/场景文件数、Unity 版本与许可证、播放器 FFX 运行时、磁盘（仓库自适应，两台开发机均可跑） | `node Tools/Probes/env-probe.js` | 本机 2026-11-13：10 项取到 / 3 项 MISSING（见 out/env-2026-11-13T16-56-35.json 与修正后 17 时档） | 可用 |
 | `fsr4-probe` | 本机 FSR 4.1 真实能力：caps（含 fsr4ProbeMode 三态）+ UPSCALER 族真设备/null provider 对照 + FG 族双设备对照（原生 exe，两机可跑，跑法见下节） | `Native/build/bin/Release/fsr4_probe.exe`（build_native.ps1 构建后直接跑；或拷 exe+FFX DLL 集免仓库跑） | 本机 780M 2026-11-14：**负对照成立**（null=真设备=2 条 3.1.5/2.3.4、fsr4Available=0、fsr4ProbeMode=0）；FG 族两路均 Available（3.1.6）；**阳性对照 MISSING（本机硬件）**——对端机 RX 9060 XT 补验步骤见下节（`out/fsr4-2026-11-13T22-28-29.json`） | 可用 |
 | `linear-bridge` | ZRender 输出与 URP 同机位亮度差（Editor 工具，程序化契约场景，不依赖任何 .unity） | Unity 批处理 `-executeMethod ZFrame.Render.Probes.LinearBridgeProbe.RunFromCommandLine`（勿带 -quit，自退出）；或菜单 ZRender > Probes > Linear Bridge Compare | 本机 2026-11-14（HEAD 06f3478，780M，Linear + URP_Medium）：**桥较 URP 直出亮 12.5%**（帧级均值 luma 61.22→68.88，0-255 域；中心半幅 +8.5%）；p50=0、p95=57.85、p99=77.86（\|Δ\| 分位）；原生中心像素回读 (13,26,38) 与 kClearColor 注释值逐字节一致 | 可用 |
-| `planet-budget` | 1080p 下 chunk 数/帧耗/接缝计数 | 未编写；P2（TASK-B-PLANET-*）验收前置 | — | **缺** |
+| `planet-budget` | 1080p 下 chunk 数/帧耗分布（p50/p95/p99/mean）+ 接缝像素口径（清屏色泄漏）+ 贴地扫描（SampleHeight vs 网格插值偏差，D9） | `Native/build/bin/Release/zrhi_d3d12_window.exe --pbudget`（build_native.ps1 构建后跑，跑法见下节；两机可跑） | 本机 780M 2026-11-14：1080p 帧耗 p50=1.490ms（671fps）/mean=654fps，**判据 1080p≥30fps MET（口径=30-chunk 测试场景/drawn=4，非全行星 6144）**；30 chunk（drawn=4/culled=26/vbytes=1468416）；接缝 17/17 帧零清屏色泄漏（2.138mm/px 足迹）；贴地偏差近档 max 197.8m / 远档 925.9m / 格点锚点≈0（`out/planet-budget-2026-11-14T00-14-24.json`） | 可用 |
 | `abi-precision` | double→float 提交在 100m/1km/10km/100km 的 ULP 损失 | 未编写；P2 验收前置 | — | **缺** |
 | `gpu-probe` | 显卡型号/显存/驱动 | 未编写（需 DXGI/WMI 采集器） | — | **缺** |
 
@@ -46,6 +46,20 @@
   - **负对照成立**（本机 780M 实测 2026-11-14）：`null=真设备=2 条（3.1.5/2.3.4）`、`fsr4Available=0`、`fsr4ProbeMode=0` → "不支持"是硬件真相（RDNA3 iGPU 不注册 4.x，SDK v2.3.0 文档要求 7000/9000 系离散卡）而非探测缺陷——与 B-FSR-01 施工/验收存档逐位一致。
   - FG 族（FRAMEGENERATION）：780M 上两路均 Available（provider 3.1.6，与 `zrhi_d3d12_window --fg` 既有实测一致）——FG 族双设备对照首次有数（B-FSR-02 审计 A2 的"未做对照"项在此补上本机一半）。
 - **边界**：探针是独立 exe——不进 zrender.dll、不进 Unity 绑定、不进 zrender_test（375 用例不受影响）；`ZR_Upscaler_QueryCaps`/`ZR_ApiVersion` 只读消费，引擎行为零改动。
+
+## planet-budget 探针（TASK-B-PLANET-09，2026-11-14 交付）
+
+- **怎么跑（本机）**：`powershell -NoProfile -ExecutionPolicy Bypass -File Tools/build_native.ps1` 构建后直接跑 `Native/build/bin/Release/zrhi_d3d12_window.exe --pbudget`（在仓库根跑；exe 运行期 LoadLibrary 同目录 zrender.dll 走生产导出面——`--planet3` 同策）。产物：`out/planet-budget-<UTC时间戳>.json` + `-terrain.png` + `-seam.png`（文件名白名单 + out 目录边界断言，fsr4-probe 同款）；控制台全表建议重定向存档（`> Tools/Probes/out/planet-budget-run.log 2>&1`）。退出码 0 = JSON 已落盘（**fps 达标与否是数据不是失败**，fsr4-probe 同策）；2 = 探针链路硬失败（dll/设备/chunk/渲染/回读，无 JSON）；1 = JSON 未写出。
+- **怎么跑（对端机，免仓库）**：把 `zrhi_d3d12_window.exe` + `zrender.dll` 拷到对端机**同一目录**直接运行 `--pbudget`（exe 链接为静态 zrhi/zrender_core/zupscaler + 系统 d3d12/dxgi/ws2_32，FFX 组件为运行期按需 LoadLibrary——`--pbudget` 不消费 FFX，无需拷 FFX DLL；缺 VC++ 2015-2022 x64 运行时时装一次 Redistributable 或拷 MSVCP140/VCRUNTIME140/VCRUNTIME140_1 进同目录）。免仓库模式 JSON 落 exe 同目录 `out/`（outMode=portable-exe-dir）。也可整仓同步后在对端跑 build_native.ps1 重建（等价）。**对端补验流程**：对端跑一次 → 回传 JSON+截图 → 结论一行回填本表"最近一次结果"列与 `Docs/Logs/TASK-B-PLANET-09.md`。
+- **测什么（四组数字，双机对照基线）**：
+  1. **帧耗预算**：1920×1080、热身 60 帧 + 采样 300 帧，逐帧 frame_ms（QPC 包住 SetCameraOrigin/SetCamera/BeginScene/RenderFrame；B-UNITY-04 双槽下帧 N 开头等帧 N-1 的 GPU fence → 稳态每帧墙钟 = max(CPU 提交, GPU 渲染吞吐)，与 `--planet3` frame_ms 同口径可比）→ p50/p95/p99/mean/min/max + fps；逐帧 drawn/culled（GetStats 快照）+ vbytes。
+  2. **接缝像素口径**：B-PLANET-08 GPU 口径的 1080p 加密复测——相机 2m 悬停近档 (16,16)/(17,16) 共享东西缘 17 个采样顶点（含两角）正上方、天顶向下，整面回读扫描清屏色 (13,26,38)±6 泄漏（缝带窗口 = 投影缝位 ±3px/±2 行）。1080p 足迹 2.138mm/px（640×480 口径 4.81mm/px 的 1/3）。判据 = 清屏色泄漏像素；expect_mm/expect_px 复刻列有灾难性抵消放大（B-PLANET-08 §2.3(a) 同款）只作参考。
+  3. **贴地扫描（设计稿 D9 MISSING 清零）**：M=100 确定点（面 0：共享边/角/格对角线附近 + 近/远档跨界 + 格点锚点 + 均匀内部点），`ZR_Planet_SampleHeight(C+dir·R)`（dll 纯函数 ABI）vs 渲染网格插值高度（CPU 复刻 dll GenerateChunkVerts 同源路由 + BuildTierIndices 对角 v00-v11 三角化的射线求交，径向高度 t−R）。格点锚点偏差应≈0（校准项）；本节是**插值口径**，与 B-PLANET-08 的**顶点口径**（VB float 化缝宽 15.93mm max）不混。
+  4. **判据挂账**：改进计划 §3-P2 "1080p≥30fps"——fpsMean 与 fpsP50 双口径对照，达标与否都是数据不粉饰。
+- **结果判读**：`budget.frameMs`（分布）与 `verdict.fpsMean/fpsP50/met`（判据）；`chunks.*`（drawn/culled/vbytes——与本机 planet3 数字同量级即口径连贯）；`seamPixel.sumClearWin/maxRunRowPx`（>0 = 有缝泄漏，需回查）；`groundScan.devAbs`（max/p95 分近/远档看；`vertexAnchorMax`≠0 = 网格模型失准，数字不可信）。
+- **本机 780M 存档（2026-11-14T00:14:24Z，Radeon 780M 0x1002/0x15BF，样本 300@1080p）**：frame_ms p50=1.490 / p95=1.795 / p99=2.107 / mean=1.528 / max=2.869 → fpsMean=654.4 / fpsP50=671.1，**MET**（余量 ~22×，口径同上=30-chunk 测试场景非全行星——iGPU 与独显差异看对端机对照）；drawn=4/culled=26 全程恒定，vbytes=1468416 稳定；接缝 17/17 帧零泄漏（max_run_row=0）；贴地偏差 |h_mesh−h_pure|：近档 max 197.757m / p95 197.757m / 远档 max 925.899m / 全体 mean 67.916m，格点锚点 max 1.74e-9m（校准成立）。注意：近/远档偏差幅值是**当前 30-chunk 测试场景 tessellation**（近档格距 ≈4965m、远档 ≈20852m）下的数字——玩法贴地若按纯函数判碰撞，网格插值区会有百米级偏差，这是 D9 MISSING 想暴露的事实（细化 cellsPerEdge/LOD 是后续任务输入，不是本探针的修复项）。
+- **边界**：探针模式只进 `zrhi_d3d12_window.exe`（不进 zrender.dll/Unity 绑定/zrender_test——380 用例零改动全绿）；dll 导出零消费新增（SampleHeight 既有导出，def 56 条零改动）；`--planet3` 顺带修复截图编码缺陷（见下）。
+- **附带修复（施工中发现，如实登记）**：`--planet3` 的两张证据 PNG（`Docs/Parity/planet3_terrain.png`/`planet3_seam_closeup.png`）原把 3B/px RGB 缓冲以 pitch=W×3 传给按 4B/px 读的 `WritePng24`——实为**通道轮转错位图**（B-PLANET-08 存档同缺陷；解码实测行内相邻像素绿通道差均值 17.54）。已改 4B/px RGBA（仅证据编码，控制台断言数字逐位不变——回归实测 `D3D12 PLANET3 OK (chunks=30 drawn=4 culled=26 vbytes=1468416 ...)` 与修复前一致）。
 
 ## 已发现的环境事实（不填默认值）
 

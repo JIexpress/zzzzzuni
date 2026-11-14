@@ -1,0 +1,49 @@
+======================================================================
+ planet-budget probe (TASK-B-PLANET-09)  2026-11-14T00:14:24Z
+ 1080p 帧耗预算 / 接缝像素口径 / 贴地扫描（D9）——判据挂账 1080p>=30 fps
+======================================================================
+[zrhi][d3d12][pso-cache] init: path=C:\Users\1\Desktop\zcode\GameFramework\Native\build\bin\Release\pso_cache.bin loaded=1 names=3 blob_bytes=17022 load_ms=4.388
+host.adapter      : AMD Radeon 780M Graphics (vendor=0x1002 device=0x15BF, dmem=408 MB)
+out.mode          : repo-root -> C:\Users\1\Desktop\zcode\GameFramework\Tools\Probes\out
+[setup] chunks=30 (near=9 far=21 expectedVB=1468416B) seed=1337 version=3 zr=0.1.0
+[budget] warmup=60 sampled=300 @1920x1080 (QPC 含 Submit+GPU 完成的墙钟)
+  frame_ms: p50=1.490 p95=1.795 p99=2.107 mean=1.528 min=1.307 max=2.869
+  fps: mean=654.38 p50=671.05 -> 1080p>=30 fps: MET
+  chunks: drawn 4..4 culled 26..26 pendingUpMax=0 vbytes=1468416 (stable)
+  keyframe -> planet-budget-2026-11-14T00-14-24-terrain.png (written) terrainPixels=2062590/2073600 (99.5%)
+[seam] footprint=2.138mm/px (2m nadir, near=0.5m, 1080p) 17 samples along (16,16)/(17,16) shared edge
+   k  expect_mm  expect_px  clear_win  run_row  clear_total   pxA(px)   pyA(px)
+    0     0.000     7.500          0        0            0    960.00    540.00  
+    4     0.000     7.500          0        0            0    960.00    531.56  
+    8     0.000     7.500          0        0            0    952.50    540.00  
+   12     0.000     0.000          0        0            0    960.00    531.56  
+   16     0.000     0.000          0        0            0    960.00    540.00  
+   20     0.000     7.496          0        0            0    952.50    540.00  
+   24     0.977     0.000          0        0            0    960.00    540.00  
+   28     2.184     7.500          0        0            0    952.50    541.05  
+   32     0.488     0.000          0        0            0    960.00    540.00  
+   36     2.184     7.500          0        0            0    967.50    540.00  
+   40     3.906     0.000          0        0            0    967.50    542.11  
+   44     0.000    15.000          0        0            0    967.50    540.00  
+   48     0.000     0.000          0        0            0    960.00    535.79  
+   52     0.000     0.000          0        0            0    960.00    548.45  
+   56     0.977     7.504          0        0            0    952.50    540.00  
+   60     0.000     0.000          0        0            0    960.00    531.55  
+   63     0.000     7.500          0        0            0    952.50    540.00  
+  seam pass done: frames_ok=17/17 max_run_row=0 max_clear_win=0 sum_clear_win=0 max_clear_total=0 png(k=32)=written
+[ground] M=100 points (near=92 far=8 vertexAnchors) meshModel=cpu-replica (near 64x64 / far 16x16, diag v00-v11)
+  |h_mesh - h_pure|: max=925.899m mean=67.916m p95=197.757m p99=925.899m (near=197.757m far=925.899m vertexAnchorMax=0.000000m) meshMiss=0
+  edgeEW+     lod=1 chunk=(17,16) distVtx=   2558.4m hPure=   -690.07m hMesh=   -628.34m dev=  +61.731m
+  edgeNS+     lod=1 chunk=(16,17) distVtx=   2558.4m hPure=     15.59m hMesh=      0.05m dev=  -15.538m
+  cornerDiag  lod=1 chunk=(17,17) distVtx=    877.5m hPure=   -365.94m hMesh=   -436.15m dev=  -70.209m
+  cornerAnti  lod=1 chunk=(17,16) distVtx=    877.5m hPure=   -421.67m hMesh=   -451.82m dev=  -30.152m
+  cellDiag    lod=1 chunk=(16,16) distVtx=   2775.0m hPure=   -954.55m hMesh=   -963.40m dev=   -8.846m
+  interior    lod=1 chunk=(16,17) distVtx=   1424.2m hPure=   -770.46m hMesh=   -825.00m dev=  -54.534m
+  cellCenter  lod=1 chunk=(15,15) distVtx=   3510.1m hPure=    645.15m hMesh=    540.97m dev= -104.185m
+  vertex      lod=1 chunk=(16,16) distVtx=      0.0m hPure=    254.27m hMesh=    254.27m dev=   +0.000m
+  lodCross-   lod=0 chunk=(14,16) distVtx=  10443.0m hPure=   -225.33m hMesh=    133.49m dev= +358.820m
+[zrhi][d3d12][pso-cache] flush: hits=3 misses=0 fallbacks=0 direct=0 support=1 loaded=1 load_ms=4.388 create_ms=1.154 compile_ms=0.000 store_ms=0.000 serialize_bytes=17022
+[verdict] 1080p>=30 fps: MET (fpsMean=654.38 fpsP50=671.05) — 达标与否都是数据，不粉饰
+[missing] 0 项（不填默认值，如实记录）
+JSON -> C:\Users\1\Desktop\zcode\GameFramework\Tools\Probes\out\planet-budget-2026-11-14T00-14-24.json
+exit=0（JSON 已落盘；fps 未达标是数据不是失败，fsr4_probe 同策）

@@ -9537,19 +9537,24 @@ static int RunPlanet3Mode()
                     }
                 }
                 std::filesystem::create_directories("Docs/Parity");
-                std::vector<uint8_t> rgb(static_cast<size_t>(kP3Width) * kP3Height * 3u);
+                // TASK-B-PLANET-09 修复（本任务施工中发现，见任务日志 §缺陷修复）：
+                // 原实现转 3B/px RGB 并以 pitch=W*3 传 WritePng24，而 WritePng24 按
+                // 4B/px 读——planet3_terrain.png 实为通道轮转错位图（B-PLANET-08 存档
+                // 同缺陷）。改 4B/px RGBA（控制台数字口径不受影响）。
+                std::vector<uint8_t> rgba(static_cast<size_t>(kP3Width) * kP3Height * 4u);
                 for (uint32_t y = 0u; y < kP3Height; ++y) {
                     for (uint32_t x = 0u; x < kP3Width; ++x) {
                         const uint8_t* px = pixels.data()
                             + (static_cast<size_t>(y) * kP3Width + x) * 4u;
-                        uint8_t* o = rgb.data()
-                            + (static_cast<size_t>(y) * kP3Width + x) * 3u;
-                        o[0] = px[2]; // BGRA → RGB
+                        uint8_t* o = rgba.data()
+                            + (static_cast<size_t>(y) * kP3Width + x) * 4u;
+                        o[0] = px[2]; // BGRA → RGBA
                         o[1] = px[1];
                         o[2] = px[0];
+                        o[3] = px[3];
                     }
                 }
-                pngOk = WritePng24(kP3Png, rgb.data(), kP3Width, kP3Height, kP3Width * 3u);
+                pngOk = WritePng24(kP3Png, rgba.data(), kP3Width, kP3Height, kP3Width * 4u);
                 std::printf("  frame %u keyframe -> %s (%s) terrainPixels=%u/%u\n",
                     frame + 1u, kP3Png, pngOk ? "written" : "FAILED", terrainPixels,
                     kP3Width * kP3Height);
@@ -9721,19 +9726,21 @@ static int RunPlanet3Mode()
         }
         if (!bestPng.empty()) {
             std::filesystem::create_directories("Docs/Parity");
-            std::vector<uint8_t> rgb(bestPng.size() / 4u * 3u);
+            // TASK-B-PLANET-09 同上：3B/px → 4B/px RGBA（原 closeup 通道轮转错位）
+            std::vector<uint8_t> rgba(bestPng.size());
             for (uint32_t y = 0u; y < kP3Height; ++y) {
                 for (uint32_t x = 0u; x < kP3Width; ++x) {
                     const uint8_t* px = bestPng.data()
                         + (static_cast<size_t>(y) * kP3Width + x) * 4u;
-                    uint8_t* o = rgb.data() + (static_cast<size_t>(y) * kP3Width + x) * 3u;
+                    uint8_t* o = rgba.data() + (static_cast<size_t>(y) * kP3Width + x) * 4u;
                     o[0] = px[2];
                     o[1] = px[1];
                     o[2] = px[0];
+                    o[3] = px[3];
                 }
             }
             const bool pngWritten = WritePng24("Docs/Parity/planet3_seam_closeup.png",
-                rgb.data(), kP3Width, kP3Height, kP3Width * 3u);
+                rgba.data(), kP3Width, kP3Height, kP3Width * 4u);
             std::printf("    seam closeup png(k=32): %s\n",
                 pngWritten ? "Docs/Parity/planet3_seam_closeup.png" : "FAILED");
         }
@@ -9773,6 +9780,1392 @@ static int RunPlanet3Mode()
         allOk ? 1 : 0, terrainPixels, kP3Width * kP3Height, pngOk ? 1 : 0,
         static_cast<unsigned long long>(lodAppliedFrame), stats.seamCheckFails, frameMsAvg);
     return 1;
+}
+
+// =============================================================================
+// ---- TASK-B-PLANET-09：--pbudget 模式（planet-budget 探针）--------------------
+// =============================================================================
+// 改进计划 §1.2/§10 的缺口取证工具：现有口径只有 640x480/7.9-8.8ms（--planet3），
+// "1080p≥30fps"（改进计划 §3-P2 判据）没有数字。本探针在生产导出面（LoadLibrary
+// zrender.dll——--planet3 同策、同 30 chunk 场景、同相机轨迹）上回答四个数字：
+//   ① 帧耗预算：1920x1080、热身 60 帧 + 采样 300 帧，逐帧 frame_ms（QPC 包住
+//      SetCameraOrigin/SetCamera/BeginScene/RenderFrame——RenderFrame 返回前等
+//      上一帧 fence 且本帧 GPU 完成，口径=含 Submit+GPU 完成的墙钟，与 --planet3
+//      的 frame_ms 同口径可比）→ p50/p95/p99/mean/min/max + fps；
+//      chunk 总数/drawn/culled 逐帧（GetStats 快照）+ vbytes。
+//   ② 接缝像素口径：B-PLANET-08 GPU 口径（--planet3 5.5 节）在 1080p 的加密复测——
+//      相机 2m 悬停近档 (16,16)/(17,16) 共享东西缘 17 个采样顶点（k∈{0,4,..,60,63}
+//      含两角）正上方、天顶向下（near=0.5m，1080p 像素足迹 ≈1.60mm/px=640x480 的
+//      1/3），逐样整面回读 + 清屏色 (13,26,38)±6 泄漏扫描（缝带窗口 = 投影缝位
+//      ±3px/±2 行）+ CPU float 域两侧渲染位置复刻（B-PLANET-08 渲染口径）期望缝宽。
+//      VB 是顶点口径（15.93mm max），这里是像素口径（1.60mm/px 足迹下清屏色泄漏
+//      计数）——两层证据衔接。复刻列（expect_px）有灾难性抵消放大（B-PLANET-08
+//      2.3 节 (a) 项同款），只作参考不作判据；判据 = 清屏色泄漏像素。
+//   ③ 贴地扫描（设计稿 D9 MISSING 清零）：M=100 个确定性采样点（面 0，含 chunk
+//      共享边/角/格对角线附近 + 近/远档跨界 + 格点锚点），ZR_Planet_SampleHeight
+//      （C+dir·R，dll 纯函数 ABI）与渲染网格插值高度对照——网格模型 = dll
+//      GenerateChunkVerts 同源路由（zplanet::PlanetChunkVertexAtGlobal，近档
+//      64x64/远档 16x16，三角化对角 v00-v11 与 BuildTierIndices 一致）的 CPU 复刻，
+//      采样方向射线（原点=行星中心）与所在格三角形求交得径向高度 t−R，
+//      dev = h_mesh − h_pure(double)。输出偏差幅值分布（max/mean/p95/p99、近/远档
+//      分列、格点锚点校准项应≈0）。
+//   ④ JSON+截图落 Tools/Probes/out/（文件名白名单 + out 目录边界断言照 fsr4_probe
+//      ——Mimosa 复查口径），README 登记 + 两机可跑（对端补验步骤见 README）。
+// 判据挂账：1080p≥30fps 实测数字如实记录（达标与否都是数据，不粉饰）——
+// 退出码 0 = 探针完整跑完且 JSON 已落盘（fps 未达标是数据不是失败，fsr4_probe
+// 同策）；2 = 探针链路硬失败（dll/设备/创建/回读——数字无意义，无 JSON）；
+// 1 = JSON 未写出（out 目录不可建/不可写/文件名越界）。
+// 遗留如实登记：GPU clip 域逐顶点读回无手段（B-PLANET-08 2.9 同项，v1 不做）；
+// 双槽回读奇偶性在本模式内显式管理（槽 0 = 偶序 RenderFrame 写入，见下）。
+// =============================================================================
+
+namespace planetbudget {
+
+// ---- 小工具：宽字符 → UTF-8 / JSON 转义 / 时间戳 / 文件名白名单 / out 目录 ----
+// （fsr4_probe.cpp 同款口径移植——探针落盘规则单一事实源在 env-probe.js）
+
+std::string PbUtf8FromWide(const wchar_t* wide)
+{
+    char utf8[256] = {};
+    ::WideCharToMultiByte(CP_UTF8, 0, (wide != nullptr) ? wide : L"", -1, utf8,
+        static_cast<int>(sizeof(utf8)), nullptr, nullptr);
+    return std::string(utf8);
+}
+
+std::string PbJsonEscape(const std::string& in)
+{
+    std::string out;
+    out.reserve(in.size() + 8);
+    for (const char c : in) {
+        switch (c) {
+        case '"': out += "\\\""; break;
+        case '\\': out += "\\\\"; break;
+        case '\b': out += "\\b"; break;
+        case '\f': out += "\\f"; break;
+        case '\n': out += "\\n"; break;
+        case '\r': out += "\\r"; break;
+        case '\t': out += "\\t"; break;
+        default:
+            if (static_cast<unsigned char>(c) < 0x20u) {
+                char buf[8] = {};
+                std::snprintf(buf, sizeof(buf), "\\u%04X",
+                    static_cast<unsigned>(static_cast<unsigned char>(c)));
+                out += buf;
+            } else {
+                out += c;
+            }
+        }
+    }
+    return out;
+}
+
+std::string PbUtcIso()
+{
+    std::time_t now = std::time(nullptr);
+    std::tm utc {};
+    ::gmtime_s(&utc, &now);
+    char buf[32] = {};
+    std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &utc);
+    return std::string(buf);
+}
+
+std::string PbUtcStampFile()
+{
+    // 与 env-probe.js / fsr4_probe 同口径：ISO 串的 ':' → '-'，截 19 字符
+    std::time_t now = std::time(nullptr);
+    std::tm utc {};
+    ::gmtime_s(&utc, &now);
+    char buf[32] = {};
+    std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H-%M-%S", &utc);
+    return std::string(buf);
+}
+
+/// env-probe.js 白名单 /^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)+$/：仅字母/数字/_/- 分段
+/// + 单点分隔（≥1 个点），天然不含路径分隔符与连续点，杜绝 ../ 与分隔符注入。
+bool PbValidFileName(const std::string& name)
+{
+    if (name.empty()) {
+        return false;
+    }
+    bool inSegment = false;
+    bool sawDot = false;
+    for (const char c : name) {
+        if (c == '.') {
+            if (!inSegment) {
+                return false; // 连续点/以点开头（含 ".."）→ 拒绝
+            }
+            sawDot = true;
+            inSegment = false;
+        } else if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
+            || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+            inSegment = true;
+        } else {
+            return false; // 非白名单字符（含 / \ : 等）→ 拒绝
+        }
+    }
+    return inSegment && sawDot;
+}
+
+struct PbOutLocation {
+    std::string mode;   // "repo-root" | "portable-exe-dir"
+    std::string outDir; // 常量 out 根（独立于文件名计算——边界断言基准）
+};
+
+/// 自 exe 目录向上找仓库根（标记 = Tools/Probes/README.md）→ Tools/Probes/out；
+/// 找不到 → exe 同目录 out/（便携档，两机免仓库跑法与 fsr4-probe 同源）。
+PbOutLocation PbResolveOutLocation()
+{
+    char exePathA[MAX_PATH] = {};
+    ::GetModuleFileNameA(nullptr, exePathA, MAX_PATH);
+    std::string exeDir(exePathA);
+    const size_t slash = exeDir.find_last_of("\\/");
+    if (slash != std::string::npos) {
+        exeDir = exeDir.substr(0, slash);
+    }
+    std::string cursor = exeDir;
+    for (int depth = 0; depth < 8; ++depth) {
+        const std::string marker = cursor + "\\Tools\\Probes\\README.md";
+        if (::GetFileAttributesA(marker.c_str()) != INVALID_FILE_ATTRIBUTES) {
+            return {"repo-root", cursor + "\\Tools\\Probes\\out"};
+        }
+        const size_t parentSlash = cursor.find_last_of("\\/");
+        if (parentSlash == std::string::npos || parentSlash < 2) {
+            break; // 已到盘根
+        }
+        cursor = cursor.substr(0, parentSlash);
+    }
+    return {"portable-exe-dir", exeDir + "\\out"};
+}
+
+// ---- 分位数（最近邻秩法，口径入 JSON）------------------------------------------
+
+double PbPercentile(std::vector<double>& sorted, double p)
+{
+    if (sorted.empty()) {
+        return 0.0;
+    }
+    // nearest-rank：ceil(p·N) 的 1-based 名次（p50@300 → 第 150 个 = sorted[149]）
+    const double rank = std::ceil(p * static_cast<double>(sorted.size()));
+    const size_t idx = (rank < 1.0)
+        ? 0u
+        : (rank >= static_cast<double>(sorted.size())
+                ? sorted.size() - 1u
+                : static_cast<size_t>(rank) - 1u);
+    return sorted[idx];
+}
+
+} // namespace planetbudget
+
+static int RunPlanetBudgetMode()
+{
+    using zplanet::Vec3d;
+    using namespace planetbudget;
+    // 探针进度逐行落盘（无缓冲）：崩溃时保留崩溃前的全部控制台证据
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
+    constexpr uint32_t kPbW = 1920u;            // 1080p（判据口径分辨率）
+    constexpr uint32_t kPbH = 1080u;
+    constexpr uint32_t kPbWarmup = 60u;         // 热身（上传落地 + 编译/PSO 稳态）
+    constexpr uint32_t kPbFrames = 300u;        // 采样帧数（简报下限 ≥300）
+    constexpr uint32_t kPbSeed = 1337u;         // --planet3 同种子
+    constexpr uint32_t kPbCells = 32u;          // --planet3 同 cellsPerEdge
+    constexpr double kPbAltM = 600.0;           // --planet3 同悬停高度
+    constexpr uint32_t kPbTargetFps = 30u;      // 改进计划 §3-P2 判据
+    const char* kPbModeName = "planet-budget";
+
+    std::vector<std::pair<std::string, std::string>> pbMissing; // MISSING（不填默认值）
+
+    // ---- 0) 输出目录与文件名（白名单 + 边界断言先行——写不进去早失败）------------
+    const PbOutLocation out = PbResolveOutLocation();
+    const std::string stamp = PbUtcStampFile();
+    const std::string jsonName = std::string("planet-budget-") + stamp + ".json";
+    const std::string terrainName = std::string("planet-budget-") + stamp + "-terrain.png";
+    const std::string seamName = std::string("planet-budget-") + stamp + "-seam.png";
+    if (!PbValidFileName(jsonName) || !PbValidFileName(terrainName)
+        || !PbValidFileName(seamName)) {
+        std::fprintf(stderr, "zrhi_d3d12_window: --pbudget 输出文件名不合白名单，拒绝执行\n");
+        return 1;
+    }
+    const std::string outRoot = out.outDir + "\\";  // 常量根
+    const std::string jsonPath = outRoot + jsonName;
+    const std::string terrainPath = outRoot + terrainName;
+    const std::string seamPath = outRoot + seamName;
+    if (jsonPath.compare(0, outRoot.size(), outRoot) != 0
+        || terrainPath.compare(0, outRoot.size(), outRoot) != 0
+        || seamPath.compare(0, outRoot.size(), outRoot) != 0) {
+        std::fprintf(stderr, "zrhi_d3d12_window: --pbudget 输出路径越出探针 out 目录\n");
+        return 1;
+    }
+    std::error_code fsEc;
+    std::filesystem::create_directories(std::filesystem::path(out.outDir), fsEc);
+    if (fsEc.value() != 0) {
+        std::fprintf(stderr, "zrhi_d3d12_window: --pbudget out 目录不可创建 (%s): %s\n",
+            out.outDir.c_str(), fsEc.message().c_str());
+        return 1;
+    }
+
+    std::printf("======================================================================\n");
+    std::printf(" %s probe (TASK-B-PLANET-09)  %s\n", kPbModeName, PbUtcIso().c_str());
+    std::printf(" 1080p 帧耗预算 / 接缝像素口径 / 贴地扫描（D9）——判据挂账 1080p>=%u fps\n",
+        kPbTargetFps);
+    std::printf("======================================================================\n");
+
+    // ---- 1) 生产 dll 导出面（--planet3 同策 + SampleHeight）------------------------
+    HMODULE dll = LoadLibraryA("zrender.dll");
+    if (dll == nullptr) {
+        std::printf("zrhi_d3d12_window: --pbudget FAILED LoadLibrary(zrender.dll) err=%lu\n",
+            GetLastError());
+        return 2;
+    }
+    using ZrApiVersionFn = uint32_t (*)();
+    using ZrGetVersionFn = const char* (*)();
+    const auto apiVersion = reinterpret_cast<ZrApiVersionFn>(GetProcAddress(dll, "ZR_ApiVersion"));
+    const auto getVersion = reinterpret_cast<ZrGetVersionFn>(GetProcAddress(dll, "ZR_GetVersion"));
+    const auto attachTex = reinterpret_cast<ZrUnityAttachDeviceFromTextureFn>(
+        GetProcAddress(dll, "ZR_Unity_AttachDeviceFromTexture"));
+    const auto createTarget = reinterpret_cast<ZrUnityCreateSharedTargetFn>(
+        GetProcAddress(dll, "ZR_Unity_CreateSharedTarget"));
+    const auto setCamera = reinterpret_cast<ZrUnitySetCameraFn>(
+        GetProcAddress(dll, "ZR_Unity_SetCamera"));
+    const auto setCameraOrigin = reinterpret_cast<ZrUnitySetCameraOriginFn>(
+        GetProcAddress(dll, "ZR_Unity_SetCameraOrigin"));
+    const auto beginScene = reinterpret_cast<ZrUnityBeginSceneFn>(
+        GetProcAddress(dll, "ZR_Unity_BeginScene"));
+    const auto renderFrame = reinterpret_cast<ZrUnityRenderFrameFn>(
+        GetProcAddress(dll, "ZR_Unity_RenderFrame"));
+    const auto readPixels = reinterpret_cast<ZrUnityReadTargetPixelsFn>(
+        GetProcAddress(dll, "ZR_Unity_ReadTargetPixels"));
+    const auto releaseTarget = reinterpret_cast<ZrUnityReleaseSharedTargetFn>(
+        GetProcAddress(dll, "ZR_Unity_ReleaseSharedTarget"));
+    const auto setWorld = reinterpret_cast<ZrPlanetSetWorldFn>(
+        GetProcAddress(dll, "ZR_Planet_SetWorld"));
+    const auto chunkCreate = reinterpret_cast<ZrPlanetChunkCreateFn>(
+        GetProcAddress(dll, "ZR_Planet_ChunkCreate"));
+    const auto setLod = reinterpret_cast<ZrPlanetSetLodFn>(
+        GetProcAddress(dll, "ZR_Planet_SetLod"));
+    const auto getStats = reinterpret_cast<ZrPlanetGetStatsFn>(
+        GetProcAddress(dll, "ZR_Planet_GetStats"));
+    const auto clearAll = reinterpret_cast<ZrPlanetClearAllFn>(
+        GetProcAddress(dll, "ZR_Planet_ClearAll"));
+    const auto sampleHeight = reinterpret_cast<ZrPlanetSampleHeightFn>(
+        GetProcAddress(dll, "ZR_Planet_SampleHeight"));
+    if (apiVersion == nullptr || getVersion == nullptr || attachTex == nullptr
+        || createTarget == nullptr || setCamera == nullptr || setCameraOrigin == nullptr
+        || beginScene == nullptr || renderFrame == nullptr || readPixels == nullptr
+        || releaseTarget == nullptr || setWorld == nullptr || chunkCreate == nullptr
+        || setLod == nullptr || getStats == nullptr || clearAll == nullptr
+        || sampleHeight == nullptr) {
+        std::printf("zrhi_d3d12_window: --pbudget FAILED GetProcAddress (planet/bridge "
+                    "exports missing)\n");
+        FreeLibrary(dll);
+        return 2;
+    }
+    const uint32_t version = apiVersion();
+    if (version < 3u) {
+        std::printf("zrhi_d3d12_window: --pbudget FAILED ApiVersion=%u (need >= 3)\n", version);
+        FreeLibrary(dll);
+        return 2;
+    }
+    // 版本串在 FreeLibrary 前拷出（JSON 组装在卸载后——悬空函数指针会段错误）
+    const std::string zrVersionStr = getVersion();
+
+    // ---- 2) 宿主设备 + 1080p 纹理（扮演 Unity，COMMON 态）---------------------------
+    Microsoft::WRL::ComPtr<IDXGIFactory4> factory;
+    if (FAILED(CreateDXGIFactory2(0u, IID_PPV_ARGS(&factory)))) {
+        std::printf("zrhi_d3d12_window: --pbudget FAILED CreateDXGIFactory2\n");
+        FreeLibrary(dll);
+        return 2;
+    }
+    std::string adapterDesc;
+    uint32_t adapterVendor = 0u;
+    uint32_t adapterDevice = 0u;
+    unsigned long long adapterMemMb = 0u;
+    Microsoft::WRL::ComPtr<IDXGIAdapter1> adapter;
+    for (UINT i = 0u; i < 8u; ++i) {
+        Microsoft::WRL::ComPtr<IDXGIAdapter1> candidate;
+        if (factory->EnumAdapters1(i, &candidate) == DXGI_ERROR_NOT_FOUND) {
+            break;
+        }
+        DXGI_ADAPTER_DESC1 desc1 {};
+        if (candidate->GetDesc1(&desc1) != S_OK) {
+            continue;
+        }
+        if ((desc1.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) == 0u) {
+            adapter = candidate;
+            adapterDesc = PbUtf8FromWide(desc1.Description);
+            adapterVendor = desc1.VendorId;
+            adapterDevice = desc1.DeviceId;
+            adapterMemMb = static_cast<unsigned long long>(desc1.DedicatedVideoMemory)
+                / (1024u * 1024u);
+            break;
+        }
+    }
+    if (adapter == nullptr) {
+        pbMissing.push_back({"host.adapter",
+            "DXGI 未枚举到非软件适配器——帧耗数字不可信（无硬件环境），JSON 如实记录"});
+    }
+    Microsoft::WRL::ComPtr<ID3D12Device> hostDevice;
+    if (FAILED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0,
+            IID_PPV_ARGS(&hostDevice)))) {
+        std::printf("zrhi_d3d12_window: --pbudget FAILED host D3D12CreateDevice\n");
+        FreeLibrary(dll);
+        return 2;
+    }
+    D3D12_HEAP_PROPERTIES heap {};
+    heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+    D3D12_RESOURCE_DESC texDesc {};
+    texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    texDesc.Width = kPbW;
+    texDesc.Height = kPbH;
+    texDesc.DepthOrArraySize = 1u;
+    texDesc.MipLevels = 1u;
+    texDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    texDesc.SampleDesc.Count = 1u;
+    texDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+    Microsoft::WRL::ComPtr<ID3D12Resource> hostTexture;
+    if (FAILED(hostDevice->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &texDesc,
+            D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&hostTexture)))) {
+        std::printf("zrhi_d3d12_window: --pbudget FAILED host texture\n");
+        FreeLibrary(dll);
+        return 2;
+    }
+
+    // ---- 3) 接入共享目标 + 行星上下文 ------------------------------------------------
+    int rc = attachTex(hostTexture.Get());
+    if (rc != ZR_UNITY_OK) {
+        std::printf("zrhi_d3d12_window: --pbudget FAILED AttachDeviceFromTexture rc=%d\n", rc);
+        FreeLibrary(dll);
+        return 2;
+    }
+    rc = createTarget(kPbW, kPbH);
+    if (rc != ZR_UNITY_OK) {
+        std::printf("zrhi_d3d12_window: --pbudget FAILED CreateSharedTarget(1920x1080) rc=%d\n",
+            rc);
+        FreeLibrary(dll);
+        return 2;
+    }
+    ZrPlanetWorld world {};
+    world.structSize = static_cast<uint32_t>(sizeof(ZrPlanetWorld));
+    world.seed = kPbSeed;
+    world.centerAbs[0] = 0.0;
+    world.centerAbs[1] = -zplanet::kPlanetRadiusM;
+    world.centerAbs[2] = 0.0;
+    if (setWorld(&world) != ZR_PLANET_OK) {
+        std::printf("zrhi_d3d12_window: --pbudget FAILED SetWorld\n");
+        FreeLibrary(dll);
+        return 2;
+    }
+
+    // ---- 4) chunk 编排（--planet3 同布局：近档 3x3 + 远档环 + 5 面采样 = 30）---------
+    //   近档 (cx,cy∈[15,17], lod1) 9 块；远档环 [14,18]²−内 16 块；面 1..5 各 1 块。
+    struct PbChunkSpec {
+        uint32_t face;
+        uint32_t cx;
+        uint32_t cy;
+        uint32_t lod;
+        uint64_t handle;
+    };
+    std::vector<PbChunkSpec> specs;
+    for (uint32_t cy = 14u; cy <= 18u; ++cy) {
+        for (uint32_t cx = 14u; cx <= 18u; ++cx) {
+            const bool inner = (cx >= 15u && cx <= 17u && cy >= 15u && cy <= 17u);
+            specs.push_back({0u, cx, cy, inner ? 1u : 0u, 0u});
+        }
+    }
+    for (uint32_t face = 1u; face <= 5u; ++face) {
+        specs.push_back({face, 16u, 16u, 0u, 0u});
+    }
+    constexpr double kPbNearStrideD = 63.0;  // 近档 stride（res 64−1）
+    constexpr double kPbFarStrideD = 15.0;   // 远档 stride（res 16−1）
+    const double nearTotalD = static_cast<double>(kPbCells) * kPbNearStrideD; // 2016
+    const double farTotalD = static_cast<double>(kPbCells) * kPbFarStrideD;   // 480
+    const double expectedVertexBytes = 9.0 * 139264.0 + 21.0 * 10240.0;       // 近+远档
+    const Vec3d centerC = {0.0, -zplanet::kPlanetRadiusM, 0.0};
+    for (PbChunkSpec& spec : specs) {
+        ZrPlanetChunkDesc desc {};
+        desc.structSize = static_cast<uint32_t>(sizeof(ZrPlanetChunkDesc));
+        desc.faceId = spec.face;
+        desc.lodLevel = spec.lod;
+        desc.cx = spec.cx;
+        desc.cy = spec.cy;
+        desc.cellsPerEdge = kPbCells;
+        desc.neighborMask = 0u;
+        desc.reserved0 = 0u;
+        // 锚点 = chunk 中心球面点（--planet3 同式：stride/2 顶点）
+        const int32_t stride = static_cast<int32_t>(spec.lod >= 1u ? 63u : 15u);
+        const int32_t total = static_cast<int32_t>(kPbCells) * stride;
+        const int32_t gU = zplanet::ChunkVertexIndex(
+            static_cast<int32_t>(spec.cx), stride / 2, stride);
+        const int32_t gV = zplanet::ChunkVertexIndex(
+            static_cast<int32_t>(spec.cy), stride / 2, stride);
+        const zplanet::PlanetChunkVertex v = zplanet::PlanetChunkVertexAtGlobal(
+            centerC, static_cast<int>(spec.face), gU, gV, total, kPbSeed);
+        desc.originAbs[0] = v.posAbs.x;
+        desc.originAbs[1] = v.posAbs.y;
+        desc.originAbs[2] = v.posAbs.z;
+        rc = chunkCreate(&desc, &spec.handle);
+        if (rc != ZR_PLANET_OK) {
+            std::printf("zrhi_d3d12_window: --pbudget FAILED ChunkCreate(face=%u cx=%u "
+                        "cy=%u) rc=%d\n",
+                spec.face, spec.cx, spec.cy, rc);
+            clearAll();
+            FreeLibrary(dll);
+            return 2;
+        }
+    }
+    ZrPlanetStats stats {};
+    if (getStats(&stats) != ZR_PLANET_OK || stats.liveChunks != specs.size()
+        || stats.pendingUploads != specs.size()) {
+        std::printf("zrhi_d3d12_window: --pbudget FAILED create stats (live=%u up=%u)\n",
+            stats.liveChunks, stats.pendingUploads);
+        clearAll();
+        releaseTarget();
+        FreeLibrary(dll);
+        return 2;
+    }
+    std::printf("host.adapter      : %s (vendor=0x%04X device=0x%04X, dmem=%llu MB)\n",
+        adapterDesc.empty() ? "(取不到)" : adapterDesc.c_str(), adapterVendor, adapterDevice,
+        adapterMemMb);
+    std::printf("out.mode          : %s -> %s\n", out.mode.c_str(), out.outDir.c_str());
+    std::printf("[setup] chunks=%zu (near=9 far=%zu expectedVB=%.0fB) seed=%u version=%u "
+                "zr=%s\n",
+        specs.size(), specs.size() - 9u, expectedVertexBytes, kPbSeed, version,
+        getVersion());
+
+    // ---- 5) 相机（--planet3 同轨迹：缓慢偏航 ±8° + 俯角 30°，悬停 600m）--------------
+    const Vec3d dir0 = zplanet::CubeSphereDir(0, 0.0, 0.0); // face 0 中心方向 (+Z)
+    const Vec3d t1 = {1.0, 0.0, 0.0};
+    const Vec3d t2 = {0.0, 1.0, 0.0};
+    const double h0 = zplanet::PlanetTerrainHeightM(kPbSeed, dir0.x, dir0.y, dir0.z);
+    const Vec3d camAbs = zplanet::VecAdd(centerC,
+        zplanet::VecScale(dir0, zplanet::kPlanetRadiusM + h0 + kPbAltM));
+    constexpr float kFovY = 3.14159265f / 3.0f;
+    float proj[16];
+    MatPerspectiveFovLH(kFovY, static_cast<float>(kPbW) / static_cast<float>(kPbH), 2.0f,
+        800000.0f, proj);
+
+    // 逐帧相机姿态（轨迹公式与 --planet3 一致，供预算循环复用）
+    auto pbCameraPose = [&](uint32_t frame, Vec3d* outFwd) {
+        const double yaw
+            = std::sin(static_cast<double>(frame) * 0.12) * (8.0 * 3.14159265 / 180.0);
+        const double dip = 30.0 * 3.14159265 / 180.0;
+        Vec3d fwdFlat = zplanet::VecAdd(
+            zplanet::VecScale(t1, std::cos(yaw)), zplanet::VecScale(t2, std::sin(yaw)));
+        fwdFlat = zplanet::VecScale(fwdFlat, 1.0 / zplanet::VecLen(fwdFlat));
+        Vec3d fwdD = zplanet::VecSub(
+            zplanet::VecScale(fwdFlat, std::cos(dip)), zplanet::VecScale(dir0, std::sin(dip)));
+        fwdD = zplanet::VecScale(fwdD, 1.0 / zplanet::VecLen(fwdD));
+        *outFwd = fwdD;
+    };
+
+    // ---- 6) 预算循环：热身 60 + 采样 300（frame_ms 口径 = --planet3 同 QPC 包法）-----
+    //   双槽回读奇偶记账：ReadTargetPixels 固定读槽 0；RenderFrame 以调用序号 &
+    //   1 选槽（偶序写槽 0）。本探针所有回读前用 pbRenderCalls 保证"真帧落在偶序"。
+    uint32_t pbRenderCalls = 0u;
+    std::vector<double> frameMs; // 采样帧逐帧墙钟
+    frameMs.reserve(kPbFrames);
+    std::vector<uint32_t> drawnPerFrame;
+    std::vector<uint32_t> culledPerFrame;
+    drawnPerFrame.reserve(kPbFrames);
+    culledPerFrame.reserve(kPbFrames);
+    uint32_t pendingUploadsMax = 0u;
+    uint32_t drawnMin = UINT32_MAX;
+    uint32_t drawnMax = 0u;
+    uint32_t culledMin = UINT32_MAX;
+    uint32_t culledMax = 0u;
+    uint64_t vbytesObserved = 0u;
+    bool vbytesStable = true;
+    bool loopOk = true;
+    LARGE_INTEGER qpf {};
+    QueryPerformanceFrequency(&qpf);
+    for (uint32_t frame = 0u; frame < kPbWarmup + kPbFrames && loopOk; ++frame) {
+        Vec3d fwdD {};
+        pbCameraPose(frame, &fwdD);
+        const float fwd[3] = {static_cast<float>(fwdD.x), static_cast<float>(fwdD.y),
+            static_cast<float>(fwdD.z)};
+        const float up[3] = {static_cast<float>(dir0.x), static_cast<float>(dir0.y),
+            static_cast<float>(dir0.z)};
+        float view[16];
+        zplanetapp::PlanetMatLookAtLH(fwd, up, view);
+        setCameraOrigin(camAbs.x, camAbs.y, camAbs.z);
+        setCamera(view, proj);
+        LARGE_INTEGER qpc0 {};
+        LARGE_INTEGER qpc1 {};
+        QueryPerformanceCounter(&qpc0);
+        beginScene();
+        rc = renderFrame();
+        QueryPerformanceCounter(&qpc1);
+        ++pbRenderCalls;
+        if (rc != ZR_UNITY_OK) {
+            std::printf("  frame %u: RenderFrame FAILED rc=%d\n", frame + 1u, rc);
+            loopOk = false;
+            break;
+        }
+        if (frame >= kPbWarmup) {
+            const double ms = static_cast<double>(qpc1.QuadPart - qpc0.QuadPart) * 1000.0
+                / static_cast<double>(qpf.QuadPart);
+            frameMs.push_back(ms);
+            if (getStats(&stats) != ZR_PLANET_OK) {
+                std::printf("  frame %u: GetStats FAILED\n", frame + 1u);
+                loopOk = false;
+                break;
+            }
+            if (stats.createTotal - stats.destroyTotal != stats.liveChunks) {
+                std::printf("  frame %u: account invariant BROKEN\n", frame + 1u);
+                loopOk = false;
+                break;
+            }
+            drawnPerFrame.push_back(stats.drawnLastFrame);
+            culledPerFrame.push_back(stats.culledLastFrame);
+            drawnMin = (stats.drawnLastFrame < drawnMin) ? stats.drawnLastFrame : drawnMin;
+            drawnMax = (stats.drawnLastFrame > drawnMax) ? stats.drawnLastFrame : drawnMax;
+            culledMin = (stats.culledLastFrame < culledMin) ? stats.culledLastFrame : culledMin;
+            culledMax = (stats.culledLastFrame > culledMax) ? stats.culledLastFrame : culledMax;
+            pendingUploadsMax = (stats.pendingUploads > pendingUploadsMax) ? stats.pendingUploads
+                                                                          : pendingUploadsMax;
+            if (vbytesObserved == 0u) {
+                vbytesObserved = stats.vertexBytes;
+            }
+            if (stats.vertexBytes != vbytesObserved) {
+                vbytesStable = false;
+            }
+        }
+    }
+    if (!loopOk) {
+        clearAll();
+        releaseTarget();
+        FreeLibrary(dll);
+        return 2;
+    }
+
+    // ---- 帧耗分布（最近邻秩分位）------------------------------------------------------
+    std::vector<double> sortedMs = frameMs;
+    std::sort(sortedMs.begin(), sortedMs.end());
+    const double p50Ms = PbPercentile(sortedMs, 0.50);
+    const double p95Ms = PbPercentile(sortedMs, 0.95);
+    const double p99Ms = PbPercentile(sortedMs, 0.99);
+    double msSum = 0.0;
+    for (const double ms : frameMs) {
+        msSum += ms;
+    }
+    const double meanMs = msSum / static_cast<double>(frameMs.size());
+    const double minMs = sortedMs.front();
+    const double maxMs = sortedMs.back();
+    const double fpsMean = 1000.0 / meanMs;
+    const double fpsP50 = 1000.0 / p50Ms;
+    const bool fpsMet = (fpsMean >= static_cast<double>(kPbTargetFps))
+        && (fpsP50 >= static_cast<double>(kPbTargetFps));
+    std::printf("[budget] warmup=%u sampled=%zu @%ux%u (QPC 含 Submit+GPU 完成的墙钟)\n",
+        kPbWarmup, frameMs.size(), kPbW, kPbH);
+    std::printf("  frame_ms: p50=%.3f p95=%.3f p99=%.3f mean=%.3f min=%.3f max=%.3f\n", p50Ms,
+        p95Ms, p99Ms, meanMs, minMs, maxMs);
+    std::printf("  fps: mean=%.2f p50=%.2f -> 1080p>=%u fps: %s\n", fpsMean, fpsP50,
+        kPbTargetFps, fpsMet ? "MET" : "NOT-MET (如实记录，达标与否都是数据)");
+    std::printf("  chunks: drawn %u..%u culled %u..%u pendingUpMax=%u vbytes=%llu (%s)\n",
+        drawnMin, drawnMax, culledMin, culledMax, pendingUploadsMax,
+        static_cast<unsigned long long>(vbytesObserved),
+        vbytesStable ? "stable" : "UNSTABLE");
+
+    // ---- 7) 关键帧整面回读（1080p 地形证据 + PNG，槽 0 = 本帧）------------------------
+    constexpr uint8_t kClearRGB[3] = {13u, 26u, 38u}; // ZR_UNITY 清屏色 8bit（kClearColor）
+    constexpr int kClearTol = 6;                      // 清屏色判定容差（--planet3 缝扫描同）
+    const uint32_t totalPixels = kPbW * kPbH;
+    std::vector<uint8_t> pixels(static_cast<size_t>(kPbW) * kPbH * 4u);
+    uint32_t terrainPixels = 0u;
+    bool terrainPngOk = false;
+    {
+        Vec3d fwdD {};
+        pbCameraPose(kPbWarmup + kPbFrames - 1u, &fwdD); // 末采样帧同姿态（场景稳态代表帧）
+        const float fwd[3] = {static_cast<float>(fwdD.x), static_cast<float>(fwdD.y),
+            static_cast<float>(fwdD.z)};
+        const float up[3] = {static_cast<float>(dir0.x), static_cast<float>(dir0.y),
+            static_cast<float>(dir0.z)};
+        float view[16];
+        zplanetapp::PlanetMatLookAtLH(fwd, up, view);
+        setCameraOrigin(camAbs.x, camAbs.y, camAbs.z);
+        setCamera(view, proj);
+        // 奇偶记账：此时 pbRenderCalls = warmup+frames（偶）→ 本帧即写槽 0
+        beginScene();
+        rc = renderFrame();
+        ++pbRenderCalls;
+        uint32_t rw = 0u;
+        uint32_t rh = 0u;
+        if (rc == ZR_UNITY_OK
+            && readPixels(pixels.data(), kPbW * 4u, &rw, &rh) == ZR_UNITY_OK && rw == kPbW
+            && rh == kPbH) {
+            for (uint32_t y = 0u; y < kPbH; ++y) {
+                const uint8_t* row = pixels.data() + static_cast<size_t>(y) * kPbW * 4u;
+                for (uint32_t x = 0u; x < kPbW; ++x) {
+                    const uint8_t* px = row + static_cast<size_t>(x) * 4u;
+                    const int dr = std::abs(static_cast<int>(px[2]) - static_cast<int>(kClearRGB[0]));
+                    const int dg = std::abs(static_cast<int>(px[1]) - static_cast<int>(kClearRGB[1]));
+                    const int db = std::abs(static_cast<int>(px[0]) - static_cast<int>(kClearRGB[2]));
+                    if (dr > 12 || dg > 12 || db > 12) {
+                        ++terrainPixels;
+                    }
+                }
+            }
+            // BGRA → RGBA（WritePng24 按 4B/px 行距读——1080p 证据图）
+            std::vector<uint8_t> rgba(static_cast<size_t>(kPbW) * kPbH * 4u);
+            for (uint32_t y = 0u; y < kPbH; ++y) {
+                const uint8_t* src = pixels.data() + static_cast<size_t>(y) * kPbW * 4u;
+                uint8_t* dst = rgba.data() + static_cast<size_t>(y) * kPbW * 4u;
+                for (uint32_t x = 0u; x < kPbW; ++x) {
+                    dst[x * 4u + 0u] = src[x * 4u + 2u];
+                    dst[x * 4u + 1u] = src[x * 4u + 1u];
+                    dst[x * 4u + 2u] = src[x * 4u + 0u];
+                    dst[x * 4u + 3u] = src[x * 4u + 3u];
+                }
+            }
+            terrainPngOk = WritePng24(terrainPath.c_str(), rgba.data(), kPbW, kPbH, kPbW * 4u);
+        } else {
+            std::printf("  keyframe readback FAILED rc=%d %ux%u\n", rc, rw, rh);
+            pbMissing.push_back({"terrain.readback",
+                "1080p 关键帧整面回读失败——地形证据图按缺记录"});
+        }
+    }
+    std::printf("  keyframe -> %s (%s) terrainPixels=%u/%u (%.1f%%)\n", terrainName.c_str(),
+        terrainPngOk ? "written" : "FAILED", terrainPixels, totalPixels,
+        100.0 * static_cast<double>(terrainPixels) / static_cast<double>(totalPixels));
+
+    // ---- 8) 接缝像素口径（1080p 加密复测 B-PLANET-08 GPU 口径）------------------------
+    //   相机 2m 悬停近档 (16,16)/(17,16) 共享东西缘顶点正上方、天顶向下。17 采样
+    //   （k∈{0,4,...,60,63}，含两角）。每样：CPU float 复刻两侧渲染位置（期望缝宽）
+    //   + 渲染 + 整面回读 + 缝带窗口清屏色泄漏扫描。
+    constexpr int32_t kPbSeamStride = 63; // 近档共享缘（同档）
+    constexpr int32_t kPbSeamTotal = static_cast<int32_t>(kPbCells) * kPbSeamStride; // 2016
+    const uint32_t kSeamSamples[17] = {0u, 4u, 8u, 12u, 16u, 20u, 24u, 28u, 32u, 36u, 40u,
+        44u, 48u, 52u, 56u, 60u, 63u};
+    // 像素足迹：2m 天底、fovY=60° → 1px 竖直跨度 = 2·2m·tan(30°)/1080 ≈ 2.138mm/px
+    //（640x480 口径 4.81mm/px 的 1/3——B-PLANET-08 §2.3 同式换 1080p）
+    const double footMmPerPx1080 = 2.0 * std::tan(3.14159265 / 6.0) * 2.0
+        / static_cast<double>(kPbH) * 1000.0;
+    struct PbSeamSample {
+        uint32_t k = 0u;
+        double expectMm = 0.0;
+        double expectPx = 0.0;
+        uint32_t clearWin = 0u;
+        uint32_t runRow = 0u;
+        uint32_t clearTotal = 0u;
+        double pxa = 0.0;
+        double pya = 0.0;
+        bool frameOk = false;
+    };
+    std::vector<PbSeamSample> seamSamples;
+    seamSamples.reserve(17);
+    uint32_t seamFramesOk = 0u;
+    bool seamPngOk = false;
+    std::printf("[seam] footprint=%.3fmm/px (2m nadir, near=0.5m, 1080p) 17 samples along "
+                "(16,16)/(17,16) shared edge\n",
+        footMmPerPx1080);
+    std::printf("   k  expect_mm  expect_px  clear_win  run_row  clear_total   pxA(px)   "
+                "pyA(px)\n");
+    {
+        auto anchorOf = [&](uint32_t cx) -> Vec3d {
+            const int32_t gU = zplanet::ChunkVertexIndex(
+                static_cast<int32_t>(cx), kPbSeamStride / 2, kPbSeamStride);
+            const int32_t gV = zplanet::ChunkVertexIndex(
+                16, kPbSeamStride / 2, kPbSeamStride);
+            return zplanet::PlanetChunkVertexAtGlobal(
+                centerC, 0, gU, gV, kPbSeamTotal, kPbSeed)
+                .posAbs;
+        };
+        const Vec3d anchA = anchorOf(16u);
+        const Vec3d anchB = anchorOf(17u);
+        float projSeam[16];
+        MatPerspectiveFovLH(kFovY, static_cast<float>(kPbW) / static_cast<float>(kPbH), 0.5f,
+            800000.0f, projSeam);
+        // mvp·(local,1) → 像素坐标（列向量约定、D3D 视口 y 向下）
+        auto projectPixel = [](const float mvp[16], const float lpos[3], double w, double h,
+                               double* outX, double* outY) {
+            const float clipX = mvp[0] * lpos[0] + mvp[1] * lpos[1] + mvp[2] * lpos[2] + mvp[3];
+            const float clipY = mvp[4] * lpos[0] + mvp[5] * lpos[1] + mvp[6] * lpos[2] + mvp[7];
+            const float clipW
+                = mvp[12] * lpos[0] + mvp[13] * lpos[1] + mvp[14] * lpos[2] + mvp[15];
+            const float ndcX = clipX / clipW;
+            const float ndcY = clipY / clipW;
+            *outX = (static_cast<double>(ndcX) * 0.5 + 0.5) * w;
+            *outY = (0.5 - static_cast<double>(ndcY) * 0.5) * h;
+        };
+        for (const uint32_t k : kSeamSamples) {
+            PbSeamSample s;
+            s.k = k;
+            const zplanet::PlanetChunkVertex ev = zplanet::PlanetChunkVertexAtGlobal(
+                centerC, 0, 17 * kPbSeamStride, 16 * kPbSeamStride + static_cast<int32_t>(k),
+                kPbSeamTotal, kPbSeed);
+            const Vec3d camK = zplanet::VecAdd(centerC,
+                zplanet::VecScale(ev.normal, zplanet::kPlanetRadiusM + ev.heightM + 2.0));
+            const float downF[3] = {static_cast<float>(-ev.normal.x),
+                static_cast<float>(-ev.normal.y), static_cast<float>(-ev.normal.z)};
+            const float upHint[3] = {0.0f, 1.0f, 0.0f}; // face0 t2（缘沿 v → 屏内竖直线）
+            float viewK[16];
+            zplanetapp::PlanetMatLookAtLH(downF, upHint, viewK);
+            float vpK[16];
+            MatMultiply(projSeam, viewK, vpK);
+            // CPU float 域两侧渲染位置（B-PLANET-08 渲染口径：t=float(anchor−cam)、
+            // viewPos=float(local+t)——VS mul(model,·) 平移加法同款）
+            const float la[3] = {static_cast<float>(ev.posAbs.x - anchA.x),
+                static_cast<float>(ev.posAbs.y - anchA.y),
+                static_cast<float>(ev.posAbs.z - anchA.z)};
+            const float lb[3] = {static_cast<float>(ev.posAbs.x - anchB.x),
+                static_cast<float>(ev.posAbs.y - anchB.y),
+                static_cast<float>(ev.posAbs.z - anchB.z)};
+            const float ta[3] = {static_cast<float>(anchA.x - camK.x),
+                static_cast<float>(anchA.y - camK.y), static_cast<float>(anchA.z - camK.z)};
+            const float tb[3] = {static_cast<float>(anchB.x - camK.x),
+                static_cast<float>(anchB.y - camK.y), static_cast<float>(anchB.z - camK.z)};
+            float modelA[16];
+            float modelB[16];
+            MatTranslation(ta[0], ta[1], ta[2], modelA);
+            MatTranslation(tb[0], tb[1], tb[2], modelB);
+            float mvpA[16];
+            float mvpB[16];
+            MatMultiply(vpK, modelA, mvpA);
+            MatMultiply(vpK, modelB, mvpB);
+            float vaR[3] = {};
+            float vbR[3] = {};
+            for (int c = 0; c < 3; ++c) {
+                vaR[c] = la[c] + ta[c];
+                vbR[c] = lb[c] + tb[c];
+            }
+            const double dx = static_cast<double>(vaR[0]) - static_cast<double>(vbR[0]);
+            const double dy = static_cast<double>(vaR[1]) - static_cast<double>(vbR[1]);
+            const double dz = static_cast<double>(vaR[2]) - static_cast<double>(vbR[2]);
+            s.expectMm = std::sqrt(dx * dx + dy * dy + dz * dz) * 1000.0;
+            double pxb = 0.0;
+            double pyb = 0.0;
+            projectPixel(mvpA, la, static_cast<double>(kPbW), static_cast<double>(kPbH),
+                &s.pxa, &s.pya);
+            projectPixel(mvpB, lb, static_cast<double>(kPbW), static_cast<double>(kPbH), &pxb,
+                &pyb);
+            s.expectPx = std::fabs(s.pxa - pxb);
+            // 渲染 + 回读（奇偶记账：真帧必须落偶序 → 槽 0 = 本帧）
+            setCameraOrigin(camK.x, camK.y, camK.z);
+            setCamera(viewK, projSeam);
+            if ((pbRenderCalls & 1u) != 0u) {
+                beginScene(); // 垫帧翻转奇偶（同相机，内容被真帧覆盖）
+                if (renderFrame() != ZR_UNITY_OK) {
+                    std::printf("   %2u  filler frame FAILED\n", k);
+                } else {
+                    ++pbRenderCalls;
+                }
+            }
+            beginScene();
+            s.frameOk = (renderFrame() == ZR_UNITY_OK)
+                && (readPixels(pixels.data(), kPbW * 4u, nullptr, nullptr) == ZR_UNITY_OK);
+            ++pbRenderCalls;
+            if (s.frameOk) {
+                ++seamFramesOk;
+                const int32_t rowLo = std::max(0,
+                    static_cast<int32_t>(std::min(s.pya, pyb)) - 2);
+                const int32_t rowHi = std::min(static_cast<int32_t>(kPbH) - 1,
+                    static_cast<int32_t>(std::max(s.pya, pyb)) + 2);
+                const int32_t colLo = std::max(0,
+                    static_cast<int32_t>(std::min(s.pxa, pxb)) - 3);
+                const int32_t colHi = std::min(static_cast<int32_t>(kPbW) - 1,
+                    static_cast<int32_t>(std::max(s.pxa, pxb)) + 3);
+                for (uint32_t y = 0u; y < kPbH; ++y) {
+                    const uint8_t* row = pixels.data() + static_cast<size_t>(y) * kPbW * 4u;
+                    uint32_t run = 0u;
+                    for (uint32_t x = 0u; x < kPbW; ++x) {
+                        const uint8_t* px = row + static_cast<size_t>(x) * 4u;
+                        const bool isClear
+                            = std::abs(static_cast<int>(px[2]) - static_cast<int>(kClearRGB[0]))
+                                    <= kClearTol
+                                && std::abs(static_cast<int>(px[1])
+                                       - static_cast<int>(kClearRGB[1]))
+                                    <= kClearTol
+                                && std::abs(static_cast<int>(px[0])
+                                       - static_cast<int>(kClearRGB[2]))
+                                    <= kClearTol;
+                        if (isClear) {
+                            ++s.clearTotal;
+                            ++run;
+                            if (run > s.runRow) {
+                                s.runRow = run;
+                            }
+                        } else {
+                            run = 0u;
+                        }
+                        if (isClear && static_cast<int32_t>(y) >= rowLo
+                            && static_cast<int32_t>(y) <= rowHi
+                            && static_cast<int32_t>(x) >= colLo
+                            && static_cast<int32_t>(x) <= colHi) {
+                            ++s.clearWin;
+                        }
+                    }
+                }
+            } else {
+                pbMissing.push_back({"seam.readback.k" + std::to_string(k),
+                    "接缝采样渲染/回读失败——该样按缺记录"});
+            }
+            std::printf("   %2u  %8.3f  %8.3f  %9u  %7u  %11u  %8.2f  %8.2f  %s\n", s.k,
+                s.expectMm, s.expectPx, s.clearWin, s.runRow, s.clearTotal, s.pxa, s.pya,
+                s.frameOk ? "" : "(frame FAILED)");
+            seamSamples.push_back(s);
+            if (k == 32u) {
+                // k=32 帧证据（B-PLANET-08 closeup 同点位，1080p 版）
+                std::vector<uint8_t> rgba(static_cast<size_t>(kPbW) * kPbH * 4u);
+                for (uint32_t y = 0u; y < kPbH; ++y) {
+                    const uint8_t* src
+                        = pixels.data() + static_cast<size_t>(y) * kPbW * 4u;
+                    uint8_t* dst = rgba.data() + static_cast<size_t>(y) * kPbW * 4u;
+                    for (uint32_t x = 0u; x < kPbW; ++x) {
+                        dst[x * 4u + 0u] = src[x * 4u + 2u];
+                        dst[x * 4u + 1u] = src[x * 4u + 1u];
+                        dst[x * 4u + 2u] = src[x * 4u + 0u];
+                        dst[x * 4u + 3u] = src[x * 4u + 3u];
+                    }
+                }
+                seamPngOk = WritePng24(seamPath.c_str(), rgba.data(), kPbW, kPbH, kPbW * 4u);
+            }
+        }
+    }
+    uint32_t seamMaxRunRow = 0u;
+    uint32_t seamMaxClearWin = 0u;
+    uint32_t seamSumClearWin = 0u;
+    uint32_t seamMaxClearTotal = 0u;
+    double seamMaxExpectMm = 0.0;
+    double seamMaxExpectPx = 0.0;
+    for (const PbSeamSample& s : seamSamples) {
+        seamMaxRunRow = (s.runRow > seamMaxRunRow) ? s.runRow : seamMaxRunRow;
+        seamMaxClearWin = (s.clearWin > seamMaxClearWin) ? s.clearWin : seamMaxClearWin;
+        seamSumClearWin += s.clearWin;
+        seamMaxClearTotal = (s.clearTotal > seamMaxClearTotal) ? s.clearTotal : seamMaxClearTotal;
+        seamMaxExpectMm = (s.expectMm > seamMaxExpectMm) ? s.expectMm : seamMaxExpectMm;
+        seamMaxExpectPx = (s.expectPx > seamMaxExpectPx) ? s.expectPx : seamMaxExpectPx;
+    }
+    std::printf("  seam pass done: frames_ok=%u/17 max_run_row=%u max_clear_win=%u "
+                "sum_clear_win=%u max_clear_total=%u png(k=32)=%s\n",
+        seamFramesOk, seamMaxRunRow, seamMaxClearWin, seamSumClearWin, seamMaxClearTotal,
+        seamPngOk ? "written" : "FAILED");
+
+    // ---- 9) 贴地扫描（D9：纯函数 vs 渲染网格插值偏差幅值）-----------------------------
+    //   M=100 确定性采样点（面 0）：chunk 共享边/角/格对角线附近 + 近/远档跨界 +
+    //   格点锚点 + 均匀内部点。网格模型 = GenerateChunkVerts 同源路由 CPU 复刻
+    //   （PlanetChunkVertexAtGlobal 近 64x64 / 远 16x16，对角 v00-v11 三角化与
+    //   BuildTierIndices 一致），采样方向射线（原点=行星中心）与所在格三角形求交，
+    //   径向高度 = t−R。dev = h_mesh − h_pure(double)。
+    struct PbScanPoint {
+        const char* kind;
+        double u;
+        double v;
+        uint32_t lod;
+        uint32_t cx;
+        uint32_t cy;
+        double distVtxM;
+        double hPureDouble;
+        float hPureApi;
+        bool apiOk;
+        double hMesh;
+        double devM;
+    };
+    std::vector<PbScanPoint> scanPoints;
+    scanPoints.reserve(100);
+    const double nearCellArcM = 2.0 / nearTotalD * (3.14159265 / 4.0) * zplanet::kPlanetRadiusM;
+    const double farCellArcM = 2.0 / farTotalD * (3.14159265 / 4.0) * zplanet::kPlanetRadiusM;
+    uint32_t meshMisses = 0u;
+    // 从面坐标 (u,v) 判定所在 chunk 与档位（场景布局：内 3x3 近档，其余远档），再
+    // 求格三角形射线交点。
+    auto pbMeshHeight = [&](double u, double v, uint32_t* outLod, uint32_t* outCx,
+                            uint32_t* outCy, double* outDistVtxM, double* outHMesh) -> bool {
+        // 近档格坐标（近档 3x3 内的采样点用它；否则换远档格坐标）
+        const double guNear = (u + 1.0) * 0.5 * nearTotalD;
+        const double gvNear = (v + 1.0) * 0.5 * nearTotalD;
+        const int32_t cxNear = static_cast<int32_t>(std::floor(guNear / kPbNearStrideD));
+        const int32_t cyNear = static_cast<int32_t>(std::floor(gvNear / kPbNearStrideD));
+        // 注意：minwindef.h 把 near/far 定义为空宏——标识符禁用（isNear 命名规避）
+        const bool isNear = (cxNear >= 15 && cxNear <= 17 && cyNear >= 15 && cyNear <= 17);
+        const double strideD = isNear ? kPbNearStrideD : kPbFarStrideD;
+        const double totalD = isNear ? nearTotalD : farTotalD;
+        const double gu = (u + 1.0) * 0.5 * totalD;
+        const double gv = (v + 1.0) * 0.5 * totalD;
+        const int32_t cx = static_cast<int32_t>(std::floor(gu / strideD));
+        const int32_t cy = static_cast<int32_t>(std::floor(gv / strideD));
+        if (cx < 0 || cy < 0 || cx >= static_cast<int32_t>(kPbCells)
+            || cy >= static_cast<int32_t>(kPbCells)) {
+            return false; // 面界外（面 0 内部点不触发）
+        }
+        const double guLoc = gu - static_cast<double>(cx) * strideD;
+        const double gvLoc = gv - static_cast<double>(cy) * strideD;
+        const double i = std::floor(guLoc);
+        const double j = std::floor(gvLoc);
+        const double fx = guLoc - i;
+        const double fy = gvLoc - j;
+        const int32_t stride = static_cast<int32_t>(strideD);
+        const int32_t total = static_cast<int32_t>(totalD);
+        const int32_t gU0 = cx * stride + static_cast<int32_t>(i);
+        const int32_t gV0 = cy * stride + static_cast<int32_t>(j);
+        const zplanet::PlanetChunkVertex v00 = zplanet::PlanetChunkVertexAtGlobal(
+            centerC, 0, gU0, gV0, total, kPbSeed);
+        const zplanet::PlanetChunkVertex v10 = zplanet::PlanetChunkVertexAtGlobal(
+            centerC, 0, gU0 + 1, gV0, total, kPbSeed);
+        const zplanet::PlanetChunkVertex v01 = zplanet::PlanetChunkVertexAtGlobal(
+            centerC, 0, gU0, gV0 + 1, total, kPbSeed);
+        const zplanet::PlanetChunkVertex v11 = zplanet::PlanetChunkVertexAtGlobal(
+            centerC, 0, gU0 + 1, gV0 + 1, total, kPbSeed);
+        // 三角化与 BuildTierIndices 一致：对角 v00-v11；(v00,v10,v11) / (v00,v11,v01)
+        Vec3d a = v00.posAbs;
+        Vec3d b = v10.posAbs;
+        Vec3d c = v11.posAbs;
+        if (fx < fy) {
+            b = v11.posAbs;
+            c = v01.posAbs;
+        }
+        // Möller–Trumbore（double）：射线 origin=centerC，方向 d（单位）
+        const Vec3d d = zplanet::CubeSphereDir(0, u, v);
+        const Vec3d e1 = zplanet::VecSub(b, a);
+        const Vec3d e2 = zplanet::VecSub(c, a);
+        const Vec3d pv = zplanet::VecCross(d, e2);
+        const double det = zplanet::VecDot(e1, pv);
+        if (std::fabs(det) < 1e-12) {
+            return false;
+        }
+        const Vec3d tv = zplanet::VecSub(centerC, a);
+        const double uu = zplanet::VecDot(tv, pv) / det;
+        const Vec3d qv = zplanet::VecCross(tv, e1);
+        const double vv = zplanet::VecDot(d, qv) / det;
+        if (uu < -1e-9 || vv < -1e-9 || uu + vv > 1.0 + 1e-9) {
+            return false; // 落在浮点边界外（理论不应发生——如实计 miss）
+        }
+        const double t = zplanet::VecDot(e2, qv) / det;
+        *outLod = isNear ? 1u : 0u;
+        *outCx = static_cast<uint32_t>(cx);
+        *outCy = static_cast<uint32_t>(cy);
+        // 到最近格点弧距（同格内 4 角最小，面坐标距离 × 每索引弧长）
+        const double cellArc = isNear ? nearCellArcM : farCellArcM;
+        const double du[4] = {fx, 1.0 - fx, fx, 1.0 - fx};
+        const double dv[4] = {fy, fy, 1.0 - fy, 1.0 - fy};
+        double best = 1e30;
+        for (int q = 0; q < 4; ++q) {
+            const double dist = std::sqrt(du[q] * du[q] + dv[q] * dv[q]) * cellArc;
+            if (dist < best) {
+                best = dist;
+            }
+        }
+        *outDistVtxM = best;
+        *outHMesh = t - zplanet::kPlanetRadiusM;
+        return true;
+    };
+    auto pbPushScan = [&](const char* kind, double u, double v) {
+        PbScanPoint p;
+        p.kind = kind;
+        p.u = u;
+        p.v = v;
+        p.lod = 0u;
+        p.cx = 0u;
+        p.cy = 0u;
+        p.distVtxM = 0.0;
+        p.hPureDouble = 0.0;
+        p.hPureApi = 0.0f;
+        p.apiOk = false;
+        p.hMesh = 0.0;
+        p.devM = 0.0;
+        const Vec3d d = zplanet::CubeSphereDir(0, u, v);
+        p.hPureDouble = zplanet::PlanetTerrainHeightM(kPbSeed, d.x, d.y, d.z);
+        const double posR = zplanet::kPlanetRadiusM;
+        if (sampleHeight(centerC.x + d.x * posR, centerC.y + d.y * posR,
+                centerC.z + d.z * posR, &p.hPureApi)
+            == ZR_PLANET_OK) {
+            p.apiOk = true;
+        } else {
+            pbMissing.push_back({std::string("groundScan.sampleHeight.") + kind,
+                "SampleHeight 调用失败——该点 API 口径按缺记录（apiOk=false）"});
+        }
+        if (!pbMeshHeight(u, v, &p.lod, &p.cx, &p.cy, &p.distVtxM, &p.hMesh)) {
+            ++meshMisses;
+            p.hMesh = 0.0;
+            p.devM = 0.0;
+            scanPoints.push_back(p);
+            return;
+        }
+        p.devM = p.hMesh - p.hPureDouble;
+        scanPoints.push_back(p);
+    };
+    // ① 共享边横穿线 ×2（E-W 缘 gU=17·63 与 N-S 缘 gV=17·63，各 10 点，格位偏移
+    //   ±{0.125,0.5,2,8,32}——含缘上 0.125 格 ≈620m 到 ±32 格 ≈159km）
+    {
+        const double edgeU = 17.0 * kPbNearStrideD;
+        const double midV = 16.0 * kPbNearStrideD + 31.5; // chunk 中线（远离 N-S 缘）
+        for (const double o : {0.125, 0.5, 2.0, 8.0, 32.0}) {
+            pbPushScan("edgeEW-",
+                2.0 * (edgeU - o) / nearTotalD - 1.0, 2.0 * midV / nearTotalD - 1.0);
+            pbPushScan("edgeEW+",
+                2.0 * (edgeU + o) / nearTotalD - 1.0, 2.0 * midV / nearTotalD - 1.0);
+            pbPushScan("edgeNS-",
+                2.0 * midV / nearTotalD - 1.0, 2.0 * (edgeU - o) / nearTotalD - 1.0);
+            pbPushScan("edgeNS+",
+                2.0 * midV / nearTotalD - 1.0, 2.0 * (edgeU + o) / nearTotalD - 1.0);
+        }
+    }
+    // ② 共享角 (17·63,17·63) 密集簇 ×16：对角线对 (o,o) 与反对角 (o,−o)
+    //   （格对角线 v00-v11 是三角化翻转线——采样两侧捕捉插值 kink）
+    {
+        const double corner = 17.0 * kPbNearStrideD;
+        for (const double o : {0.125, 0.5, 2.0, 8.0}) {
+            pbPushScan("cornerDiag",
+                2.0 * (corner + o) / nearTotalD - 1.0, 2.0 * (corner + o) / nearTotalD - 1.0);
+            pbPushScan("cornerDiag",
+                2.0 * (corner - o) / nearTotalD - 1.0, 2.0 * (corner - o) / nearTotalD - 1.0);
+            pbPushScan("cornerAnti",
+                2.0 * (corner + o) / nearTotalD - 1.0, 2.0 * (corner - o) / nearTotalD - 1.0);
+            pbPushScan("cornerAnti",
+                2.0 * (corner - o) / nearTotalD - 1.0, 2.0 * (corner + o) / nearTotalD - 1.0);
+        }
+    }
+    // ③ 格对角线横穿 ×8（chunk 16 内部 4 个格角，两侧各 0.5/0.25 格）
+    {
+        for (const double gi : {1010.0, 1028.0, 1046.0, 1064.0}) {
+            pbPushScan("cellDiag", 2.0 * (gi + 0.5) / nearTotalD - 1.0,
+                2.0 * (gi - 0.25) / nearTotalD - 1.0);
+            pbPushScan("cellDiag", 2.0 * (gi - 0.5) / nearTotalD - 1.0,
+                2.0 * (gi + 0.25) / nearTotalD - 1.0);
+        }
+    }
+    // ④ 内部均匀点 ×35（PlanetHashU32 确定性散布于内 3x3）
+    {
+        for (uint32_t n = 0u; n < 35u; ++n) {
+            const uint32_t h = zplanet::PlanetHashU32(0x5070BEEF ^ n);
+            const double fr1 = static_cast<double>(h & 0xFFFFu) / 65535.0;
+            const double fr2 = static_cast<double>((h >> 16) & 0xFFFFu) / 65535.0;
+            const double gu = 945.0 + fr1 * (1134.0 - 945.0);
+            const double gv = 945.0 + fr2 * (1134.0 - 945.0);
+            pbPushScan("interior", 2.0 * gu / nearTotalD - 1.0, 2.0 * gv / nearTotalD - 1.0);
+        }
+    }
+    // ⑤ 格中心点 ×9（中档格中心 (a+0.5,b+0.5)，a,b∈{0,1,2}——格心 = 插值偏差峰值区）
+    {
+        for (uint32_t a = 0u; a < 3u; ++a) {
+            for (uint32_t b = 0u; b < 3u; ++b) {
+                const double gu = 945.0 + 63.0 * static_cast<double>(a) + 31.5;
+                const double gv = 945.0 + 63.0 * static_cast<double>(b) + 31.5;
+                pbPushScan("cellCenter", 2.0 * gu / nearTotalD - 1.0,
+                    2.0 * gv / nearTotalD - 1.0);
+            }
+        }
+    }
+    // ⑥ 格点锚点 ×4（恰在网格顶点上——dev 应≈0，校准项；第 4 点在共享缘顶点上）
+    {
+        pbPushScan("vertex", 2.0 * 1039.0 / nearTotalD - 1.0, 2.0 * 1039.0 / nearTotalD - 1.0);
+        pbPushScan("vertex", 2.0 * 1070.0 / nearTotalD - 1.0, 2.0 * 1070.0 / nearTotalD - 1.0);
+        pbPushScan("vertex", 2.0 * 1008.0 / nearTotalD - 1.0, 2.0 * 1008.0 / nearTotalD - 1.0);
+        pbPushScan("vertex", 2.0 * 1071.0 / nearTotalD - 1.0, 2.0 * 1039.0 / nearTotalD - 1.0);
+    }
+    // ⑦ 近/远档跨界 ×8（gU=15·63=945 缘外侧 → 远档 chunk (14,16)，格距 4× 于近档）
+    {
+        const double midV = 16.0 * kPbNearStrideD + 31.5;
+        for (const double o : {0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0}) {
+            pbPushScan("lodCross-",
+                2.0 * (945.0 - o) / nearTotalD - 1.0, 2.0 * midV / nearTotalD - 1.0);
+        }
+    }
+    // 扫描统计
+    double devAbsMax = 0.0;
+    double devAbsSum = 0.0;
+    double devAbsNearMax = 0.0;
+    double devAbsFarMax = 0.0;
+    double devAbsVertexMax = 0.0;
+    uint32_t nearCount = 0u;
+    uint32_t farCount = 0u;
+    std::vector<double> devAbsSorted;
+    devAbsSorted.reserve(scanPoints.size());
+    for (const PbScanPoint& p : scanPoints) {
+        const double absDev = std::fabs(p.devM);
+        devAbsSum += absDev;
+        if (absDev > devAbsMax) {
+            devAbsMax = absDev;
+        }
+        if (p.kind != std::string("vertex")) {
+            devAbsSorted.push_back(absDev);
+        } else if (absDev > devAbsVertexMax) {
+            devAbsVertexMax = absDev;
+        }
+        if (p.lod >= 1u) {
+            ++nearCount;
+            if (absDev > devAbsNearMax && p.kind != std::string("vertex")) {
+                devAbsNearMax = absDev;
+            }
+        } else {
+            ++farCount;
+            if (absDev > devAbsFarMax && p.kind != std::string("vertex")) {
+                devAbsFarMax = absDev;
+            }
+        }
+    }
+    std::sort(devAbsSorted.begin(), devAbsSorted.end());
+    const double devP95 = PbPercentile(devAbsSorted, 0.95);
+    const double devP99 = PbPercentile(devAbsSorted, 0.99);
+    const double devMean = devAbsSum / static_cast<double>(scanPoints.size());
+    std::printf("[ground] M=%zu points (near=%u far=%u vertexAnchors) meshModel=cpu-replica "
+                "(near 64x64 / far 16x16, diag v00-v11)\n",
+        scanPoints.size(), nearCount, farCount);
+    std::printf("  |h_mesh - h_pure|: max=%.3fm mean=%.3fm p95=%.3fm p99=%.3fm "
+                "(near=%.3fm far=%.3fm vertexAnchorMax=%.6fm) meshMiss=%u\n",
+        devAbsMax, devMean, devP95, devP99, devAbsNearMax, devAbsFarMax, devAbsVertexMax,
+        meshMisses);
+    // 抽样打印（每个 kind 首个点——控制台表不全量，全量进 JSON）
+    {
+        const char* kinds[9] = {"edgeEW+", "edgeNS+", "cornerDiag", "cornerAnti", "cellDiag",
+            "interior", "cellCenter", "vertex", "lodCross-"};
+        for (const char* kd : kinds) {
+            for (const PbScanPoint& p : scanPoints) {
+                if (p.kind == std::string(kd)) {
+                    std::printf("  %-11s lod=%u chunk=(%u,%u) distVtx=%9.1fm hPure=%10.2fm "
+                                "hMesh=%10.2fm dev=%+9.3fm\n",
+                        p.kind, p.lod, p.cx, p.cy, p.distVtxM, p.hPureDouble, p.hMesh, p.devM);
+                    break;
+                }
+            }
+        }
+    }
+
+    // ---- 10) 终态统计 + JSON 落盘 ------------------------------------------------------
+    ZrPlanetStats finalStats {};
+    const bool finalStatsOk = (getStats(&finalStats) == ZR_PLANET_OK);
+    if (!finalStatsOk) {
+        pbMissing.push_back({"finalStats",
+            "收尾 GetStats 失败——planetChannelMs 字段按缺记录（不填默认值）"});
+    }
+    clearAll(); // 场景收尾（句柄全失效 + 渲染线程排队释放）
+    releaseTarget();
+    FreeLibrary(dll);
+
+    // JSON 组装（数字全量；MISSING 不填默认值）
+    auto num = [](double v) {
+        char buf[40] = {};
+        std::snprintf(buf, sizeof(buf), "%.6g", v);
+        return std::string(buf);
+    };
+    auto num3 = [](double v) {
+        char buf[40] = {};
+        std::snprintf(buf, sizeof(buf), "%.3f", v);
+        return std::string(buf);
+    };
+    std::string json;
+    json += "{\n";
+    json += "  \"probedAt\": \"" + PbUtcIso() + "\",\n";
+    json += "  \"probe\": \"planet-budget\",\n";
+    json += "  \"task\": \"TASK-B-PLANET-09\",\n";
+    json += "  \"outMode\": \"" + out.mode + "\",\n";
+    json += "  \"outFile\": \"" + PbJsonEscape(jsonPath) + "\",\n";
+    json += "  \"host\": {\n";
+    json += "    \"adapter\": \"" + PbJsonEscape(adapterDesc) + "\",\n";
+    char vendorBuf[16] = {};
+    std::snprintf(vendorBuf, sizeof(vendorBuf), "0x%04X", adapterVendor);
+    char deviceBuf[16] = {};
+    std::snprintf(deviceBuf, sizeof(deviceBuf), "0x%04X", adapterDevice);
+    json += "    \"vendorId\": \"" + std::string(vendorBuf) + "\",\n";
+    json += "    \"deviceId\": \"" + std::string(deviceBuf) + "\",\n";
+    json += "    \"dedicatedVideoMemoryMB\": " + std::to_string(adapterMemMb) + "\n";
+    json += "  },\n";
+    json += "  \"engine\": {\n";
+    json += "    \"apiVersion\": " + std::to_string(version) + ",\n";
+    json += "    \"zrVersion\": \"" + PbJsonEscape(zrVersionStr) + "\"\n";
+    json += "  },\n";
+    json += "  \"config\": {\n";
+    json += "    \"width\": " + std::to_string(kPbW) + ",\n";
+    json += "    \"height\": " + std::to_string(kPbH) + ",\n";
+    json += "    \"warmupFrames\": " + std::to_string(kPbWarmup) + ",\n";
+    json += "    \"sampledFrames\": " + std::to_string(frameMs.size()) + ",\n";
+    json += "    \"seed\": " + std::to_string(kPbSeed) + ",\n";
+    json += "    \"chunksTotal\": " + std::to_string(specs.size()) + ",\n";
+    json += "    \"chunkLayout\": \"face0 near 3x3 lod1 + far ring 16 + faces 1..5 far "
+            "(same as --planet3)\",\n";
+    json += "    \"cameraAltitudeM\": " + num(kPbAltM) + ",\n";
+    json += "    \"trajectory\": \"slow yaw sin(t*0.12)*8deg, dip 30deg (same as "
+            "--planet3)\",\n";
+    json += "    \"frameMsScope\": \"QPC wraps SetCameraOrigin+SetCamera+BeginScene+"
+            "RenderFrame; RenderFrame waits for the PREVIOUS frame's GPU fence at frame "
+            "start (B-UNITY-04 double-slot, frame N does not wait for itself) -> "
+            "steady-state per-frame wall clock = max(CPU submit, GPU render throughput)\",\n";
+    json += "    \"percentileMethod\": \"nearest-rank\"\n";
+    json += "  },\n";
+    json += "  \"budget\": {\n";
+    json += "    \"frameMs\": {\n";
+    json += "      \"p50\": " + num3(p50Ms) + ",\n";
+    json += "      \"p95\": " + num3(p95Ms) + ",\n";
+    json += "      \"p99\": " + num3(p99Ms) + ",\n";
+    json += "      \"mean\": " + num3(meanMs) + ",\n";
+    json += "      \"min\": " + num3(minMs) + ",\n";
+    json += "      \"max\": " + num3(maxMs) + ",\n";
+    json += "      \"samples\": [";
+    for (size_t i = 0; i < frameMs.size(); ++i) {
+        json += num3(frameMs[i]);
+        if (i + 1 < frameMs.size()) {
+            json += ", ";
+        }
+    }
+    json += "]\n";
+    json += "    },\n";
+    json += "    \"fps\": {\n";
+    json += "      \"mean\": " + num(fpsMean) + ",\n";
+    json += "      \"fromP50\": " + num(fpsP50) + "\n";
+    json += "    }\n";
+    json += "  },\n";
+    json += "  \"chunks\": {\n";
+    json += "    \"total\": " + std::to_string(specs.size()) + ",\n";
+    json += "    \"liveChunks\": "
+        + std::to_string(finalStatsOk ? finalStats.liveChunks : stats.liveChunks) + ",\n";
+    json += "    \"drawnMin\": " + std::to_string(drawnMin) + ",\n";
+    json += "    \"drawnMax\": " + std::to_string(drawnMax) + ",\n";
+    json += "    \"culledMin\": " + std::to_string(culledMin) + ",\n";
+    json += "    \"culledMax\": " + std::to_string(culledMax) + ",\n";
+    json += "    \"pendingUploadsMax\": " + std::to_string(pendingUploadsMax) + ",\n";
+    json += "    \"vbytesObserved\": "
+        + std::to_string(static_cast<unsigned long long>(vbytesObserved)) + ",\n";
+    json += "    \"vbytesExpected\": "
+        + std::to_string(static_cast<unsigned long long>(expectedVertexBytes)) + ",\n";
+    json += "    \"vbytesStable\": " + std::string(vbytesStable ? "true" : "false") + ",\n";
+    json += "    \"drawnPerFrame\": [";
+    for (size_t i = 0; i < drawnPerFrame.size(); ++i) {
+        json += std::to_string(drawnPerFrame[i]);
+        if (i + 1 < drawnPerFrame.size()) {
+            json += ", ";
+        }
+    }
+    json += "],\n";
+    json += "    \"culledPerFrame\": [";
+    for (size_t i = 0; i < culledPerFrame.size(); ++i) {
+        json += std::to_string(culledPerFrame[i]);
+        if (i + 1 < culledPerFrame.size()) {
+            json += ", ";
+        }
+    }
+    json += "],\n";
+    json += "    \"planetChannelMsLast\": "
+        + std::string(finalStatsOk ? num(finalStats.lastFrameMs) : "null") + ",\n";
+    json += "    \"planetChannelMsAvg\": "
+        + std::string(finalStatsOk ? num(finalStats.avgFrameMs) : "null") + "\n";
+    json += "  },\n";
+    json += "  \"terrainEvidence\": {\n";
+    json += "    \"png\": \"" + PbJsonEscape(terrainName) + "\",\n";
+    json += "    \"pngWritten\": " + std::string(terrainPngOk ? "true" : "false") + ",\n";
+    json += "    \"terrainPixels\": " + std::to_string(terrainPixels) + ",\n";
+    json += "    \"totalPixels\": " + std::to_string(totalPixels) + "\n";
+    json += "  },\n";
+    json += "  \"seamPixel\": {\n";
+    json += "    \"method\": \"B-PLANET-08 GPU 口径 1080p 复测：2m nadir over near "
+            "(16,16)/(17,16) shared edge, clear-color leak scan in seam window\",\n";
+    json += "    \"footprintMmPerPx\": " + num3(footMmPerPx1080) + ",\n";
+    json += "    \"samples\": " + std::to_string(seamSamples.size()) + ",\n";
+    json += "    \"framesOk\": " + std::to_string(seamFramesOk) + ",\n";
+    json += "    \"perSample\": [\n";
+    for (size_t i = 0; i < seamSamples.size(); ++i) {
+        const PbSeamSample& s = seamSamples[i];
+        json += "      { \"k\": " + std::to_string(s.k) + ", \"expectMm\": " + num3(s.expectMm)
+            + ", \"expectPx\": " + num3(s.expectPx) + ", \"clearWin\": "
+            + std::to_string(s.clearWin) + ", \"runRow\": " + std::to_string(s.runRow)
+            + ", \"clearTotal\": " + std::to_string(s.clearTotal) + ", \"frameOk\": "
+            + std::string(s.frameOk ? "true" : "false") + " }"
+            + ((i + 1 < seamSamples.size()) ? "," : "") + "\n";
+    }
+    json += "    ],\n";
+    json += "    \"maxRunRowPx\": " + std::to_string(seamMaxRunRow) + ",\n";
+    json += "    \"maxClearWin\": " + std::to_string(seamMaxClearWin) + ",\n";
+    json += "    \"sumClearWin\": " + std::to_string(seamSumClearWin) + ",\n";
+    json += "    \"maxClearTotal\": " + std::to_string(seamMaxClearTotal) + ",\n";
+    json += "    \"maxExpectMm\": " + num3(seamMaxExpectMm) + ",\n";
+    json += "    \"maxExpectPx\": " + num3(seamMaxExpectPx) + ",\n";
+    json += "    \"caveat\": \"expect_px/expect_mm 列有灾难性抵消放大（B-PLANET-08 2.3(a) "
+            "同款），只作参考；判据 = 缝带窗口清屏色泄漏像素（clearWin/runRow）\",\n";
+    json += "    \"png\": \"" + PbJsonEscape(seamName) + "\",\n";
+    json += "    \"pngWritten\": " + std::string(seamPngOk ? "true" : "false") + "\n";
+    json += "  },\n";
+    json += "  \"groundScan\": {\n";
+    json += "    \"designRef\": \"设计稿 D9 MISSING：纯函数 vs 网格插值偏差幅值——本节实测"
+            "清零\",\n";
+    json += "    \"method\": \"SampleHeight(C+dir*R)（dll 纯函数 ABI）vs 渲染网格插值高度"
+            "（CPU 复刻 GenerateChunkVerts 同源路由 + BuildTierIndices 对角三角化的射线"
+            "求交，径向高度 t−R）\",\n";
+    json += "    \"meshModelNote\": \"CPU 复刻与 dll 逐位同源（zplanet::"
+            "PlanetChunkVertexAtGlobal）；VB 顶点 float 化偏差另见 B-PLANET-08（顶点口径"
+            " 15.93mm max），本节是插值口径，两者不混\",\n";
+    json += "    \"points\": " + std::to_string(scanPoints.size()) + ",\n";
+    json += "    \"nearLodPoints\": " + std::to_string(nearCount) + ",\n";
+    json += "    \"farLodPoints\": " + std::to_string(farCount) + ",\n";
+    json += "    \"meshMisses\": " + std::to_string(meshMisses) + ",\n";
+    json += "    \"nearCellArcM\": " + num(nearCellArcM) + ",\n";
+    json += "    \"farCellArcM\": " + num(farCellArcM) + ",\n";
+    json += "    \"devAbs\": {\n";
+    json += "      \"max\": " + num3(devAbsMax) + ",\n";
+    json += "      \"mean\": " + num3(devMean) + ",\n";
+    json += "      \"p95\": " + num3(devP95) + ",\n";
+    json += "      \"p99\": " + num3(devP99) + ",\n";
+    json += "      \"maxNearLod\": " + num3(devAbsNearMax) + ",\n";
+    json += "      \"maxFarLod\": " + num3(devAbsFarMax) + ",\n";
+    json += "      \"vertexAnchorMax\": " + num(devAbsVertexMax) + "\n";
+    json += "    },\n";
+    json += "    \"perPoint\": [\n";
+    for (size_t i = 0; i < scanPoints.size(); ++i) {
+        const PbScanPoint& p = scanPoints[i];
+        json += "      { \"kind\": \"" + std::string(p.kind) + "\", \"u\": " + num(p.u)
+            + ", \"v\": " + num(p.v) + ", \"lod\": " + std::to_string(p.lod)
+            + ", \"cx\": " + std::to_string(p.cx) + ", \"cy\": " + std::to_string(p.cy)
+            + ", \"distVtxM\": " + num3(p.distVtxM) + ", \"hPureDoubleM\": "
+            + num3(p.hPureDouble) + ", \"hPureApiFloatM\": " + num3(static_cast<double>(p.hPureApi))
+            + ", \"apiOk\": " + std::string(p.apiOk ? "true" : "false") + ", \"hMeshM\": "
+            + num3(p.hMesh) + ", \"devM\": " + num3(p.devM) + " }"
+            + ((i + 1 < scanPoints.size()) ? "," : "") + "\n";
+    }
+    json += "    ]\n";
+    json += "  },\n";
+    json += "  \"verdict\": {\n";
+    json += "    \"target\": \"1080p>=" + std::to_string(kPbTargetFps) + "fps (改进计划 "
+            "§3-P2)\",\n";
+    json += "    \"fpsMean\": " + num(fpsMean) + ",\n";
+    json += "    \"fpsP50\": " + num(fpsP50) + ",\n";
+    json += "    \"met\": " + std::string(fpsMet ? "true" : "false") + ",\n";
+    json += "    \"note\": \"达标与否都是数据，不粉饰；iGPU（本机）与独显（对端机）差异"
+            "由双机对照呈现\"\n";
+    json += "  },\n";
+    json += "  \"pngFiles\": [\n";
+    json += "    \"" + PbJsonEscape(terrainName) + "\",\n";
+    json += "    \"" + PbJsonEscape(seamName) + "\"\n";
+    json += "  ],\n";
+    json += "  \"missing\": [\n";
+    for (size_t i = 0; i < pbMissing.size(); ++i) {
+        json += "    { \"name\": \"" + PbJsonEscape(pbMissing[i].first) + "\", \"reason\": \""
+            + PbJsonEscape(pbMissing[i].second) + "\" }" + ((i + 1 < pbMissing.size()) ? "," : "")
+            + "\n";
+    }
+    json += "  ],\n";
+    json += "  \"references\": [\n";
+    json += "    { \"label\": \"640x480 基线（--planet3, B-PLANET-04）\", \"value\": "
+            "\"frame_ms=7.9-8.8 (780M)\", \"source\": \"Docs/Logs/TASK-B-PLANET-04.md\" },\n";
+    json += "    { \"label\": \"VB 缝宽顶点口径（B-PLANET-08）\", \"value\": \"max 15.930mm "
+            "/ 均值 4.481mm（240 顶点对）\", \"source\": \"Docs/Logs/TASK-B-PLANET-08.md "
+            "§2.1\" },\n";
+    json += "    { \"label\": \"GPU 像端口径 640x480（B-PLANET-08）\", \"value\": \"9/9 帧 "
+            "30.7 万像素零清屏色泄漏\", \"source\": \"Docs/Logs/TASK-B-PLANET-08.md §2.3\" "
+            "}\n";
+    json += "  ]\n";
+    json += "}\n";
+
+    // 写 JSON（已经白名单 + 边界断言，此处只做打开失败兜底）
+    {
+        std::ofstream file(jsonPath, std::ios::binary | std::ios::trunc);
+        if (!file) {
+            std::fprintf(stderr, "zrhi_d3d12_window: --pbudget 无法打开输出文件: %s\n",
+                jsonPath.c_str());
+            return 1;
+        }
+        file << json;
+        file.close();
+        if (file.fail()) {
+            std::fprintf(stderr, "zrhi_d3d12_window: --pbudget 输出文件写入失败\n");
+            return 1;
+        }
+    }
+
+    std::printf("[verdict] 1080p>=%u fps: %s (fpsMean=%.2f fpsP50=%.2f) — 达标与否都是数据"
+                "，不粉饰\n",
+        kPbTargetFps, fpsMet ? "MET" : "NOT-MET", fpsMean, fpsP50);
+    std::printf("[missing] %zu 项（不填默认值，如实记录）\n", pbMissing.size());
+    for (const auto& item : pbMissing) {
+        std::printf("  MISSING | %s | %s\n", item.first.c_str(), item.second.c_str());
+    }
+    std::printf("JSON -> %s\n", jsonPath.c_str());
+    std::printf("exit=0（JSON 已落盘；fps 未达标是数据不是失败，fsr4_probe 同策）\n");
+    return 0;
 }
 
 /// MV 常量（b0 镜像）——zupscaler.h ZrUpscalerMotionVectorConstants 直接复用
@@ -17500,6 +18893,16 @@ int main(int argc, char** argv)
         // 通过行 `D3D12 PLANET3 OK (chunks=N drawn=M culled=C vbytes=V frame_ms=X)`。
         if (std::strcmp(argv[i], "--planet3") == 0) {
             return RunPlanet3Mode();
+        }
+        // TASK-B-PLANET-09：--pbudget —— planet-budget 探针（1080p 帧耗预算/接缝像素
+        // 口径/贴地扫描 D9）：生产导出面 + --planet3 同 30 chunk 场景与轨迹，热身 60
+        // + 采样 300 帧 frame_ms 分布（p50/p95/p99/mean）+ 17 采样共享边清屏色泄漏
+        // （1080p 足迹 2.138mm/px）+ M=100 贴地扫描（SampleHeight vs 网格插值）。
+        // JSON+截图落 Tools/Probes/out/（白名单+边界断言照 fsr4_probe）。退出码
+        // 0=JSON 已落盘（fps 达标与否是数据不是失败）；2=探针链路硬失败；1=JSON 未写出。
+        // 判据挂账：改进计划 §3-P2 "1080p>=30fps" 实测数字如实记录（两机口径）。
+        if (std::strcmp(argv[i], "--pbudget") == 0) {
+            return RunPlanetBudgetMode();
         }
         // TASK-B-R9-16：--devconsole —— GPU 工具链运行时入口（方案 §5.7）：
         // 127.0.0.1 白名单控制台（缺省端口 17323）+ hud 统计 + rg.export +
