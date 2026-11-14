@@ -9,6 +9,7 @@
         "ZFrame.View",
         "Game.Domain",
         "Game.View",
+        "ZFrame.Render",
         "ZFrame.Render.Bindings"
     ],
     "includePlatforms": [],
