@@ -212,7 +212,7 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | B-PLANET-15 | B/PLANET | ZRenderPipeline 多相机渲染策略(现只渲cameras[0],第二相机RT不写入——B-PLANET-11验收发现)+探针内容锚断言 | todo | (简报待写) | |
 | B-PLANET-12 | B/PLANET | IL2CPP+Android各一次(Android按D8裁决=托管等效实现) | done(验收PASS T1-T7;C#移植804点逐位0位差;APK 38.76MB构建成功;P/Invoke生成码实锤;M1/M3按MISSING闭环) | Docs/Logs/TASK-B-PLANET-12.md | da54772 |
 | X-HAPTICS-01 | X/HYG | TouchHaptics平台条件化修复(Windows Player编译债CS0103,A-AND-10潜伏;4行最小diff主控批准) | done(捎带验收PASS H1;Mono Player全链编译PASS CS0103归零;手持域零变化) | Docs/Logs/TASK-X-HAPTICS-01.md | 1161c40 |
-| B-PLANET-14 | B/PLANET | 流式排名重建阈值修复:纯海拔爬升258km不触发UpdateRanking(lenDrift>5%逻辑缺陷,B-PLANET-11发现)——加入径向/位移幅值判据 | todo | (简报待写) | |
+| B-PLANET-14 | B/PLANET | 流式排名重建阈值修复:纯海拔爬升258km不触发UpdateRanking(lenDrift>5%逻辑缺陷,B-PLANET-11发现)——加入径向/位移幅值判据 | done(验收PASS B1-B7;第三判据累计位移;12锚定测试;EditMode 1235全绿) | Docs/Logs/TASK-B-PLANET-14.md | 41adfdd |
 | X-DIAG-02 | X/DIAG | test_zfg_env.cpp:117 `-s` 全量跑 SIGSEGV(B-PLANET-03 发现,基线即有)——定位根因并修 | todo | (简报待写) | |
 | B-PLANET-13 | B/PLANET | 裙边深度口径裁决(生产2%×格距 vs 设计稿2%×chunk弧长;near侧T型失配裕度仅×1.3——B-PLANET-08新发现) | todo | (简报待写) | |
 | X-DIAG-03 | X/DIAG | Parity截图period-3通道轮转条纹伪影——**根因已实证**(B-PLANET-09:planet3 PNG编码3B/px按4B/px读,修复后绿通道差18.99→0.03);残余=其他Parity路径同源核查+旧档重生成 | todo(根因已修于35fb6ee) | Docs/Logs/TASK-X-DIAG-03.md(简报待写) | |

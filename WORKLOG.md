@@ -4,6 +4,8 @@
 
 | 日期 | 任务 | 结果 | commit |
 |---|---|---|---|
+| 2026-11-14 | B-PLANET-14 流式排名阈值修复 | done：验收PASS(B1-B7)；第三判据累计位移>max(500m,0.02×弧长)——纯海拔爬升 258km 必触发/贴地微动不触发；12 条锚定测试；EditMode 1235(+12)全绿；50km 三层跳变不受影响；捎带闭环 X-FLAKY-01 | 41adfdd |
+| 2026-11-14 | X-FLAKY-01 刀锋态阈值余量 | done：捎带验收PASS；AssemblyConnect 0.05→0.051(噪声余量，物理语义零放宽，四层依据入码)；负载窗连跑两轮 114/114；过压形态签名(maxSpeed 语义发散)登记运维知识 | 02b8838 |
 | 2026-11-14 | B-PLANET-12 IL2CPP+Android(P2末段) | done：验收PASS(T1-T7)；B 段核心 C# 高度纯函数移植 **804 点 float 位模式逐位相等 0 位差**；Android APK 38.76MB(IL2CPP+ARM64)构建成功；P/Invoke 生成码实锤懒解析无需 link.xml；PlanetRuntimeProbe 双模式进包；A 段 Windows IL2CPP 构建 MISSING(Tuanjie 仅 Mono 变体，链路就绪补装后一条命令补验)；M2 编译债转 X-HAPTICS-01 | da54772 |
 | 2026-11-14 | X-HAPTICS-01 TouchHaptics 平台门 | done：捎带验收PASS(H1)；Windows Standalone CS0103 消除(Mono Player 全链 build+smoke PASS)；手持域行为零变化；A-AND-10 潜伏编译债清偿 | 1161c40 |
 | 2026-11-14 | B-PLANET-11 编辑器验收集成 | done：验收PASS(Q1-Q7)；三档截图(near/mid曲率/far limb)+三变体行走(1km/5km/50km，23 次重定位 camAbs 逐位守恒)+跳变三层全绿；PlayMode 114/114(+4)；**发现多相机管线缺口**→B-PLANET-15；B-PLANET-07 补遗 4e24c81 | 9598c90 |
