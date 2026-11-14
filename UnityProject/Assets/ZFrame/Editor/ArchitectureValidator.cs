@@ -89,10 +89,16 @@ namespace ZFrame.Editor
                 },
                 ["Game.Bootstrap"] = new AsmdefRule
                 {
+                    // TASK-B-PLANET-12：+ZFrame.Render / +ZFrame.Render.Bindings——顶层装配
+                    // 层新增行星运行时探针（PlanetRuntimeProbe，仅命令行开关/Android 设备
+                    // 激活）：A 段 IL2CPP Player 原生链取证（流式 Driver + 门控）与 B 段
+                    // Android 托管等效（DecideLodLevel C# 镜像）需要两个 Track B 运行时
+                    // 程序集。Bootstrap 是最高层（已引用 Game.View/Game.Domain 全部生产
+                    // 程序集），向下引用渲染运行时不构成层级倒置；探针自身无游戏副作用。
                     AllowedReferences = new[]
                     {
                         "ZFrame.Core", "ZFrame.Data", "ZFrame.Gameplay", "ZFrame.View",
-                        "Game.Domain", "Game.View",
+                        "Game.Domain", "Game.View", "ZFrame.Render", "ZFrame.Render.Bindings",
                     },
                 },
             };

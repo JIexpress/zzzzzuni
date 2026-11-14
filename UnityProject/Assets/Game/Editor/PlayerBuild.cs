@@ -240,6 +240,32 @@ namespace Game.EditorTools
             EditorApplication.Exit(exitCode);
         }
 
+        /// <summary>批处理入口（TASK-B-PLANET-12）：Windows IL2CPP 口径构建——先把
+        /// StandaloneWindows64 脚本后端置为 IL2CPP（持久化进 ProjectSettings，与 Android
+        /// 侧 SetScriptingBackend 同一 API），再走与 <see cref="BuildWindows64"/> 完全
+        /// 相同的 Run()。IL2CPP 下的 P/Invoke/裁剪行为正是 A 段的验证对象，构建产物与
+        /// Mono 包同路径（Build/Windows64）由调用方决定是否保留。</summary>
+        public static void BuildWindows64Il2cpp()
+        {
+            PlayerSettings.SetScriptingBackend(BuildTargetGroup.Standalone, ScriptingImplementation.IL2CPP);
+            Debug.Log(
+                $"[PlayerBuildIl2cpp] scripting={PlayerSettings.GetScriptingBackend(BuildTargetGroup.Standalone)} " +
+                $"(StandaloneWindows64 -> IL2CPP, managedStrippingLevel={PlayerSettings.GetManagedStrippingLevel(BuildTargetGroup.Standalone)})");
+            BuildWindows64();
+        }
+
+        /// <summary>批处理入口（TASK-B-PLANET-12）：显式 Mono 口径——把 StandaloneWindows64
+        /// 后端恢复 Mono（IL2CPP 尝试失败后的复位路径，设置持久化于 ProjectSettings），
+        /// 再走同一 Run()。产物即历史 Mono 包形态。</summary>
+        public static void BuildWindows64Mono()
+        {
+            PlayerSettings.SetScriptingBackend(BuildTargetGroup.Standalone, ScriptingImplementation.Mono2x);
+            Debug.Log(
+                $"[PlayerBuildMono] scripting={PlayerSettings.GetScriptingBackend(BuildTargetGroup.Standalone)} " +
+                "(StandaloneWindows64 -> Mono2x restored)");
+            BuildWindows64();
+        }
+
         /// <summary>Android IL2CPP ARM64 正式包批处理入口（TASK-A-AND-02）。
         /// 产物 Build/Android/ZFrame.apk；脚本后端 IL2CPP、目标架构 ARM64、
         /// Graphics API 顺序 Vulkan→GLES3、外部工具链指 C:/Users/1/Android。</summary>

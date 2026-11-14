@@ -38,6 +38,17 @@ namespace Game.View.World
         private bool _gateSettled;
         private bool _gatePassed;
 
+        /// <summary>
+        /// 程序化装配（TASK-B-PLANET-12）：运行期注入原点与相机。与 Inspector 序列化
+        /// 等效（两处字段一致）；Player 内无法用 UnityEditor.SerializedObject，程序化
+        /// rig（探针/测试/后续生产装配）经本方法注入。在首次 LateUpdate 前调用。
+        /// </summary>
+        public void Configure(WorldOrigin origin, Camera targetCamera)
+        {
+            _origin = origin;
+            _targetCamera = targetCamera;
+        }
+
         /// <summary>门控是否已通过（诊断/测试）。</summary>
         public bool GatePassed => _gatePassed;
 

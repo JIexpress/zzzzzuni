@@ -40,6 +40,16 @@
 param(
     [switch]$SkipSmoke,
     [switch]$SmokeOnly,
+    # TASK-B-PLANET-12: -Backend Il2cpp routes the build through
+    # Game.EditorTools.PlayerBuild.BuildWindows64Il2cpp (sets the Standalone
+    # scripting backend to IL2CPP first; same Run() pipeline as default).
+    # -Backend Mono routes through BuildWindows64Mono (explicit Mono2x restore).
+    # 'Default' preserves the historical build-with-current-settings path.
+    [ValidateSet('Default', 'Il2cpp', 'Mono')]
+    [string]$Backend = 'Default',
+    # IL2CPP builds convert C# -> C++ -> native on this machine; measured well
+    # above the old 600s default -> only raised for the Il2cpp backend, Default
+    # keeps 600s.
     [int]$TimeoutSec = 600,
     [int]$SmokeWaitSec = 20,
     # Startup-chain keywords the smoke run must find in Player.log (exact
@@ -306,12 +316,18 @@ try {
             throw "SmokeOnly: exe not found at $ExePath - run a build first"
         }
     } else {
+        $buildMethod = switch ($Backend) {
+            'Il2cpp' { 'Game.EditorTools.PlayerBuild.BuildWindows64Il2cpp' }
+            'Mono'   { 'Game.EditorTools.PlayerBuild.BuildWindows64Mono' }
+            default  { 'Game.EditorTools.PlayerBuild.BuildWindows64' }
+        }
+        $effectiveTimeout = if ($Backend -eq 'Il2cpp' -and $TimeoutSec -eq 600) { 2400 } else { $TimeoutSec }
         Write-Host ''
-        Write-Host '==== [1] build: Unity batch BuildWindows64 (version inject + auto-increment) ====' -ForegroundColor Cyan
+        Write-Host ("==== [1] build: Unity batch {0} (backend={1}, version inject + auto-increment) ====" -f $buildMethod, $Backend) -ForegroundColor Cyan
         Assert-NoUnityRunning
-        $argLine = ('-batchmode -projectPath "{0}" -executeMethod Game.EditorTools.PlayerBuild.BuildWindows64 -logFile "{1}"' -f `
-            (ToFwdSlash $UnityProj), (ToFwdSlash $UnityLog))
-        $unityExit = Invoke-UnityBuild -ArgLine $argLine -HardTimeoutSec $TimeoutSec
+        $argLine = ('-batchmode -projectPath "{0}" -executeMethod {1} -logFile "{2}"' -f `
+            (ToFwdSlash $UnityProj), $buildMethod, (ToFwdSlash $UnityLog))
+        $unityExit = Invoke-UnityBuild -ArgLine $argLine -HardTimeoutSec $effectiveTimeout
         Write-Host ("  Unity exit: {0}  (log: TempLogs/build_player_unity.log)" -f $unityExit)
         if ($unityExit -ne 0) { throw "Unity build exit=$unityExit" }
 

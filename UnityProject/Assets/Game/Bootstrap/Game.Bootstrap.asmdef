@@ -1,7 +1,7 @@
 {
   "name": "Game.Bootstrap",
   "rootNamespace": "Game.Bootstrap",
-  "references": ["ZFrame.Core","ZFrame.Data","ZFrame.Gameplay","ZFrame.View","Game.Domain","Game.View"],
+  "references": ["ZFrame.Core","ZFrame.Data","ZFrame.Gameplay","ZFrame.View","Game.Domain","Game.View","ZFrame.Render","ZFrame.Render.Bindings"],
   "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": false,
