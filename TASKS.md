@@ -207,7 +207,7 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | B-PROBE-01 | B/PROBE | fsr4-probe探针:真设备/null对照可复核工具+本机存档(改进计划§5) | done(验收PASS F1-F7;三方逐位互证;便携模式亲测;FG族首次有数;阳性MISSING=对端补验) | Docs/Logs/TASK-B-PROBE-01.md | 74ec9bd |
 | B-PLANET-08 | B/PLANET | 接缝专项(float缝宽实测+neighborMask行为定版) | done(验收PASS M1-M7;VB缝宽MISSING清零240对三层口径;定版A维持裙边;G4-R1门远档税920ms→0.019ms) | Docs/Logs/TASK-B-PLANET-08.md | dce7e49 |
 | B-PLANET-09 | B/PLANET | planet-budget探针(1080p/接缝/贴地扫描/双机) | done(验收PASS N1-N7;1080p MET余量22×口径限定;D9 MISSING清零197.8m设计输入;附带修X-DIAG-03根因) | Docs/Logs/TASK-B-PLANET-09.md | 35fb6ee |
-| B-PLANET-10 | B/PLANET | abi-precision探针(四点ULP双口径) | todo | (简报待写) | |
+| B-PLANET-10 | B/PLANET | abi-precision探针(四点ULP双口径) | done(验收PASS P1-P7;正确路径0.145~0.341ULP达标;naive对照38.85×~1.68e5×;§9预算5环节亲测过) | Docs/Logs/TASK-B-PLANET-10.md | 1329dd6 |
 | B-PLANET-11 | B/PLANET | 编辑器内验收集成(三档截图/1km行走/账目断言) | todo | (简报待写) | |
 | B-PLANET-12 | B/PLANET | IL2CPP+Android各一次(Android按D8裁决=托管等效实现) | todo | (简报待写) | |
 | X-DIAG-02 | X/DIAG | test_zfg_env.cpp:117 `-s` 全量跑 SIGSEGV(B-PLANET-03 发现,基线即有)——定位根因并修 | todo | (简报待写) | |

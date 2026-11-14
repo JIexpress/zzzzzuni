@@ -4,6 +4,7 @@
 
 | 日期 | 任务 | 结果 | commit |
 |---|---|---|---|
+| 2026-11-14 | B-PLANET-10 abi-precision 探针 | done：验收PASS(P1-P7)；四点×双口径 ULP 实测——正确路径 0.145~0.341 ULP 全达标(§9 预算 5 环节亲测+4 归属)；naive 对照差 38.85×~1.68e5×(双原点价值量化)；ULP(D) 理论逐位；两次独立跑逐位 | 1329dd6 |
 | 2026-11-14 | B-PLANET-09 planet-budget 探针 | done：验收PASS(N1-N7)；1080p 四组数字(帧耗 p50=1.49ms/MET 余量 22×，口径限定 30-chunk 场景；接缝零泄漏；**D9 MISSING 清零**贴地偏差 197.8m→碰撞必须贴纯函数的设计输入)；附带实证 X-DIAG-03 根因并修复(绿通道差 18.99→0.03) | 35fb6ee |
 | 2026-11-14 | B-PLANET-08 接缝专项 | done：验收PASS(M1-M7)；VB 缝宽 MISSING 清零(240 顶点对三层口径,实测≈1×ULP,估算保守 2×)；GPU 9 帧零缝泄漏；三方案定版 A 维持裙边；neighborMask 三面锁定；G4-R1 门远档税 920ms→0.019ms；新发现登记 B-PLANET-13/X-DIAG-03；380 用例全绿 | dce7e49 |
 | 2026-11-14 | B-PLANET-07 Unity 托管桥 | done：验收PASS(J1-J8)；chunk 流式管理器(成本加权分帧预算+近档硬帽)+WorldOrigin 首次真接线(ToCameraRelativeView 唯一边界)；SetLod C# 逐式镜像；账目 A1-A12；门控整体关闭；G4-R1 原生门委托 08、G-07-1/路径偏差主控追认；EditMode 1211/1211(+29) | b73c0c5 |
