@@ -208,8 +208,10 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | B-PLANET-08 | B/PLANET | 接缝专项(float缝宽实测+neighborMask行为定版) | done(验收PASS M1-M7;VB缝宽MISSING清零240对三层口径;定版A维持裙边;G4-R1门远档税920ms→0.019ms) | Docs/Logs/TASK-B-PLANET-08.md | dce7e49 |
 | B-PLANET-09 | B/PLANET | planet-budget探针(1080p/接缝/贴地扫描/双机) | done(验收PASS N1-N7;1080p MET余量22×口径限定;D9 MISSING清零197.8m设计输入;附带修X-DIAG-03根因) | Docs/Logs/TASK-B-PLANET-09.md | 35fb6ee |
 | B-PLANET-10 | B/PLANET | abi-precision探针(四点ULP双口径) | done(验收PASS P1-P7;正确路径0.145~0.341ULP达标;naive对照38.85×~1.68e5×;§9预算5环节亲测过) | Docs/Logs/TASK-B-PLANET-10.md | 1329dd6 |
-| B-PLANET-11 | B/PLANET | 编辑器内验收集成(三档截图/1km行走/账目断言) | todo | (简报待写) | |
+| B-PLANET-11 | B/PLANET | 编辑器内验收集成(三档截图/1km行走/账目断言) | done(验收PASS Q1-Q7;三档+9PNG;50km 23次重定位逐位守恒;PlayMode 114/114;发现多相机管线缺口→B-PLANET-15) | Docs/Logs/TASK-B-PLANET-11.md | 9598c90 |
+| B-PLANET-15 | B/PLANET | ZRenderPipeline 多相机渲染策略(现只渲cameras[0],第二相机RT不写入——B-PLANET-11验收发现)+探针内容锚断言 | todo | (简报待写) | |
 | B-PLANET-12 | B/PLANET | IL2CPP+Android各一次(Android按D8裁决=托管等效实现) | todo | (简报待写) | |
+| B-PLANET-14 | B/PLANET | 流式排名重建阈值修复:纯海拔爬升258km不触发UpdateRanking(lenDrift>5%逻辑缺陷,B-PLANET-11发现)——加入径向/位移幅值判据 | todo | (简报待写) | |
 | X-DIAG-02 | X/DIAG | test_zfg_env.cpp:117 `-s` 全量跑 SIGSEGV(B-PLANET-03 发现,基线即有)——定位根因并修 | todo | (简报待写) | |
 | B-PLANET-13 | B/PLANET | 裙边深度口径裁决(生产2%×格距 vs 设计稿2%×chunk弧长;near侧T型失配裕度仅×1.3——B-PLANET-08新发现) | todo | (简报待写) | |
 | X-DIAG-03 | X/DIAG | Parity截图period-3通道轮转条纹伪影——**根因已实证**(B-PLANET-09:planet3 PNG编码3B/px按4B/px读,修复后绿通道差18.99→0.03);残余=其他Parity路径同源核查+旧档重生成 | todo(根因已修于35fb6ee) | Docs/Logs/TASK-X-DIAG-03.md(简报待写) | |
