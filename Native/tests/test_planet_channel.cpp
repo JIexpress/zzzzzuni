@@ -919,6 +919,300 @@ TEST_CASE("planet channel: B-PLANET-08 跨档 T 型几何失配实测（double �
     ResetPlanetChannel();
 }
 
+// =============================================================================
+// TASK-B-PLANET-13：裙边深度口径裁决（生产 2%×格距 vs 设计稿 2%×chunk 弧长）
+// =============================================================================
+//
+// 争议（B-PLANET-08 移交）：生产 SkirtDropM = 2% × 格距（near 99.28m / far 416.98m），
+// B-TECH-04 与设计稿 §5.1 口径是 2% × chunk 弧长 = 6254.7m——两口径差 res−1 倍
+// （near 63× / far 15×）。本用例做两件事：
+//   (1) 从**生产顶点字节**量裙边深与格距（不经公式复刻）：裙边顶点 = 缘顶点沿
+//       −normal 下移 SkirtDropM，故 |skirtVerPos − gridVerPos| 即生产实际裙边深；
+//       相邻格顶点弦长即格距。断言二者之比 = 2%（口径锁定：谁改公式谁红）；
+//   (2) 多 seed × 多面扫**跨档 T 型落差**（有符号：细侧高/粗侧高分开统计），
+//       给出两口径对各档的覆盖裕度与**可见性判据**（档界按定义固定在
+//       LOD 阈值 900km±90km，1080p/60° 下 1px ≈ 0.87~1.06km → 米级落差恒亚像素）。
+//
+// 口径声明（引用数字必须连带）：
+//   - near/far = 生产档（lodLevel 1/0，res 64/16）；**mid = res 32 推演档**（v1 无此档，
+//     ABI lodLevel>1 直接 RANGE），仅用于展示口径随档位的变化，其失配/裕度标注"推演"。
+//   - 跨档落差 = 粗档缘第 k 顶点的高程 vs 细档缘折线（相邻细顶点弦线）在同 u 线上的
+//     高程差；取径向高程 h = |posAbs − center| − R。**细侧高 → 细档裙边要遮**；
+//     粗侧高 → 粗档裙边要遮。
+//   - 可见性参考系：垂直 FOV 60°（与 --planet3 探针同口径）、1080p（产品目标）；
+//     640×480（探针实际分辨率）下 1px 更粗，结论只会更宽松。
+
+namespace {
+
+/// 裙边走线 → 该边第 k 个顶点的网格下标（与 GenerateChunkVerts 裙边段同式：
+/// e=0 北(i=k,j=0) / 1 南(i=k,j=res−1) / 2 西(i=0,j=k) / 3 东(i=res−1,j=k)）
+void SkirtEdgeGridIndex(uint32_t e, uint32_t k, uint32_t res, uint32_t& i, uint32_t& j)
+{
+    i = (e >= 2u) ? ((e == 2u) ? 0u : (res - 1u)) : k;
+    j = (e >= 2u) ? k : ((e == 0u) ? 0u : (res - 1u));
+}
+
+/// 跨档落差（有符号两口径）：细档缘折线 vs 粗档缘顶点的径向高程差
+struct CrossTierNeed {
+    double fineHighM = 0.0;   // 细侧高出的最大量（细档裙边必须遮）
+    double coarseHighM = 0.0; // 粗侧高出的最大量（粗档裙边必须遮）
+};
+
+CrossTierNeed CrossTierNeedAt(const zplanet::Vec3d& center, uint32_t seed, int face,
+    int32_t cellsPerEdge, int32_t fineStride, int32_t coarseStride)
+{
+    const int32_t totalF = cellsPerEdge * fineStride;
+    const int32_t totalC = cellsPerEdge * coarseStride;
+    // 档界物理线 u = 0.0625：细档 = 第 16 块的东缘，粗档 = 第 17 块的西缘
+    const int32_t gUf = 16 * fineStride + fineStride;
+    const int32_t gUc = 17 * coarseStride;
+    const double ratio = static_cast<double>(fineStride) / static_cast<double>(coarseStride);
+    CrossTierNeed need;
+    for (int32_t k = 0; k <= coarseStride; ++k) {
+        const zplanet::PlanetChunkVertex cv = zplanet::PlanetChunkVertexAtGlobal(
+            center, face, gUc, 16 * coarseStride + k, totalC, seed);
+        const double vCont = static_cast<double>(k) * ratio;
+        const int32_t g0 = 16 * fineStride + static_cast<int32_t>(std::floor(vCont));
+        const double fr = vCont - std::floor(vCont);
+        const zplanet::PlanetChunkVertex a = zplanet::PlanetChunkVertexAtGlobal(
+            center, face, gUf, g0, totalF, seed);
+        const zplanet::PlanetChunkVertex b = zplanet::PlanetChunkVertexAtGlobal(
+            center, face, gUf, g0 + 1, totalF, seed);
+        const zplanet::Vec3d p = zplanet::VecAdd(a.posAbs,
+            zplanet::VecScale(zplanet::VecSub(b.posAbs, a.posAbs), fr));
+        const double hFine = zplanet::VecLen(zplanet::VecSub(p, center)) - zplanet::kPlanetRadiusM;
+        const double hCoarse
+            = zplanet::VecLen(zplanet::VecSub(cv.posAbs, center)) - zplanet::kPlanetRadiusM;
+        const double dh = hFine - hCoarse;
+        if (dh > 0.0) {
+            if (dh > need.fineHighM) {
+                need.fineHighM = dh;
+            }
+        } else if (-dh > need.coarseHighM) {
+            need.coarseHighM = -dh;
+        }
+    }
+    return need;
+}
+
+} // namespace
+
+TEST_CASE("planet channel: B-PLANET-13 裙边深度口径裁决（2%×格距 vs 2%×chunk 弧长）")
+{
+    ResetPlanetChannel();
+    SetTestWorld();
+
+    constexpr uint32_t kCells = 32u;
+    constexpr uint32_t kSeed = 1337u;
+    const zplanet::Vec3d center = { 0.0, -zplanet::kPlanetRadiusM, 0.0 };
+    constexpr double kPiLocal = 3.14159265358979323846;
+
+    // ---- (1) 生产裙边深 / 格距：从顶点字节直量（零公式复刻）----------------------
+    struct TierMeasured {
+        uint32_t res = 0u;
+        double cellArcM = 0.0;   // 相邻格顶点弦长（实测）
+        double chunkArcM = 0.0;  // chunk 整缘弧长 = (res−1) × 格距
+        double skirtM = 0.0;     // 裙边深（实测，四缘取最大）
+        double skirtMinM = 0.0;  // 四缘取最小（均匀性对照）
+    };
+    auto measureTier = [&](uint32_t tier) -> TierMeasured {
+        const uint32_t res = (tier >= 1u) ? 64u : 16u;
+        const int32_t stride = static_cast<int32_t>(res) - 1;
+        const int32_t total = static_cast<int32_t>(kCells) * stride;
+        const int32_t gU = zplanet::ChunkVertexIndex(16, stride / 2, stride);
+        const int32_t gV = zplanet::ChunkVertexIndex(16, stride / 2, stride);
+        const zplanet::Vec3d anchor
+            = zplanet::PlanetChunkVertexAtGlobal(center, 0, gU, gV, total, kSeed).posAbs;
+        const double origin[3] = { anchor.x, anchor.y, anchor.z };
+        std::vector<uint8_t> bytes;
+        const uint32_t n = zr::unity_target::planet::TestGenerateChunkVertsForUnitTests(
+            0u, 16u, 16u, kCells, tier, origin, bytes);
+        REQUIRE(n == res * res + 4u * res);
+        REQUIRE(bytes.size() == static_cast<size_t>(n) * 32u);
+        std::vector<SeamVBVertex> v(n);
+        std::memcpy(v.data(), bytes.data(), bytes.size());
+
+        auto posOf = [&](uint32_t i, uint32_t j) {
+            const SeamVBVertex& o = v[static_cast<size_t>(j) * res + i];
+            return zplanet::Vec3d { o.pos[0], o.pos[1], o.pos[2] };
+        };
+        TierMeasured out;
+        out.res = res;
+        out.cellArcM = zplanet::VecLen(zplanet::VecSub(posOf(1u, 0u), posOf(0u, 0u)));
+        out.chunkArcM = out.cellArcM * static_cast<double>(res - 1u);
+        out.skirtM = 0.0;
+        out.skirtMinM = 1e30;
+        for (uint32_t e = 0; e < 4u; ++e) {
+            for (uint32_t k = 0; k < res; ++k) {
+                uint32_t i = 0u;
+                uint32_t j = 0u;
+                SkirtEdgeGridIndex(e, k, res, i, j);
+                const zplanet::Vec3d g = posOf(i, j);
+                const SeamVBVertex& s = v[static_cast<size_t>(res) * res + e * res + k];
+                const double d = zplanet::VecLen(zplanet::VecSub(
+                    zplanet::Vec3d { s.pos[0], s.pos[1], s.pos[2] }, g));
+                if (d > out.skirtM) {
+                    out.skirtM = d;
+                }
+                if (d < out.skirtMinM) {
+                    out.skirtMinM = d;
+                }
+            }
+        }
+        return out;
+    };
+
+    const TierMeasured nearT = measureTier(1u);
+    const TierMeasured farT = measureTier(0u);
+
+    // 生产「格距」口径（unity_target.cpp ChunkArcM）：2/(cells·(res−1))·(π/4)·R。
+    // 注意它是**面内标称平均**格距（π/4 因子），不是该 chunk 处的局部弦长：
+    // 面心处局部弦长 = 2/total·R = 1.275× 标称（本用例量到的 6328.74/26551.5m 即是），
+    // 面缘处更小。生产裙边 = 2%×标称，故相对局部弦长只有 ~1.57%（面心）。
+    auto nominalCellArcM = [&](double res) {
+        return 2.0 / (static_cast<double>(kCells) * (res - 1.0)) * (kPiLocal / 4.0)
+            * zplanet::kPlanetRadiusM;
+    };
+    const double nearCellNominalM = nominalCellArcM(64.0);
+    const double farCellNominalM = nominalCellArcM(16.0);
+    const double midCellArcM = nominalCellArcM(32.0); // mid 档推演（v1 无 res 32）
+    const double chunkArcNominalM = nearCellNominalM * 63.0; // 与档位无关（=312735.7m）
+
+    MESSAGE("B-PLANET-13 生产裙边深实测（顶点字节）：near res="
+            << nearT.res << " 裙边=" << nearT.skirtM << "m(min " << nearT.skirtMinM
+            << "m) 局部格距=" << nearT.cellArcM << "m 局部整缘=" << nearT.chunkArcM
+            << "m；far res=" << farT.res << " 裙边=" << farT.skirtM << "m(min "
+            << farT.skirtMinM << "m) 局部格距=" << farT.cellArcM << "m 局部整缘="
+            << farT.chunkArcM << "m；标称格距 near=" << nearCellNominalM << "m far="
+            << farCellNominalM << "m 标称chunk弧长=" << chunkArcNominalM
+            << "m（局部/标称=near " << nearT.cellArcM / nearCellNominalM << "× / far "
+            << farT.cellArcM / farCellNominalM << "×）");
+
+    // 口径锁定：生产 = 2%×标称格距（不是 2%×chunk 弧长 = 6254.715m）。
+    // 改公式（哪怕只把基准换成 chunk 弧长）必红。
+    CHECK(std::fabs(nearT.skirtM - 0.02 * nearCellNominalM) < 0.01);
+    CHECK(std::fabs(farT.skirtM - 0.02 * farCellNominalM) < 0.01);
+    CHECK(nearT.skirtM < 0.05 * chunkArcNominalM); // 与 2%×弧长（6254.7m）明确不同
+    CHECK(std::fabs(chunkArcNominalM - 312735.73) < 0.1); // 标称 chunk 弧长常量锚定
+    // 四缘裙边均匀（同一公式、同一档 → 深差仅 float 量化）
+    CHECK(nearT.skirtM - nearT.skirtMinM < 0.05);
+    CHECK(farT.skirtM - farT.skirtMinM < 0.05);
+
+    // ---- (2) 跨档落差：12 seed × 6 面扫（近↔远为生产构型；含 mid 的两组为推演）----
+    const uint32_t kSeeds[] = { 1337u, 7u, 42u, 2024u, 9001u, 31337u,
+        5u, 99u, 123456u, 777u, 2026u, 8u };
+    struct PairScan {
+        const char* name;
+        int32_t fineStride;
+        int32_t coarseStride;
+        double fineHighM = 0.0;
+        double coarseHighM = 0.0;
+        uint32_t fineSeed = 0u;
+        uint32_t coarseSeed = 0u;
+        int fineFace = -1;
+        int coarseFace = -1;
+    };
+    PairScan scans[3] = {
+        { "near<->far(生产)", 63, 15, 0.0, 0.0, 0u, 0u, -1, -1 },
+        { "mid<->far(推演)", 31, 15, 0.0, 0.0, 0u, 0u, -1, -1 },
+        { "near<->mid(推演)", 63, 31, 0.0, 0.0, 0u, 0u, -1, -1 },
+    };
+    for (PairScan& s : scans) {
+        for (uint32_t seed : kSeeds) {
+            for (int face = 0; face < 6; ++face) {
+                const CrossTierNeed need = CrossTierNeedAt(
+                    center, seed, face, static_cast<int32_t>(kCells), s.fineStride,
+                    s.coarseStride);
+                if (need.fineHighM > s.fineHighM) {
+                    s.fineHighM = need.fineHighM;
+                    s.fineSeed = seed;
+                    s.fineFace = face;
+                }
+                if (need.coarseHighM > s.coarseHighM) {
+                    s.coarseHighM = need.coarseHighM;
+                    s.coarseSeed = seed;
+                    s.coarseFace = face;
+                }
+            }
+        }
+        MESSAGE(std::string(s.name) << " 需遮蔽（12 seed × 6 面，n=72）：细侧 "
+                                    << s.fineHighM << "m (seed=" << s.fineSeed
+                                    << " face=" << s.fineFace << ")  粗侧 " << s.coarseHighM
+                                    << "m (seed=" << s.coarseSeed << " face=" << s.coarseFace
+                                    << ")");
+    }
+
+    // ---- (3) 两口径 × 三档 的深度与覆盖裕度 --------------------------------------
+    // 2%×chunk 弧长（设计稿 §5.1 口径）用**标称** chunk 弧长（同一物理量、与档位无关）
+    const double skirt2Chunk = 0.02 * chunkArcNominalM;
+    const double nearSkirtCell = nearT.skirtM;
+    const double farSkirtCell = farT.skirtM;
+    const double midSkirtCell = 0.02 * midCellArcM; // 推演（v1 无 mid 档）
+
+    const PairScan& prod = scans[0];
+    const PairScan& midFar = scans[1];
+    const PairScan& nearMid = scans[2];
+    MESSAGE("B-PLANET-13 三档裙边口径：near 2%×格距="
+            << nearSkirtCell << "m / far=" << farSkirtCell << "m / mid(推演)=" << midSkirtCell
+            << "m；2%×chunk弧长（三档同值）=" << skirt2Chunk << "m");
+    MESSAGE("B-PLANET-13 覆盖裕度（世界单位）：生产 near 侧 "
+            << nearSkirtCell / prod.fineHighM << "× (需 " << prod.fineHighM
+            << "m，seed " << prod.fineSeed << "/face " << prod.fineFace << ")；生产 far 侧 "
+            << farSkirtCell / prod.coarseHighM << "× (需 " << prod.coarseHighM
+            << "m)；2%×弧长 near 侧 " << skirt2Chunk / prod.fineHighM << "× / far 侧 "
+            << skirt2Chunk / prod.coarseHighM << "×；推演 mid 侧 "
+            << midSkirtCell / midFar.fineHighM << "× (需 " << midFar.fineHighM
+            << "m) / 推演 far 作粗侧 " << farSkirtCell / midFar.coarseHighM << "× (需 "
+            << midFar.coarseHighM << "m) / 推演 near 作细侧 " << nearSkirtCell / nearMid.fineHighM
+            << "×");
+
+    // ---- (4) 可见性判据：1px 在档界距离上是多少米 -------------------------------
+    // 档界按定义固定在 LOD 阈值 900km（迟滞 ±90km → 最近 810km）：ZrPlanetChunkStreamer
+    // 缺省 NearDistMeters=900km / HystMeters=90km（Unity 侧，原生侧同口径）。
+    // 1080p / 垂直 FOV 60°：m/px = 2·d·tan(30°)/1080。
+    const double tanHalfFov = std::tan(60.0 * kPiLocal / 180.0 * 0.5);
+    auto metersPerPixel = [&](double distM) { return 2.0 * distM * tanHalfFov / 1080.0; };
+    const double mPerPxAt810km = metersPerPixel(810000.0); // 最不利（最近）档界
+    const double mPerPxAt900km = metersPerPixel(900000.0);
+    const double nearResidualM = prod.fineHighM - nearSkirtCell;
+    const double farResidualM = prod.coarseHighM - farSkirtCell;
+    const double nearResidualPx = (nearResidualM > 0.0) ? nearResidualM / mPerPxAt810km : 0.0;
+    const double farResidualPx = (farResidualM > 0.0) ? farResidualM / mPerPxAt810km : 0.0;
+    // 若把档界推到多远会让残余恰好 1px（触发条件登记的判据本体）
+    const double pxRatio = tanHalfFov * 2.0 / 1080.0; // 角分辨率 = 每米距离的像素数
+    const double nearOnePxDistM
+        = (nearResidualM > 0.0) ? (nearResidualM / pxRatio) : 0.0;
+    MESSAGE("B-PLANET-13 可见性：1080p/60° 下 1px = "
+            << mPerPxAt900km << "m@900km / " << mPerPxAt810km
+            << "m@810km；生产残余落差 near=" << nearResidualM << "m ("
+            << nearResidualPx << "px) / far=" << farResidualM << "m (" << farResidualPx
+            << "px)；near 残余达 1px 的档界距离阈值=" << nearOnePxDistM / 1000.0 << "km");
+    MESSAGE("B-PLANET-13 裁决：保留 2%×格距（near 世界单位裕度 "
+            << nearSkirtCell / prod.fineHighM
+            << "× <1，但档界恒 ≥810km → 残余亚像素；设计 2%×弧长 " << skirt2Chunk
+            << "m = near 标称格距 " << chunkArcNominalM / nearCellNominalM
+            << "× 深、无可见性收益）");
+
+    // 断言（裁决的可证伪面）：
+    // (a) 生产口径确实覆盖不到「世界单位最坏落差」（如实登记，不许粉饰）：
+    CHECK(nearResidualM > 0.0);
+    // (b) 但在档界可见性判据下残余 < 1px，且余量 ≥3×（810km 最不利侧）：
+    CHECK(nearResidualPx < 1.0);
+    CHECK(1.0 / nearResidualPx > 3.0);
+    // (c) 粗侧（far 裙边）在世界单位下也是覆盖的：
+    CHECK(farSkirtCell > prod.coarseHighM);
+    // (d) 触发条件登记：near 残余达 1px 需要档界距离 < 该阈值，当前 810km 远高于它：
+    CHECK(nearOnePxDistM > 0.0);
+    CHECK(nearOnePxDistM < 810000.0);
+    // (e) 设计口径（2%×弧长）对该落差有充足裕度（≥10×）——即"不切换"不是因为它不够，
+    //     而是因为它超出可见性需求 63×，无收益：
+    CHECK(skirt2Chunk / prod.fineHighM > 10.0);
+    // (f) 推演档（mid）若未来上档，2%×格距 在细侧同样吃紧（登记，供加档时复算）：
+    CHECK(midSkirtCell / midFar.fineHighM < 3.0);
+
+    ResetPlanetChannel();
+}
+
 TEST_CASE("planet channel: B-PLANET-08 neighborMask v1 行为定版锁定（校验+记录+几何零依赖）")
 {
     // 裁决（TASK-B-PLANET-08，依据=任务日志测量节实测缝宽）：方案 A 维持——

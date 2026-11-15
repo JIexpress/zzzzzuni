@@ -14,6 +14,10 @@
 //   5. 动态读取：超长值逐字节保真、超上限明确拒绝（*out 空）。
 // 变异验证：把 ReadEnvA 的 Truncated 分支改回"信任 API 写入的截断内容"→
 // canary/NUL 用例红（证明用例有牙）。
+//
+// X-DIAG-02（基线缺陷，doctest -s 才暴露）：断言里的智能指针一律写 `.get()`。
+// MSVC STL 的 operator<<(ostream&, const unique_ptr&) 转发 get()，char[] 被当
+// C 字符串流化 → doctest 在 `-s`（打印成功断言）时对空指针 strlen 读 0x0 SIGSEGV。
 // =============================================================================
 #include "doctest/doctest.h"
 
@@ -109,7 +113,13 @@ TEST_CASE("zfg env: dynamic read preserves long values verbatim (B-2 log path fi
     std::unique_ptr<char[]> heap;
     const size_t len = zfg::ReadEnvDynamicA(env.m_name.c_str(), &heap, 8192u);
     REQUIRE(len == 64u);
-    REQUIRE(heap != nullptr);
+    // X-DIAG-02：断言智能指针必须比较 `.get()`，不得直接比较 unique_ptr 本身。
+    // MSVC STL 为 unique_ptr 提供了 operator<<（<memory>：
+    //   operator<<(ostream&, const unique_ptr&) { _Out << _Px.get(); }），
+    // doctest 2.5.3 把它当作"可流化类型"（doctest.h StringMaker →
+    // has_insertion_operator）从而拿它做断言值字符串化；char[] 的 get() 是
+    // char*，被按 C 字符串输出 → 指针为空时 strlen(nullptr) 读 0x0 崩溃。
+    REQUIRE(heap.get() != nullptr);
     CHECK(std::strcmp(heap.get(), kLongValue) == 0);
     CHECK(heap.get()[len] == '\0'); // 终止符由读取器保证
 }
@@ -122,9 +132,9 @@ TEST_CASE("zfg env: dynamic read rejects values over the safety cap (B-2 explici
     // 上限 8 字符 < 64 字符值 → 明确拒绝：返回所需长度、*out 保持空
     const size_t len = zfg::ReadEnvDynamicA(env.m_name.c_str(), &heap, 8u);
     CHECK(len == 64u);
-    CHECK(heap == nullptr);
+    CHECK(heap.get() == nullptr); // 见上一用例注释：不得直接比较 unique_ptr 本身
     // 未设置 → 0 且 *out 空
     env.Set(nullptr);
     CHECK(zfg::ReadEnvDynamicA(env.m_name.c_str(), &heap, 8192u) == 0u);
-    CHECK(heap == nullptr);
+    CHECK(heap.get() == nullptr);
 }
