@@ -87,6 +87,7 @@
     -screen-fullscreen 0 -logFile TempLogs/framebaseline_cost1.log
   ```
   产物：`out/frame-baseline-<UTC时间戳>.json`（文件名白名单 + out 目录边界断言，env-probe 同口径），`mode` 字段 = `asShipped` / `cost`。退出码 0 = JSON 已落盘；4 = 启动链/场景超时**但仍写档**（`status=aborted` + `abortReason`）；3 = JSON 未写出（路径断言失败等致命 IO）。
+- **门禁（A-PERF-02）**：`Tools/bench_player.ps1` 跑 5 轮 cost 口径、丢首轮取余 4 轮每指标 p50 中位数，比 `Tools/Probes/baseline/player-frame-baseline.json`（`machine`/`date`/每指标 `p50`+`envelope`；GPU 10% / 主 12% / 渲染 20%，计数 10%）→ `-Gate` 有 RED exit 1、取不到数据/缺字段/环境不静默 exit 2、全过 exit 0；`-UpdateBaseline` 重取、`-SelfTest` 纯函数自测（52 例）。
 - **激活口径**：只在 Player 命令行带 `-framebaseline` 或 `-framebaseline-vsync0` 时创建对象（`RuntimeInitializeOnLoadMethod` 里判断，惰性范式同 `PlanetRuntimeProbe`）；编辑器/测试/正常启动零对象、零日志（实测：无参数冒烟跑 Player.log 里 `FrameBaseline` 出现 0 次）。cost 口径改的 vsync 在采样结束立刻还原（`vsync.restoredAfterSampling=true`，日志有 `vsync restored` 行）。
 - **测什么**：
   1. 从主菜单走**生产路径** `GameBootstrap.StartNewGame()` → `SceneLoader.LoadSceneAsync("SCN_Game")`（不直载场景，测的就是玩家真走的那条装配链），等 `SCN_Game` 激活后 warmup 120 帧、样本 600 帧；

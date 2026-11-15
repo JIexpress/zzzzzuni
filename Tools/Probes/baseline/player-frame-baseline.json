@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "probe": "frame-baseline",
+  "mode": "cost",
+  "date": "2026-11-15",
+  "machine": "AMD Ryzen 7 7840HS w/ Radeon 780M Graphics / AMD Radeon 780M Graphics",
+  "machine_quiet": "QUIET",
+  "rounds": 5,
+  "roundsKept": 4,
+  "dropFirstRound": true,
+  "criterion": "per-metric p50 = median over the kept rounds (round 1 discarded); RED when current > baseline * (1 + envelope); exit 0 pass / 1 RED / 2 MISS",
+  "envelopeSource": "frame-time baseline doc (Docs/Planning, 2026-11-15) regression criterion: GPU 10% / main 12% / render 20% (>=5 rounds, cross-session); count metrics 10% (deterministic per run, no registered envelope)",
+  "metrics": {
+    "gpuFrameTime": {
+      "unit": "ms",
+      "p50": 3.1413,
+      "envelope": 0.1,
+      "measuredMin": 3.134,
+      "measuredMax": 3.2087,
+      "measuredSpreadPct": 2.38
+    },
+    "cpuMainThreadFrameTime": {
+      "unit": "ms",
+      "p50": 3.5599,
+      "envelope": 0.12,
+      "measuredMin": 3.5078,
+      "measuredMax": 3.6761,
+      "measuredSpreadPct": 4.73
+    },
+    "cpuRenderThreadFrameTime": {
+      "unit": "ms",
+      "p50": 0.7255,
+      "envelope": 0.2,
+      "measuredMin": 0.7058,
+      "measuredMax": 0.7889,
+      "measuredSpreadPct": 11.45
+    },
+    "setPassCalls": {
+      "unit": "count",
+      "p50": 28,
+      "envelope": 0.1,
+      "measuredMin": 28,
+      "measuredMax": 28,
+      "measuredSpreadPct": 0
+    },
+    "batches": {
+      "unit": "count",
+      "p50": 84,
+      "envelope": 0.1,
+      "measuredMin": 84,
+      "measuredMax": 84,
+      "measuredSpreadPct": 0
+    },
+    "triangles": {
+      "unit": "count",
+      "p50": 106738,
+      "envelope": 0.1,
+      "measuredMin": 106736,
+      "measuredMax": 106738,
+      "measuredSpreadPct": 0
+    }
+  },
+  "notes": [
+    "rounds: 5 x -framebaseline-vsync0 (1920x1080 windowed, ~10s each), round 1 discarded (cold-start PSO bias)",
+    "probe files used: frame-baseline-2026-11-15T06-55-06.json, frame-baseline-2026-11-15T06-55-18.json, frame-baseline-2026-11-15T06-55-29.json, frame-baseline-2026-11-15T06-55-40.json, frame-baseline-2026-11-15T06-55-51.json",
+    "metric p50 = median of statistics.<metric>.p50 across the kept rounds (even count: lower middle)",
+    "envelope = registered regression criterion; a fresh box/session invalidates it and needs a re-baseline",
+    "machine_quiet: QUIET"
+  ]
+}
