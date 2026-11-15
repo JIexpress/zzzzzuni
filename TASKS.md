@@ -94,7 +94,7 @@
 | A-R9-19 | A/URP | 色彩管线迁移（Gamma→Linear + HDR 两档 Tonemapping） | done(主控实跑验收；Linear 下 1102+88 全绿；ZRender 桥改 UNORM 视图；两档重新分层差1.48x；灯光接受新基准未重标定) | Docs/Logs/TASK-A-R9-19.md | 82daf86 |
 | A-AI-05 | A/AI | NPC 自主模式（G 键开关）+ 预约态（到达才占） | held(暂缓：简报已写、未动工；用户进入正式游戏开发，此功能后置。无半成品代码，恢复时按简报直接派施工) | Docs/Logs/TASK-A-AI-05.md | — |
 
-**统计**（行扫描口径，2026-11-15 接管轮 II 校准）：done 174 ／ doing 0 ／ todo 0 ／ blocked 0 ／ held 1（todo 清零；held=A-AI-05 待用户恢复指令）
+**统计**（行扫描口径，2026-11-15 接管轮 III）：done 175 ／ doing 0 ／ todo 0 ／ blocked 0 ／ held 1（held=A-AI-05）
 
 > **2026-10-28 G-64 文档对齐（接管）**：修三处失真 ①R8 六行原被追加在「里程碑对照」标题**下方**导致表格断裂、`B-R8-03` 仍挂 `doing`（实际已 PASS，commit `be2adcf`）——已并入主表并改正状态
 > ②`HANDOFF.md` 表头仍写「R8 推进 3/4、B-R8-02 待派」（实际 47 任务全闭环）③`README.md` 与 HANDOFF 注意事项里的任务数/用例数/`TestReport.txt` 是否入库均过期。
@@ -214,3 +214,4 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | X-DIAG-02 | X/DIAG | test_zfg_env -s 全量 SIGSEGV | done(ac79c50；根因=doctest 把 unique_ptr<char[]> 流化成 strlen(nullptr)；改比 .get()，断言全保留；381/823,640 全绿；验收 PASS 7/7+变异) | Docs/Logs/TASK-X-DIAG-02.md | ac79c50 |
 | B-PLANET-13 | B/PLANET | 裙边深度口径裁决 | done(ac79c50；裁决保留 2%×格距；near 裕度 0.387×=0.182px 亚像素；触发距离<147.17km 登记；验收 PASS 8/8+变异) | Docs/Logs/TASK-B-PLANET-13.md | ac79c50 |
 | X-DIAG-03 | X/DIAG | Parity 条纹同源核查+旧档重生成 | done(0d2d62e；14 写出点+3 编码器审计，仅 planet3 两条同源已修；重生成后绿通道 h/v 79.6→0.05；pitch 守卫未做如实登记) | Docs/Logs/TASK-X-DIAG-03.md | 0d2d62e |
+| A-PERF-01 | A/PERF | 第一版帧耗基线（07 清单第 1 条：跑通工程+记帧耗） | done(c7365b5；Player 探针惰性启用；1080p cost GPU p50 3.12ms/主线程 3.61/渲染线程 0.75，5 轮中位；asShipped 90Hz 钳制 11.11ms；SetPass 28/Batches 84/Tris 106k；回归门限改跨会话中位数±包络 GPU≈10%；验收有条件通过) | Docs/Logs/TASK-A-PERF-01.md | c7365b5 |

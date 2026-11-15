@@ -6,6 +6,17 @@
 
 **快照时间**: 2026-11-15 午（**接管轮 II：五条 backlog 清零，todo=0**）｜**刷新者**: 主控（WorkBuddy 接管 GLM 会话）｜**仓库**: `C://Users//1//Desktop//zcode//GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni
 
+## ⚡ 最新（2026-11-15 接管轮 III：第一版帧耗基线落地）
+
+- **07 清单第 1 条已做（c7365b5）**：Player 探针 `FrameBaselineProbe`（只在 `-framebaseline` / `-framebaseline-vsync0` 时启用，其余零开销零日志），SCN_Game 1080p 采样 120 warmup + 600 帧，落 `Tools/Probes/out/frame-baseline-*.json`。
+- **基线数字（本机 780M / URP 14.0.11 / Unity 2022.3.62f3c1 / Linear / Medium / 1080p）**：
+  - **asShipped**：帧间隔 p50 **11.1105ms**——这是 90Hz + vSync 的**钳制值，不是成本**；
+  - **cost（vSync 关）**：GPU p50 **3.12ms**、主线程 **3.61ms**、渲染线程 **0.75ms**（验收 5 轮中位数），帧间隔 ≈3.6ms；
+  - 渲染统计：**SetPass 28 / Batches 84 / Triangles 106,782 / Vertices 97,051**（Medium、MSAA 2、renderScale 1，未降档）。
+- **回归判据（验收修正）**：单次三连跑的 1.31% 包络**不能**当门限；有效门限 = **≥5 轮跨会话中位数 ± 实测包络（GPU≈10% / 主线程≈12% / 渲染线程≈20%）**，差值超包络才算回归。
+- **已知不代表性**：无玩家输入、静态出生点、iGPU 受后台占用与冷启 PSO 影响（首轮偏低 +7.4% 反向未定位）；测量期不要并行采集 GPU 计数器（会自扰动）。
+- **git**：HEAD `691799c`，已推 origin（含此前 10 个提交）。
+
 ## ⚡ 最新（2026-11-15 接管轮 II，五条 backlog 清零）
 
 - **本轮并行两线五件，全部施工/验收分代理，todo 清零（174 done / 0 todo / 1 held）**。
