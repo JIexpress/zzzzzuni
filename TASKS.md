@@ -94,7 +94,7 @@
 | A-R9-19 | A/URP | 色彩管线迁移（Gamma→Linear + HDR 两档 Tonemapping） | done(主控实跑验收；Linear 下 1102+88 全绿；ZRender 桥改 UNORM 视图；两档重新分层差1.48x；灯光接受新基准未重标定) | Docs/Logs/TASK-A-R9-19.md | 82daf86 |
 | A-AI-05 | A/AI | NPC 自主模式（G 键开关）+ 预约态（到达才占） | held(暂缓：简报已写、未动工；用户进入正式游戏开发，此功能后置。无半成品代码，恢复时按简报直接派施工) | Docs/Logs/TASK-A-AI-05.md | — |
 
-**统计**（行扫描口径，2026-11-15 接管轮校准并去重）：done 169 ／ doing 0 ／ todo 5 ／ blocked 0 ／ held 1（余：A-CONF-02 / B-VIS-02 / X-DIAG-02 / B-PLANET-13 / X-DIAG-03；held=A-AI-05）
+**统计**（行扫描口径，2026-11-15 接管轮 II 校准）：done 174 ／ doing 0 ／ todo 0 ／ blocked 0 ／ held 1（todo 清零；held=A-AI-05 待用户恢复指令）
 
 > **2026-10-28 G-64 文档对齐（接管）**：修三处失真 ①R8 六行原被追加在「里程碑对照」标题**下方**导致表格断裂、`B-R8-03` 仍挂 `doing`（实际已 PASS，commit `be2adcf`）——已并入主表并改正状态
 > ②`HANDOFF.md` 表头仍写「R8 推进 3/4、B-R8-02 待派」（实际 47 任务全闭环）③`README.md` 与 HANDOFF 注意事项里的任务数/用例数/`TestReport.txt` 是否入库均过期。
@@ -190,13 +190,13 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | B-PROBE-01 | B/PROBE | fsr4-probe 两机可跑探针 | done(74ec9bd，验收 PASS F1-F7；null/真设备对照+JSON 存档；本机负对照三方互证；对端阳性待补验) | Docs/Logs/TASK-B-PROBE-01.md | 74ec9bd |
 | B-PROBE-02 | B/PROBE | linear-bridge探针:ZRender vs URP同机位亮度差数字化(改进计划§5) | done(验收PASS L1-L6;方向性发现:桥输出较URP亮12.5%复合差,'略暗'形容词被实测推翻;逐位可复现) | Docs/Logs/TASK-B-PROBE-02.md | 72126a0 |
 | A-CONF-01 | A/CONF | Config CSV→C#行类型代码生成器(08对照#11半项补全) | done(验收PASS V1-V10;四通道;EditMode 1167全绿;架构26/0;08对照#11改判已实现) | Docs/Logs/TASK-A-CONF-01.md | d15faad |
-| A-CONF-02 | A/CONF | 表类薄壳+注册行自动化(连表类也零手写;A-CONF-01遗留§6.1) | todo | (简报待写) | |
+| A-CONF-02 | A/CONF | 表类零手写+注册自动化 | done(0d2d62e；代码生成同批发行/表类+反射注册；菜单路径规范化+非破坏写入；拆假绿改走真菜单；返工后复验 PASS；1268/115) | Docs/Logs/TASK-A-CONF-02.md | 0d2d62e |
 | X-NAMES-01 | X/HYG | 资产命名规则扩容(T_/ENV_ 前缀)或 T_ENV_*.png 改名——清 6 处存量红灯(A-CONT-01 42f5a26 引入) | done(验收PASS N1-N5;naming段0违规;负例不放宽) | Docs/Logs/TASK-X-NAMES-01.md | 42e981f |
 | X-ARCH-01 | X/HYG | 架构矩阵补登记ZFrame.Render.Probes(B-PROBE-02债;验收捎带制) | done(捎带验收PASS;arch 27/0;EditMode 1182/0) | Docs/Logs/TASK-X-ARCH-01.md | c9a7d0c |
 | B-KERNEL-01 | B/KERNEL | 组件定位周期实测断言+文档BMI2/POPCNT表述纠正(08对照#7) | done(验收PASS K1-K7变异亲做;实测4~5/5,目标3未达如实记;353全绿) | Docs/Logs/TASK-B-KERNEL-01.md | fcbcb95 |
 | B-PLANET-02 | B/PLANET | 行星ABI头落地 | done(f5e6aa1，验收 PASS P1-P7；ApiVersion=3、§14 汇编入 zplugin.h、6 链同步、def 零 diff) | Docs/Logs/TASK-B-PLANET-02.md | f5e6aa1 |
 | B-VIS-01 | B/VIS | 多视图共享可见性核实:B-R4-02交付范围审计,裁决是否需补实现(08对照#4) | done(裁决A:需求已满足,VisibilitySet一次录入六视图消费;注记:真frustum剔除缺→B-VIS-02) | Docs/Logs/TASK-B-VIS-01.md | (本提交) |
-| B-VIS-02 | B/VIS | 真视锥剔除纯函数CullToViewMask+帧内录入/消费计数断言(不挡路,核实任务衍生加固) | todo | Docs/Logs/TASK-B-VIS-02.md | |
+| B-VIS-02 | B/VIS | 真视锥剔除 CullToViewMask+帧内计数 | done(0d2d62e；128 位掩码复用 ZkMask；相切/r=0/NaN fail-closed；ZrVisibilityFrame 录入消费账本；EditMode 1268；验收 PASS+变异) | Docs/Logs/TASK-B-VIS-02.md | 0d2d62e |
 | B-PLANET-01 | B/PLANET | P2拆解+行星ABI设计稿(double原点/chunk句柄/LOD邻居/高度采样)(改进计划P2) | done(验收FAIL一轮→修订R1→复验PASS;F1-F7全落地;46导出裁决正确;D8接受) | Docs/Logs/TASK-B-PLANET-01.md | 80d82bc |
 | B-PLANET-03 | B/PLANET | 行星数学生产化(planet_math §①③④提升,语义零改动) | done(验收PASS Z1-Z6,独立worktree基线逐位回归;Native/zplanet/ 在库) | Docs/Logs/TASK-B-PLANET-03.md | 11a477f |
 | B-PLANET-04 | B/PLANET | chunk通道生产实现(句柄表/生成/上传/RenderFrame集成/剔除移植/着色器) | done(验收PASS E1-E10变异亲做;56导出;--planet3真渲染306K像素;12864顶点账目恒等式;单chunk近档7.4ms实测) | Docs/Logs/TASK-B-PLANET-04.md | 8b03db6 |
@@ -211,6 +211,6 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | B-PLANET-12 | B/PLANET | IL2CPP+Android各一次(Android按D8裁决=托管等效实现) | done(验收PASS T1-T7;C#移植804点逐位0位差;APK 38.76MB构建成功;P/Invoke生成码实锤;M1/M3按MISSING闭环) | Docs/Logs/TASK-B-PLANET-12.md | da54772 |
 | X-HAPTICS-01 | X/HYG | TouchHaptics平台条件化修复(Windows Player编译债CS0103,A-AND-10潜伏;4行最小diff主控批准) | done(捎带验收PASS H1;Mono Player全链编译PASS CS0103归零;手持域零变化) | Docs/Logs/TASK-X-HAPTICS-01.md | 1161c40 |
 | B-PLANET-14 | B/PLANET | 流式排名重建阈值修复:纯海拔爬升258km不触发UpdateRanking(lenDrift>5%逻辑缺陷,B-PLANET-11发现)——加入径向/位移幅值判据 | done(验收PASS B1-B7;第三判据累计位移;12锚定测试;EditMode 1235全绿) | Docs/Logs/TASK-B-PLANET-14.md | 41adfdd |
-| X-DIAG-02 | X/DIAG | test_zfg_env.cpp:117 `-s` 全量跑 SIGSEGV(B-PLANET-03 发现,基线即有)——定位根因并修 | todo | (简报待写) | |
-| B-PLANET-13 | B/PLANET | 裙边深度口径裁决(生产2%×格距 vs 设计稿2%×chunk弧长;near侧T型失配裕度仅×1.3——B-PLANET-08新发现) | todo | (简报待写) | |
-| X-DIAG-03 | X/DIAG | Parity截图period-3通道轮转条纹伪影——**根因已实证**(B-PLANET-09:planet3 PNG编码3B/px按4B/px读,修复后绿通道差18.99→0.03);残余=其他Parity路径同源核查+旧档重生成 | todo(根因已修于35fb6ee) | Docs/Logs/TASK-X-DIAG-03.md(简报待写) | |
+| X-DIAG-02 | X/DIAG | test_zfg_env -s 全量 SIGSEGV | done(ac79c50；根因=doctest 把 unique_ptr<char[]> 流化成 strlen(nullptr)；改比 .get()，断言全保留；381/823,640 全绿；验收 PASS 7/7+变异) | Docs/Logs/TASK-X-DIAG-02.md | ac79c50 |
+| B-PLANET-13 | B/PLANET | 裙边深度口径裁决 | done(ac79c50；裁决保留 2%×格距；near 裕度 0.387×=0.182px 亚像素；触发距离<147.17km 登记；验收 PASS 8/8+变异) | Docs/Logs/TASK-B-PLANET-13.md | ac79c50 |
+| X-DIAG-03 | X/DIAG | Parity 条纹同源核查+旧档重生成 | done(0d2d62e；14 写出点+3 编码器审计，仅 planet3 两条同源已修；重生成后绿通道 h/v 79.6→0.05；pitch 守卫未做如实登记) | Docs/Logs/TASK-X-DIAG-03.md | 0d2d62e |

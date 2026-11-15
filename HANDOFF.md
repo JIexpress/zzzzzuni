@@ -4,7 +4,22 @@
 > ⚡ **给下一个 LLM 主控**：先读 `Docs/LLM-HANDOFF-NOTES.md`——132 个任务沉淀的全部操作手册（派发模板/变异验证法/故障处置手册/技术坑备忘/工具调用技巧/额度管理），照做即可满血接力。
 > 历史交接记录已归档 git 历史（`git show G-113:HANDOFF.md`），WORKLOG.md 有全部任务索引。
 
-**快照时间**: 2026-11-15（**接管轮：B-PLANET-15 闭环，P2 后续清零第一刀**）｜**刷新者**: 主控（WorkBuddy 接管 GLM 会话）｜**仓库**: `C://Users//1//Desktop//zcode//GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni
+**快照时间**: 2026-11-15 午（**接管轮 II：五条 backlog 清零，todo=0**）｜**刷新者**: 主控（WorkBuddy 接管 GLM 会话）｜**仓库**: `C://Users//1//Desktop//zcode//GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni
+
+## ⚡ 最新（2026-11-15 接管轮 II，五条 backlog 清零）
+
+- **本轮并行两线五件，全部施工/验收分代理，todo 清零（174 done / 0 todo / 1 held）**。
+- **原生线（ac79c50）**
+  - **X-DIAG-02**：`-s` 全量 SIGSEGV 根因不在被测代码——doctest 把 `unique_ptr<char[]>` 判为可流化，成功断言打印时 `strlen(nullptr)`。改比 `.get()`（断言一条不少）。`-s` 全量 **381 用例 / 823,640 断言 / exit 0**；变异复现崩溃后逐字节还原。
+  - **B-PLANET-13**：裙边口径**裁决保留** `2%×格距`（near 99.28m / far 416.98m）。关键量：near 侧 T 型落差 256.6m → 裕度 **0.387×**，但 1080p 下折合 **0.182px**（亚像素且背后是地形）；换设计口径（6254.7m）收益仅 0.182px→0，不采纳。登记：裕度下限 0.386868×、触发条件**档界 <147.17km**（当前 5.5× 余量）或加 mid 档时必须重算。
+- **Unity 线（0d2d62e）**
+  - **B-VIS-02**：`CullToViewMask` 真视锥剔除（128 位，复用 `ZkMask` 位序）+ `ZrVisibilityFrame` 录入/消费账本；相切可见、r=0 点测、NaN/∞/退化矩阵 fail-closed。首次变异 19/19 全绿（用例没抓住）→ 补「六面逐一越界」后才红，留痕。
+  - **A-CONF-02**：表类零手写（行类+表类同批生成 + 反射注册，删手写 `TableByCsvName`）。**中途被验收判 FAIL**：菜单链路 `TableAssetPathFor` 产出带 `..` 的非规范路径 → 既 Load 不到、`CreateAsset` 还会清空同名资产，而用例显式传规范化路径造成假绿。返工：路径归一 + 存在则就地更新（不换 GUID）+ 用例改走**真菜单**；复验 PASS。
+  - **X-DIAG-03**：审计 14 个写出点 + 3 个编码器，同源缺陷仅 planet3 两条（已修）；重生成后条纹列 638/638→0、绿通道 h/v **79.6→0.05**。写出端仍缺 pitch 守卫（需重编 dll），**如实登记为未做**。
+- **测试家底**：原生 **381 / 823,640**；EditMode **1268**；PlayMode **115**；arch 27/0；naming 0 违规。
+- **git 现场**：HEAD `0d2f900`，工作区干净（仅 `Tools/Probes/out/` 未跟踪证据）；**领先 origin/main 9 提交**（待用户确认后推送）。
+- **剩余只有 1 条 held**：A-AI-05（NPC 自主模式 G 键 + 预约态，简报已写未动工，用户此前决定后置）。
+- **补验待办（需另一台机/设备）**：fsr4 对端阳性 + 双机帧耗；Android 冒烟；Windows IL2CPP 补装。
 
 ## ⚡ 最新（2026-11-15，接管轮：B-PLANET-15 闭环）
 
