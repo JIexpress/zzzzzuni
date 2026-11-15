@@ -11,6 +11,7 @@
 
 using System.Collections.Generic;
 using UnityEngine;
+using ZFrame.Render.Bindings;
 
 namespace ZFrame.Render
 {
@@ -170,6 +171,155 @@ namespace ZFrame.Render
         internal static bool IsVisible(Plane[] planes, Bounds bounds)
         {
             return GeometryUtility.TestPlanesAABB(planes, bounds);
+        }
+
+        // =====================================================================
+        // TASK-B-VIS-02：真视锥剔除纯函数（B-VIS-01 遗留的"逐视图真 frustum"缺口）
+        // ---------------------------------------------------------------------
+        // 语义与位序都复用 DataKernel 的 Mask128（ZkMask 即其托管形态）：
+        //   视图索引 i → 第 i 位（i < 64 落 Lo，否则落 Hi），与原生
+        //   Mask128::Has/Set 的 (i >> 6, i & 63) 完全一致。
+        // 一个物件一次调用产出"哪几个视图看得见"的 128 位掩码，写回共享
+        // VisibilitySet 的 viewMask 语义——不是每视图各剔除一次。
+        //
+        // 边界口径（可证伪，逐条有测试）：
+        //   · 球与某平面恰好相切（d == -r）→ 判可见（闭集，严格 `<` 才剔除）
+        //   · radius == 0 → 退化为点测试；radius < 0 → 按 0 处理
+        //   · 任一输入 NaN / 无穷 / 平面退化 → 该视图判不可见（fail-closed，
+        //     宁可不画也不画错；NaN 参与比较恒 false 会误判可见，必须显式挡）
+        // =====================================================================
+
+        /// <summary>掩码可表达的视图上限（128 位，与 Mask128 一致）。</summary>
+        internal const int MaxViewCount = 128;
+
+        /// <summary>一个视图的六个世界空间平面（法线朝视锥内侧且已归一化）。</summary>
+        internal struct ZrViewFrustum
+        {
+            internal Plane Left;
+            internal Plane Right;
+            internal Plane Bottom;
+            internal Plane Top;
+            internal Plane Near;
+            internal Plane Far;
+
+            /// <summary>
+            /// 由 view*projection（列向量约定 clip = M·v）提取六平面，Gribb-Hartmann：
+            /// 左 = 行3+行0、右 = 行3−行0、下 = 行3+行1、上 = 行3−行1、
+            /// 近 = 行3+行2、远 = 行3−行2（D3D [0,w] 与 GL [-w,w] 两套裁剪体均适用）。
+            /// </summary>
+            internal static ZrViewFrustum FromViewProjection(Matrix4x4 viewProjection)
+            {
+                ZrViewFrustum frustum;
+                frustum.Left = PlaneFromRows(viewProjection, 1f, 0);
+                frustum.Right = PlaneFromRows(viewProjection, -1f, 0);
+                frustum.Bottom = PlaneFromRows(viewProjection, 1f, 1);
+                frustum.Top = PlaneFromRows(viewProjection, -1f, 1);
+                frustum.Near = PlaneFromRows(viewProjection, 1f, 2);
+                frustum.Far = PlaneFromRows(viewProjection, -1f, 2);
+                return frustum;
+            }
+
+            /// <summary>六平面全部有限且非退化（否则本视图整帧 fail-closed）。</summary>
+            internal bool IsValid
+            {
+                get
+                {
+                    return IsFinitePlane(Left) && IsFinitePlane(Right) && IsFinitePlane(Bottom)
+                        && IsFinitePlane(Top) && IsFinitePlane(Near) && IsFinitePlane(Far);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 一次调用算出"哪些视图能看见这个包围球"，返回 128 位掩码（位序见上方注释）。
+        /// 纯函数、无分配、无 Unity 场景依赖；viewCount 超 128 的部分被截断（不置位）。
+        /// </summary>
+        internal static ZkMask CullToViewMask(ZrViewFrustum[] views, int viewCount, Vector3 center,
+            float radius)
+        {
+            var mask = default(ZkMask);
+            if (views == null || viewCount <= 0 || !IsFiniteVector(center) || !IsFinite(radius))
+            {
+                return mask; // fail-closed：坏输入不画
+            }
+
+            if (radius < 0f)
+            {
+                radius = 0f; // 退化半径按点处理（负半径无几何意义）
+            }
+
+            int count = viewCount < MaxViewCount ? viewCount : MaxViewCount;
+            for (int view = 0; view < count; view++)
+            {
+                if (IntersectsSphere(views[view], center, radius))
+                {
+                    mask.Set((uint)view); // bit = 视图索引，与 Mask128 同位序
+                }
+            }
+
+            return mask;
+        }
+
+        /// <summary>
+        /// 球与单个视图是否相交（保守：相交/相切/包含都算可见）。NaN 与非有限平面 → false。
+        /// </summary>
+        internal static bool IntersectsSphere(ZrViewFrustum view, Vector3 center, float radius)
+        {
+            if (!view.IsValid || !IsFiniteVector(center) || !IsFinite(radius))
+            {
+                return false;
+            }
+
+            return IsInside(view.Left, center, radius) && IsInside(view.Right, center, radius)
+                && IsInside(view.Bottom, center, radius) && IsInside(view.Top, center, radius)
+                && IsInside(view.Near, center, radius) && IsInside(view.Far, center, radius);
+        }
+
+        /// <summary>球是否在该平面的内侧（d >= -r；相切算内侧）。</summary>
+        private static bool IsInside(Plane plane, Vector3 center, float radius)
+        {
+            float distance = plane.normal.x * center.x + plane.normal.y * center.y
+                + plane.normal.z * center.z + plane.distance;
+            if (!IsFinite(distance))
+            {
+                return false; // 溢出/NaN：不可见（fail-closed）
+            }
+
+            return distance >= -radius;
+        }
+
+        /// <summary>行3 + sign·行axis → 归一化平面（法线朝内）；退化时返回 NaN 平面。</summary>
+        private static Plane PlaneFromRows(Matrix4x4 matrix, float sign, int axisRow)
+        {
+            float a = matrix.m30 + sign * matrix[axisRow, 0];
+            float b = matrix.m31 + sign * matrix[axisRow, 1];
+            float c = matrix.m32 + sign * matrix[axisRow, 2];
+            float d = matrix.m33 + sign * matrix[axisRow, 3];
+            float length = Mathf.Sqrt((a * a) + (b * b) + (c * c));
+            if (!IsFinite(length) || length < 1e-6f)
+            {
+                return new Plane(Vector3.zero, float.NaN); // IsValid 据此拒掉整个视图
+            }
+
+            float inverse = 1f / length;
+            return new Plane(new Vector3(a * inverse, b * inverse, c * inverse), d * inverse);
+        }
+
+        private static bool IsFinitePlane(Plane plane)
+        {
+            return IsFinite(plane.normal.x) && IsFinite(plane.normal.y)
+                && IsFinite(plane.normal.z) && IsFinite(plane.distance)
+                && plane.normal.sqrMagnitude > 0.999f && plane.normal.sqrMagnitude < 1.001f;
+        }
+
+        private static bool IsFiniteVector(Vector3 value)
+        {
+            return IsFinite(value.x) && IsFinite(value.y) && IsFinite(value.z);
+        }
+
+        private static bool IsFinite(float value)
+        {
+            return !float.IsNaN(value) && !float.IsInfinity(value);
         }
     }
 }

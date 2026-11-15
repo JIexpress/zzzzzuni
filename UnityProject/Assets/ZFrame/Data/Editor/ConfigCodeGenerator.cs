@@ -50,6 +50,23 @@ namespace ZFrame.Data.ConfigEditor
         }
 
         /// <summary>
+        /// Table-shell class name for a csv (enemy.csv -> EnemyConfigTable).
+        /// TASK-A-CONF-02: table classes are generated too, so adding a table
+        /// stays zero-hand-written. Returns null for an invalid stem.
+        /// </summary>
+        public static string TableClassNameFor(string csvPath)
+        {
+            return ConfigTableCodegen.TableClassNameForRow(RowClassNameFor(csvPath));
+        }
+
+        /// <summary>Default asset path of the generated table shell for a csv.</summary>
+        public static string TableSourcePathFor(string csvPath)
+        {
+            var tableClassName = TableClassNameFor(csvPath);
+            return tableClassName == null ? null : $"{GeneratedRoot}/{tableClassName}.cs";
+        }
+
+        /// <summary>
         /// Generates the row type for one csv. Reads the header, validates the
         /// schema and writes <see cref="GeneratedRoot"/>/{Class}.cs only when
         /// content changed. Errors => report only, nothing written.
@@ -141,6 +158,20 @@ namespace ZFrame.Data.ConfigEditor
             var root = string.IsNullOrEmpty(outputRoot) ? GeneratedRoot : outputRoot;
             var fullPath = ToAbsolute($"{root}/{className}.cs");
             report.WroteFile = ConfigRowCodegen.WriteIfChanged(fullPath, code);
+
+            // TASK-A-CONF-02：表类薄壳同批生成（XConfigTable : ConfigTable<XConfigRow>），
+            // 使"加一张表"不再需要手写任何 C#。表类名与注册键同源推导。
+            var tableClassName = ConfigTableCodegen.TableClassNameForRow(className);
+            if (tableClassName == null)
+            {
+                report.Errors.Add($"行类名 '{className}' 无法推导出合法表类名");
+                return;
+            }
+
+            report.TableClassName = tableClassName;
+            var tableCode = ConfigTableCodegen.Generate(schema);
+            var tablePath = ToAbsolute($"{root}/{tableClassName}.cs");
+            report.WroteTableFile = ConfigRowCodegen.WriteIfChanged(tablePath, tableCode);
         }
 
         [MenuItem("ZFrame/Config/生成行类型(全部 CSV)")]
@@ -150,7 +181,7 @@ namespace ZFrame.Data.ConfigEditor
             var failed = 0;
             foreach (var report in reports)
             {
-                if (report.WroteFile)
+                if (report.WroteFile || report.WroteTableFile)
                 {
                     Debug.Log($"[ConfigCodeGenerator] 行类型已重新生成: {report.SourceCsvPath}");
                 }
@@ -181,7 +212,7 @@ namespace ZFrame.Data.ConfigEditor
             }
 
             var report = GenerateForRowType(csvPath);
-            if (report.WroteFile)
+            if (report.WroteFile || report.WroteTableFile)
             {
                 Debug.Log($"[ConfigCodeGenerator] 行类型已生成: {report}");
             }

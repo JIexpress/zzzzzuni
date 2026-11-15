@@ -1,0 +1,4 @@
+Id:string,Count:int[1..100],Interval:float[0..60],Boss:bool
+w1,5,6.0,false
+w2,8,5.5,false
+w3,12,4.0,true

@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 using ZFrame.Data.Config;
 using ZFrame.Data.ConfigEditor;
@@ -162,9 +163,50 @@ namespace ZFrame.Data.Tests
         [Test]
         public void TableAssetPathFor_FollowsCfgConvention()
         {
-            Assert.AreEqual(
-                "Assets/Configs/CSV/../CFG_EnemyTable.asset",
-                CsvExporter.TableAssetPathFor("Assets/Configs/CSV/enemy.csv"));
+            var path = CsvExporter.TableAssetPathFor("Assets/Configs/CSV/enemy.csv");
+            Assert.AreEqual("Assets/Configs/CFG_EnemyTable.asset", path);
+            StringAssert.DoesNotContain("..", path, "AssetDatabase 路径不得含 '..'（LoadAssetAtPath 按字面匹配）");
+        }
+
+        // ---- 路径规范化（TASK-A-CONF-02 返工：默认路径必须是 Load 得动的规范路径）----
+
+        [Test]
+        public void TableAssetPathFor_IsCanonical_ForExistingAndMissingAsset()
+        {
+            foreach (var csv in new[] { "Assets/Configs/CSV/enemy.csv", "Assets/Configs/CSV/wave.csv" })
+            {
+                var path = CsvExporter.TableAssetPathFor(csv);
+                StringAssert.StartsWith("Assets/", path, $"{csv}: 必须返回项目内 AssetDatabase 路径");
+                StringAssert.DoesNotContain("/../", path, $"{csv}: 不得含 '..' 段");
+                StringAssert.DoesNotContain("/./", path, $"{csv}: 不得含 '.' 段");
+                StringAssert.DoesNotContain("//", path, $"{csv}: 不得含重复分隔符");
+                Assert.AreEqual(path, path.Replace('\\', '/'), $"{csv}: 必须用正斜杠");
+            }
+
+            // 已存在资产：规范化后 Load 得到；不存在的资产：同一路径尚未占用。
+            var enemyPath = CsvExporter.TableAssetPathFor("Assets/Configs/CSV/enemy.csv");
+            Assert.IsNotNull(AssetDatabase.LoadAssetAtPath<EnemyConfigTable>(enemyPath),
+                "既有 enemy 表必须能用该路径直接 Load 到（旧实现恒 null）");
+            Assert.IsTrue(AssetDatabase.LoadAssetAtPath<ScriptableObject>(enemyPath) != null);
+
+            var wavePath = CsvExporter.TableAssetPathFor("Assets/Configs/CSV/wave.csv");
+            Assert.AreEqual("Assets/Configs/CFG_WaveTable.asset", wavePath,
+                "不存在资产时同一约定同样成立（路径与资产是否存在无关）");
+            Assert.AreEqual(wavePath, CsvExporter.TableAssetPathFor("Assets/Configs/CSV/wave.csv"),
+                "同一输入必须稳定（幂等）");
+        }
+
+        [Test]
+        public void NormalizeAssetPath_CollapsesDotSegments_AndStaysProjectRelative()
+        {
+            Assert.AreEqual("Assets/Configs/CFG_EnemyTable.asset",
+                CsvExporter.NormalizeAssetPath("Assets/Configs/CSV/../CFG_EnemyTable.asset"));
+            Assert.AreEqual("Assets/Configs/CFG_EnemyTable.asset",
+                CsvExporter.NormalizeAssetPath("Assets\\Configs\\CSV\\..\\CFG_EnemyTable.asset"));
+            Assert.AreEqual("Assets/Configs/CFG_EnemyTable.asset",
+                CsvExporter.NormalizeAssetPath("Assets//Configs/./CFG_EnemyTable.asset"));
+            Assert.AreEqual("", CsvExporter.NormalizeAssetPath("Assets/.."));
+            Assert.IsNull(CsvExporter.NormalizeAssetPath(null));
         }
 
         // ---- 注解表头（TASK-A-CONF-01 代码生成 schema 格式，与裸表头并存）----

@@ -16,6 +16,12 @@ namespace ZFrame.Data.ConfigEditor
         /// <summary>True when the generated file content changed and was written this run.</summary>
         public bool WroteFile { get; set; }
 
+        /// <summary>True when the generated table shell changed and was written this run (TASK-A-CONF-02).</summary>
+        public bool WroteTableFile { get; set; }
+
+        /// <summary>Generated table class name (null when nothing was generated).</summary>
+        public string TableClassName { get; set; }
+
         /// <summary>
         /// True when the csv was skipped because its header carries no type
         /// annotation at all — a bare-header table (e.g. npc_personality.csv,
@@ -33,7 +39,7 @@ namespace ZFrame.Data.ConfigEditor
         /// <summary>Human readable one-line summary.</summary>
         public override string ToString()
         {
-            return $"{SourceCsvPath}: wrote={WroteFile}, skipped={Skipped}, errors={Errors.Count}";
+            return $"{SourceCsvPath}: wrote={WroteFile}, table={WroteTableFile}, skipped={Skipped}, errors={Errors.Count}";
         }
 
         /// <summary>Multi-line report block (used by the batch entry).</summary>
@@ -48,6 +54,10 @@ namespace ZFrame.Data.ConfigEditor
             else
             {
                 sb.AppendLine(WroteFile ? "  写入: 是（内容有变化）" : "  写入: 否（无变化或出错）");
+                if (TableClassName != null)
+                {
+                    sb.AppendLine($"  表类: {TableClassName}（{(WroteTableFile ? "已写入" : "无变化")}）");
+                }
             }
 
             foreach (var error in Errors)
