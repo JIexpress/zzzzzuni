@@ -1,0 +1,190 @@
+{
+  "probe": "frame-baseline",
+  "mode": "cost",
+  "runtime": "player",
+  "status": "ok",
+  "generatedAtUtc": "2026-11-15T04:16:29Z",
+  "unityVersion": "2022.3.62f3c1",
+  "productVersion": "0.1.0.38",
+  "renderPipeline": {
+    "asset": "URP_Medium",
+    "type": "UnityEngine.Rendering.Universal.UniversalRenderPipelineAsset",
+    "urpPackageVersion": null, "urpPackageVersionMissing": "MISSING: 运行期读不到 URP 包版本（程序集 InformationalVersion 缺失、FileVersion=0.0.0.0）；口径以仓库 UnityProject/Packages/manifest.json 为准",
+    "zRenderActive": false
+  },
+  "colorSpace": "Linear",
+  "qualityLevel": {
+    "index": 1,
+    "name": "Medium",
+    "vSyncCount": 1,
+    "targetFrameRate": -1,
+    "antiAliasing": 2,
+    "renderScale": 1
+  },
+  "vsync": {
+    "original": {
+      "vSyncCount": 1,
+      "targetFrameRate": -1
+    },
+    "sampling": {
+      "vSyncCount": 0,
+      "targetFrameRate": -1
+    },
+    "restoredAfterSampling": true
+  },
+  "focus": {
+    "atSamplingStart": true,
+    "lostFocusFrames": 0
+  },
+  "gpu": {
+    "name": "AMD Radeon 780M Graphics",
+    "vendor": "ATI",
+    "apiType": "Direct3D12",
+    "apiVersion": "Direct3D 12 [level 12.1]",
+    "memoryMB": 7778,
+    "processor": "AMD Ryzen 7 7840HS w/ Radeon 780M Graphics ",
+    "processorCount": 16,
+    "systemMemoryMB": 15556
+  },
+  "driver": null, "driverMissing": "MISSING: Unity SystemInfo 不暴露显卡驱动版本（graphicsDeviceVersion 只给 API 级别/feature level）；不用宿主侧 WMI 值冒充播放器内取数",
+  "resolution": {
+    "expected": "1920x1080 windowed",
+    "screenWidth": 1920,
+    "screenHeight": 1080,
+    "fullScreenMode": "Windowed",
+    "monitorResolution": "2880x1800",
+    "monitorRefreshHz": 90,
+    "cameraPixelWidth": 1920,
+    "cameraPixelHeight": 1080
+  },
+  "scene": {
+    "name": "SCN_Game",
+    "path": "Assets/Scenes/SCN_Game.unity",
+    "loadedSceneCount": 1
+  },
+  "warmup": 120,
+  "samples": 600,
+  "sampleFramesObserved": 601,
+  "frameTiming": {
+    "gpuTimerFrequency": 1000000000,
+    "cpuTimerFrequency": 100000000000,
+    "invalidCpuFrameTime": 0,
+    "invalidCpuMainThreadFrameTime": 0,
+    "invalidCpuRenderThreadFrameTime": 0,
+    "invalidGpuFrameTime": 163,
+    "zeroedSetPassSamples": 1,
+    "zeroedBatchesSamples": 1,
+    "zeroedTrianglesSamples": 1,
+    "zeroedVerticesSamples": 1,
+    "zeroedGcSamples": 0
+  },
+  "statistics": {
+    "cpuFrameTime": {
+      "unit": "ms",
+      "p50": 3.9811,
+      "p95": 11.1772,
+      "p99": 11.268,
+      "mean": 4.6438,
+      "max": 11.268,
+      "min": 3.1162,
+      "samples": 600
+    },
+    "cpuMainThreadFrameTime": {
+      "unit": "ms",
+      "p50": 3.8068,
+      "p95": 4.9586,
+      "p99": 11.181,
+      "mean": 3.9254,
+      "max": 11.181,
+      "min": 2.2927,
+      "samples": 600
+    },
+    "cpuRenderThreadFrameTime": {
+      "unit": "ms",
+      "p50": 0.8586,
+      "p95": 1.2429,
+      "p99": 1.4872,
+      "mean": 0.87,
+      "max": 1.4872,
+      "min": 0.5248,
+      "samples": 600
+    },
+    "gpuFrameTime": {
+      "unit": "ms",
+      "p50": 3.369,
+      "p95": 4.0606,
+      "p99": 5.2063,
+      "mean": 3.4271,
+      "max": 5.2063,
+      "min": 2.7947,
+      "samples": 600
+    },
+    "setPassCalls": {
+      "unit": "count",
+      "p50": 28,
+      "p95": 28,
+      "p99": 28,
+      "mean": 28,
+      "max": 30,
+      "min": 26,
+      "samples": 600
+    },
+    "batches": {
+      "unit": "count",
+      "p50": 84,
+      "p95": 84,
+      "p99": 92,
+      "mean": 83.8117,
+      "max": 99,
+      "min": 69,
+      "samples": 600
+    },
+    "triangles": {
+      "unit": "count",
+      "p50": 106738,
+      "p95": 106768,
+      "p99": 125284,
+      "mean": 106309.9917,
+      "max": 140906,
+      "min": 72590,
+      "samples": 600
+    },
+    "vertices": {
+      "unit": "count",
+      "p50": 96963,
+      "p95": 97023,
+      "p99": 114765,
+      "mean": 96586.3017,
+      "max": 125113,
+      "min": 68853,
+      "samples": 600
+    },
+    "gcAllocatedInFrame": {
+      "unit": "bytes",
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "mean": null,
+      "max": null,
+      "min": null,
+      "samples": 0
+    }
+  },
+  "notes": [
+    "sceneEntry: GameBootstrap.StartNewGame() → EnterGame → SceneLoader.LoadSceneAsync(SCN_Game)（生产路径，非探针直载）",
+    "percentileMethod: nearest-rank，sorted[clamp((int)(f*n+0.5),0,n-1)]（与 Tools/Probes 既有探针同式）",
+    "quality: index=1（Medium）原样未改；未降档、未关后处理、未改 renderScale",
+    "mode: asShipped 用于\"玩家实际体验\"，cost 用于\"回归对比\"——cost 采样期 vSyncCount=0 / targetFrameRate=-1，采样后恢复原值",
+    "vsync: original vSyncCount=1 / targetFrameRate=-1；sampling vSyncCount=0 / targetFrameRate=-1（vsync>0 时 p50 被刷新间隔钳制，只有 cpuMainThread/cpuRenderThread/gpuFrameTime 能反映成本）",
+    "display: 2880x1800@90Hz；窗口 1920x1080",
+    "playerSettings.enableFrameTimingStats 置 1（FrameTimingManager 前置开关；测量设置，非画质改动）",
+    "采样期无玩家输入（探针不改相机、不注入输入）；画面为 SCN_Game 出生点静止状态",
+    "render 计数器读到 0（recorder 刚启动/该帧未产出统计）不算测量值，已剔除；剔除条数见 frameTiming.zeroed*Samples。gcAllocatedInFrame 不剔除 0（0 字节是真实值）",
+    "recorders: SetPass Calls Count=Render/SetPass Calls Count; Batches Count=Render/Batches Count; Triangles Count=Render/Triangles Count; Vertices Count=Render/Vertices Count; GC Allocated In Frame=MISSING"
+  ],
+  "missing": [
+    "MISSING: ProfilerRecorder 'GC Allocated In Frame' 在候选 [ Memory/GC Allocated In Frame Internal/GC Allocated In Frame Scripts/GC Allocated In Frame Render/GC Allocated In Frame Memory/Allocated In Frame Internal/Allocated In Frame Scripts/Allocated In Frame Render/Allocated In Frame ] 下均无效（release Player 未暴露该计数器；未用任何替代量冒充）",
+    "MISSING: statistics.gcAllocatedInFrame 无有效样本",
+    "MISSING: 播放器内无电源/性能模式/GPU 占用查询 API（本章节只覆盖 vsync 口径与窗口焦点；插电状态、性能模式、后台 GPU 占用见 Docs/Planning/帧耗基线-2026-11-15.md 的宿主侧查证）"
+  ]
+}

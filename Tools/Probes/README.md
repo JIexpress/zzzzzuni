@@ -12,6 +12,7 @@
 | `linear-bridge` | ZRender 输出与 URP 同机位亮度差（Editor 工具，程序化契约场景，不依赖任何 .unity） | Unity 批处理 `-executeMethod ZFrame.Render.Probes.LinearBridgeProbe.RunFromCommandLine`（勿带 -quit，自退出）；或菜单 ZRender > Probes > Linear Bridge Compare | 本机 2026-11-14（HEAD 06f3478，780M，Linear + URP_Medium）：**桥较 URP 直出亮 12.5%**（帧级均值 luma 61.22→68.88，0-255 域；中心半幅 +8.5%）；p50=0、p95=57.85、p99=77.86（\|Δ\| 分位）；原生中心像素回读 (13,26,38) 与 kClearColor 注释值逐字节一致 | 可用 |
 | `planet-budget` | 1080p 下 chunk 数/帧耗分布（p50/p95/p99/mean）+ 接缝像素口径（清屏色泄漏）+ 贴地扫描（SampleHeight vs 网格插值偏差，D9） | `Native/build/bin/Release/zrhi_d3d12_window.exe --pbudget`（build_native.ps1 构建后跑，跑法见下节；两机可跑） | 本机 780M 2026-11-14：1080p 帧耗 p50=1.490ms（671fps）/mean=654fps，**判据 1080p≥30fps MET（口径=30-chunk 测试场景/drawn=4，非全行星 6144）**；30 chunk（drawn=4/culled=26/vbytes=1468416）；接缝 17/17 帧零清屏色泄漏（2.138mm/px 足迹）；贴地偏差近档 max 197.8m / 远档 925.9m / 格点锚点≈0（`out/planet-budget-2026-11-14T00-14-24.json`） | 可用 |
 | `abi-precision` | 四点×双口径 double→float 提交精度：口径 A 纯数学（float(目标−相机) 重定位正确路径 vs 全 float naive 大坐标 + JitterAudit A-WORLD-01 口径）+ 口径 B ABI 全链（SetWorld→ChunkCreate→SetCameraOrigin/GetCameraOrigin→模型平移 float(anchor−cam)→端到端顶点位置损失 + SampleHeight float 输出）——§9 预算表逐环节对照 | `Native/build/bin/Release/abi_precision_probe.exe`（build_native.ps1 构建后跑；纯 CPU+dll 导出面，无 GPU 依赖；JSON 落 out/，文件名白名单+边界断言照 fsr4-probe） | 本机 DESKTOP-08EO3II 2026-11-14：四点 A.correct 全部 ≤0.5 ULP(D)（2.41µm@100m→1.37mm@100km）；B.origin round-trip 4/4 逐位；row5 顶点局部 7.81mm（实测幅值 284.7km 半 ULP 内）；row7 平移近场 2.41µm/8.84µm/0.333mm ≤0.488mm 达标、角偏差 ≤1.15e-4 px；row10 SampleHeight 0.058mm；naive@planet-frame 0.05~0.41m（差 6.8~5.3e4 倍）——§9 实测 5 环节全达标（`out/abi-precision-2026-11-14T00-47-07.json` + 复跑 `-55.json` 逐位一致） | 可用 |
+| `frame-baseline` | SCN_Game 在 1920×1080 窗口下的帧耗与渲染统计：FrameTimingManager 四项（cpuFrame / cpuMainThread / cpuRenderThread / gpu，ms）+ ProfilerRecorder 五项（SetPass / Batches / Triangles / Vertices / GC Allocated In Frame），每项 p50/p95/p99/mean/max；**两套口径**：`asShipped`（vsync 原样=玩家体验）/ `cost`（采样期 vsync=0=回归对比） | `Tools/build_player.ps1` 打包后 `Build/Windows64/ZFrame.exe -framebaseline -screen-width 1920 -screen-height 1080 -screen-fullscreen 0`（asShipped）或把开关换成 `-framebaseline-vsync0`（cost）；产物 `out/frame-baseline-<UTC>.json`，`mode` 字段区分口径；退出码 0=写档成功、4=中止但已写档、3=JSON 未写出 | 本机 780M 2026-11-15（URP_Medium/Linear/Medium=1，warmup 120+样本 600）：**cost 三轮** 主线程 p50 中位 3.607ms（3.575–3.672，包络 2.67%）/ 渲染线程 0.752ms（0.703–0.779，10.16%）/ **GPU 3.137ms（3.120–3.161，1.31%）** / 帧间隔 3.767ms（2.39%）；**asShipped 两轮** 帧间隔 11.111ms=90fps 上限、主线程 2.971ms、渲染线程 0.968ms、GPU 3.579ms；SetPass=28 / Batches=84 / Tris≈106.7k / Verts≈97.0k。判据=3 轮 p50 中位数±包络（旧"两两差 ≤5%"作废）；`GC Allocated In Frame` **MISSING** | 可用 |
 | `gpu-probe` | 显卡型号/显存/驱动 | 未编写（需 DXGI/WMI 采集器） | — | **缺** |
 
 ## 已存档的两机基线（env-probe）
@@ -73,6 +74,28 @@
 - **结果判读**：`ulpReference`（FloatUlpAt 实测应与 §9 理论值逐位一致）；`distances[].aPureMath/bAbi`（四点双口径全数）；`staticDeviation`（row5 devMax 与幅值——注意实测 max|posAbs−anchor|=284.7km 修正 §9 的 ~221km 估算，结论不变）；`budget9[].withinBudget*`（达标/超出都是数据）；`selfCheck`（顶点逐位/账目/ULP 匹配）；`missing`（0 项=全量取证）。
 - **本机 780M 存档（2026-11-14T00:47:07Z，Release /O2，seed 1337）**：A.correct 2.41026e-6/8.84198e-6/3.32562e-4/1.37250e-3 m（全部 ≤0.5 ULP(D)）；A.naive@planet 0.406/0.225/0.249/0.0533 m（行星中心系大坐标灾难——差 6.8~5.3e4 倍）；jitter@origin 100km naive=2.8125mm ∈(1mm,7.8125mm]（与 test_planet.cpp doctest 确定性复现一致）；B.origin round-trip 4/4 逐位 maxdiff=0；B.trans=B.center 逐距离相等（锚点零附加损失）；B.chunkMax 8.58~15.65mm、角偏差 ≤1.15e-4 px@1080p/hFOV60°；row5 devMax=7.8109mm；row10 devMax=5.8232e-5 m@max|h|=1055.51m；账目 create−destroy==live 全程 OK。**复跑 00-47-55 逐位一致**。
 - **边界**：探针是独立 exe——不进 zrender.dll、不进 Unity 绑定、不进 zrender_test（380 用例零改动全绿）；dll 只读消费（ChunkCreate 一次 + Destroy/ClearAll 兜底）；几何口径=锚点悬停（|target−cam|=D 精确可控），生产任意相机位下角点损失的可见性口径看角偏差列（恒亚像素）。
+
+## frame-baseline 探针（TASK-A-PERF-01，2026-11-15 交付）
+
+- **怎么跑（本机）**：`powershell -NoProfile -ExecutionPolicy Bypass -File Tools/build_player.ps1` 打包后，在仓库根直接跑（**两套口径，别混用**）
+  ```bash
+  # asShipped —— 质量档原样（vSyncCount=1）：量"玩家实际体验"
+  Build/Windows64/ZFrame.exe -framebaseline -screen-width 1920 -screen-height 1080 \
+    -screen-fullscreen 0 -logFile TempLogs/framebaseline_ship1.log
+  # cost —— 采样期 vSyncCount=0 / targetFrameRate=-1，采样后恢复：量"真实成本"（回归对比用）
+  Build/Windows64/ZFrame.exe -framebaseline-vsync0 -screen-width 1920 -screen-height 1080 \
+    -screen-fullscreen 0 -logFile TempLogs/framebaseline_cost1.log
+  ```
+  产物：`out/frame-baseline-<UTC时间戳>.json`（文件名白名单 + out 目录边界断言，env-probe 同口径），`mode` 字段 = `asShipped` / `cost`。退出码 0 = JSON 已落盘；4 = 启动链/场景超时**但仍写档**（`status=aborted` + `abortReason`）；3 = JSON 未写出（路径断言失败等致命 IO）。
+- **激活口径**：只在 Player 命令行带 `-framebaseline` 或 `-framebaseline-vsync0` 时创建对象（`RuntimeInitializeOnLoadMethod` 里判断，惰性范式同 `PlanetRuntimeProbe`）；编辑器/测试/正常启动零对象、零日志（实测：无参数冒烟跑 Player.log 里 `FrameBaseline` 出现 0 次）。cost 口径改的 vsync 在采样结束立刻还原（`vsync.restoredAfterSampling=true`，日志有 `vsync restored` 行）。
+- **测什么**：
+  1. 从主菜单走**生产路径** `GameBootstrap.StartNewGame()` → `SceneLoader.LoadSceneAsync("SCN_Game")`（不直载场景，测的就是玩家真走的那条装配链），等 `SCN_Game` 激活后 warmup 120 帧、样本 600 帧；
+  2. `FrameTimingManager`：`cpuFrameTime` / `cpuMainThreadFrameTime` / `cpuRenderThreadFrameTime` / `gpuFrameTime`（ms；前置条件 `PlayerSettings.enableFrameTimingStats=1`）；
+  3. `ProfilerRecorder`：`SetPass Calls Count` / `Batches Count` / `Triangles Count` / `Vertices Count` / `GC Allocated In Frame`（count；category×名字组合逐个试，全试过仍无效 → `null` + `MISSING`，不填 0）。
+- **读什么**：`statistics.*` 的 p50/p95/p99/mean/max/min/samples；`mode` + `vsync.original/sampling`（两套口径的差别就在这，跨口径不可比；`vsync.restoredAfterSampling` 在 cost 口径为 `true`=已还原，asShipped 为 `false` 表示"没改动、无需还原"，不是还原失败）；`qualityLevel`（档位/renderScale 原样记录，未降档）；`resolution`；`focus.*`（失焦会降帧，留痕）；`frameTiming.invalid*` 与 `zeroed*Samples`；`missing[]`（原因全文，含试过的所有组合）。
+- **判据（2026-11-15 起）**：**跑 3 轮取 p50 中位数**，同时报 min / max 与包络 `(max−min)/median`；**同一指标两次对比的差超过包络才算真变化**，包络内一律当噪声。旧的"两两 p50 差 ≤5%"作废——它在亚毫秒负载上必然过不去（asShipped 实测渲染线程包络 18.2%、主线程 11.6%，而绝对差只有 0.05–0.35ms）。
+- **判读注意**：asShipped 的 `cpuFrameTime p50=11.11ms` 是 90Hz vsync 节拍，**不是成本**；成本看 `cpuMainThread`/`cpuRenderThread`/`gpuFrameTime`，回归对比用 cost 口径。cost 口径的 `cpuFrameTime p95≈11.1ms` 是 DWM 合成节拍挡回的，**别当尾帧读**（窗口模式边界，见规划文档 §4.3）。
+- **边界**：探针只加 `Game/Bootstrap/FrameBaselineProbe.cs` + `ProjectSettings.enableFrameTimingStats`，不改玩法逻辑、不动相机/输入；采样期无玩家输入、画面为 SCN_Game 出生点静止状态（已知不代表性见 `Docs/Planning/帧耗基线-2026-11-15.md` §6）。
 
 ## 已发现的环境事实（不填默认值）
 
