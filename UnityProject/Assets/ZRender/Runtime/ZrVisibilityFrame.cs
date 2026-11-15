@@ -19,8 +19,10 @@
 //   · ConsumedTotal     = Σ M_v（多视图合计，允许 > N —— 这不是重复消费）
 //   · 重复消费只按 (物件, 视图) 判：同一物件在**不同**视图各消费一次是正确行为。
 //
-// 本类只做记账，不碰 GPU/场景；未接入 ZRenderSceneBridge（B-VIS-02 明确"不挡路"，
-// 接线属后续任务，避免改变现有画面与像素基线）。
+// 已接入 ZRenderSceneBridge.Submit（B-VIS-02 接线，2026-11-15）：每帧 BeginFrame 后
+// 对全量 entry Record 一次（录入 N = entries），阶段二对掩码为 1 且通过 enabled/layer
+// 的条目 TryConsume(entry, 0)（消费 M ≤ N），两个数进周期性日志并被断言。
+// 本类只做记账，不碰 GPU/场景。
 
 using System.Collections.Generic;
 
@@ -63,12 +65,19 @@ namespace ZFrame.Render
             }
         }
 
-        /// <summary>清空账本，开始新一帧（视图表随之重建）。</summary>
+        /// <summary>清空账本，开始新一帧（视图表随之重置）。</summary>
         internal void BeginFrame()
         {
             _recorded.Clear();
-            _consumedByView.Clear();
-            _consumedCountByView.Clear();
+
+            // 视图容器**复用**（不 Clear 掉 List 再重建 HashSet）：ZRenderSceneBridge 每帧调用，
+            // 每帧 new 一个 HashSet 会变成稳定的 GC 垃圾；Clear 保留容量，热路径零分配。
+            for (int view = 0; view < _consumedByView.Count; view++)
+            {
+                _consumedByView[view].Clear();
+                _consumedCountByView[view] = 0;
+            }
+
             DuplicateRecords = 0;
             DuplicateConsumptions = 0;
             OrphanConsumptions = 0;

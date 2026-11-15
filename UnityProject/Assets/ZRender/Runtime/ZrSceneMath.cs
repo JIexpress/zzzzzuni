@@ -219,6 +219,36 @@ namespace ZFrame.Render
                 return frustum;
             }
 
+            /// <summary>
+            /// 由外部给定的六平面直接构造（顺序同
+            /// <see cref="GeometryUtility.CalculateFrustumPlanes(UnityEngine.Camera, Plane[])"/>：
+            /// 左/右/下/上/近/远，法线朝内）。接线（B-VIS-02）走这条：
+            /// 复用相机自己那六个平面 → 与旧路径 <see cref="IsVisible"/> **同一份数**，
+            /// 不存在"两套提取各算一遍"的浮点差；平面数不足 6 → 缺的位是 NaN 平面，
+            /// <see cref="IsValid"/> 随之 fail-closed。
+            /// </summary>
+            internal static ZrViewFrustum FromPlanes(Plane[] planes)
+            {
+                ZrViewFrustum frustum;
+                frustum.Left = PlaneAt(planes, 0);
+                frustum.Right = PlaneAt(planes, 1);
+                frustum.Bottom = PlaneAt(planes, 2);
+                frustum.Top = PlaneAt(planes, 3);
+                frustum.Near = PlaneAt(planes, 4);
+                frustum.Far = PlaneAt(planes, 5);
+                return frustum;
+            }
+
+            private static Plane PlaneAt(Plane[] planes, int index)
+            {
+                if (planes == null || index < 0 || index >= planes.Length)
+                {
+                    return new Plane(Vector3.zero, float.NaN); // 缺面 → 视图非法（fail-closed）
+                }
+
+                return planes[index];
+            }
+
             /// <summary>六平面全部有限且非退化（否则本视图整帧 fail-closed）。</summary>
             internal bool IsValid
             {
@@ -258,6 +288,140 @@ namespace ZFrame.Render
             }
 
             return mask;
+        }
+
+        /// <summary>
+        /// 批量版本（**包围盒**）：一次调用算出"哪些视图能看见这个 AABB"，返回 128 位掩码。
+        ///
+        /// 为什么需要这个重载（B-VIS-02 接线的关键，别删）：包围球版本用 r = |extents|
+        /// 当半径，而 AABB 在平面法线上的真实投影半径是 Σ|n_i|·e_i ≤ |n|·|extents|
+        /// （Cauchy-Schwarz），所以球版本是 AABB 的**超集**——拿它替换
+        /// <see cref="IsVisible"/> 会在视锥边缘多画物件（drawn 数量、像素基线都会变）。
+        /// 本重载逐面复算 Σ|n_i|·e_i，判据与 <see cref="GeometryUtility.TestPlanesAABB"/>
+        /// 完全同式（d + r &gt;= 0 判可见，相切可见），故接线后 drawn / skippedFrustum
+        /// 与接线前逐位一致（等价性用例：ZrViewCullingEquivalenceTests）。
+        /// </summary>
+        internal static ZkMask CullToViewMask(ZrViewFrustum[] views, int viewCount, Bounds bounds)
+        {
+            var mask = default(ZkMask);
+            if (views == null || viewCount <= 0 || !IsFiniteVector(bounds.center)
+                || !IsFiniteVector(bounds.extents))
+            {
+                return mask; // fail-closed：坏输入不画
+            }
+
+            int count = viewCount < MaxViewCount ? viewCount : MaxViewCount;
+            for (int view = 0; view < count; view++)
+            {
+                if (IntersectsBox(views[view], bounds))
+                {
+                    mask.Set((uint)view);
+                }
+            }
+
+            return mask;
+        }
+
+        /// <summary>
+        /// AABB 与单个视图是否相交（保守：相交/相切/包含都算可见）。NaN 与非有限平面 → false。
+        /// 与 <see cref="IntersectsSphere"/> 同一套平面判据，只是半径换成 AABB 的投影半径。
+        /// </summary>
+        internal static bool IntersectsBox(ZrViewFrustum view, Bounds bounds)
+        {
+            if (!view.IsValid || !IsFiniteVector(bounds.center) || !IsFiniteVector(bounds.extents))
+            {
+                return false;
+            }
+
+            return IsInsideBox(view.Left, bounds) && IsInsideBox(view.Right, bounds)
+                && IsInsideBox(view.Bottom, bounds) && IsInsideBox(view.Top, bounds)
+                && IsInsideBox(view.Near, bounds) && IsInsideBox(view.Far, bounds);
+        }
+
+        /// <summary>
+        /// 盒是否在该平面的内侧：d + r &gt;= 0（d = 中心有符号距离，r = Σ|n_i|·e_i）。
+        /// 与 GeometryUtility.TestPlanesAABB 同式同序（含 "相切可见" 的闭集口径）。
+        /// </summary>
+        private static bool IsInsideBox(Plane plane, Bounds bounds)
+        {
+            Vector3 normal = plane.normal;
+            Vector3 center = bounds.center;
+            Vector3 extents = bounds.extents;
+            float distance = normal.x * center.x + normal.y * center.y + normal.z * center.z
+                + plane.distance;
+            float radius = extents.x * Mathf.Abs(normal.x) + extents.y * Mathf.Abs(normal.y)
+                + extents.z * Mathf.Abs(normal.z);
+            if (!IsFinite(distance) || !IsFinite(radius))
+            {
+                return false; // 溢出/NaN：不可见（fail-closed）
+            }
+
+            return distance + radius >= 0f;
+        }
+
+        /// <summary>批量剔除的批大小：一批一个 128 位字，与掩码物理宽度同源。</summary>
+        internal const int CullBatchSize = MaxViewCount;
+
+        /// <summary>
+        /// 单视图批量剔除（**分块**）：把 <paramref name="bounds"/> 里每个条目喂一次
+        /// <see cref="CullToViewMask(ZrViewFrustum[], int, Bounds)"/>，只看第 0 位（接线是单视图），
+        /// 结果写进 <paramref name="visible"/>（调用方的复用缓冲）。返回可见条目数。
+        ///
+        /// 分块口径（不许省）：每 <see cref="CullBatchSize"/>=128 条一批，批内条目 j 攒成
+        /// 一个 128 位字（j&lt;64 → Lo 的第 j 位，否则 Hi 的第 j-64 位，与 Mask128 同布局），
+        /// 因此条目数 &gt;128 时是**多批**而不是静默截断/丢物件；批边界（127/128/255/256…）
+        /// 由 ZrViewCullingEquivalenceTests 的 384 条用例钉住。
+        /// </summary>
+        internal static int CullToViewVisibleFlags(ZrViewFrustum[] views, int viewCount,
+            IList<Bounds> bounds, bool[] visible)
+        {
+            if (bounds == null || visible == null || visible.Length < bounds.Count)
+            {
+                return 0; // 容量不足：宁可不画（fail-closed），也不写越界
+            }
+
+            int visibleCount = 0;
+            int total = bounds.Count;
+            for (int start = 0; start < total; start += CullBatchSize)
+            {
+                int count = total - start;
+                if (count > CullBatchSize)
+                {
+                    count = CullBatchSize; // 一批最多 128 条 = 一个掩码字
+                }
+
+                ulong batchLo = 0ul;
+                ulong batchHi = 0ul;
+                for (int j = 0; j < count; j++)
+                {
+                    if (!CullToViewMask(views, viewCount, bounds[start + j]).Has(0u))
+                    {
+                        continue; // 单视图接线：只看视图 0 的那一位
+                    }
+
+                    if (j < 64)
+                    {
+                        batchLo |= 1ul << j;
+                    }
+                    else
+                    {
+                        batchHi |= 1ul << (j - 64);
+                    }
+
+                    visibleCount++;
+                }
+
+                // 阶段二只读掩码：批内第 j 位为 1 的条目才允许进入后续检查。
+                for (int j = 0; j < count; j++)
+                {
+                    bool on = j < 64
+                        ? ((batchLo >> j) & 1ul) != 0ul
+                        : ((batchHi >> (j - 64)) & 1ul) != 0ul;
+                    visible[start + j] = on;
+                }
+            }
+
+            return visibleCount;
         }
 
         /// <summary>

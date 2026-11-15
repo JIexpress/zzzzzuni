@@ -7,7 +7,12 @@
 // 每帧（Render）：
 //   1) 相机：worldToCameraMatrix + GL.GetGPUProjectionMatrix(projectionMatrix, false)
 //      → 归一化（见 NormalizeProjection）→ 按元素转置成行主序 float[16]
-//   2) 剔除：GeometryUtility.CalculateFrustumPlanes + TestPlanesAABB（CPU 近似）
+//   2) 剔除（两阶段，TASK-B-VIS-02 接线）：
+//      阶段一 GeometryUtility.CalculateFrustumPlanes → ZrSceneMath.ZrViewFrustum.FromPlanes
+//             → 对全量 entry 调 CullToViewMask（单视图，只取第 0 位；>128 条按 128 条一批
+//               分块），得到逐条目可见位 + 账本"录入 N"；
+//      阶段二 只对掩码为 1 的条目做 mesh 句柄/矩阵/绘制（"消费 M"）。
+//      判据与旧的逐条目 IsVisible 逐位一致（等价性由 EditMode 用例钉住）。
 //   3) 提交：SetCamera → BeginScene → 逐可见物件 DrawMesh → EndScene
 //   （RenderFrame 由管线在之后调用——它消费本帧提交的绘制表）
 //
@@ -50,6 +55,20 @@ namespace ZFrame.Render
 
         // 逐帧复用缓冲（禁止每帧分配）
         private readonly Plane[] _planes = new Plane[6];
+
+        // ---- TASK-B-VIS-02：批量剔除 + 帧内账本（全部复用，不每帧 new） ---------------
+        // 单视图接线：数组恒长 1，下标 0 就是"本帧相机"。多相机策略仍由管线决定
+        //（ZRenderPipeline 只提交 cameras[0]），本桥不新增视图。
+        private readonly ZrSceneMath.ZrViewFrustum[] _views = new ZrSceneMath.ZrViewFrustum[1];
+        private readonly List<Bounds> _boundsScratch = new List<Bounds>(256);
+        private bool[] _visibleScratch = new bool[256];
+        private readonly ZrVisibilityFrame _visibilityFrame = new ZrVisibilityFrame();
+        private bool _ledgerErrorLogged;
+
+        /// <summary>Renderer 为空的条目用：NaN 包围盒 → CullToViewMask fail-closed → 不消费不绘制。</summary>
+        private static readonly Bounds InvalidBounds =
+            new Bounds(new Vector3(float.NaN, float.NaN, float.NaN), Vector3.zero);
+
         private readonly float[] _view = new float[16];
         private readonly float[] _proj = new float[16];
         private readonly float[] _world = new float[16];
@@ -139,6 +158,13 @@ namespace ZFrame.Render
 
                 GeometryUtility.CalculateFrustumPlanes(camera, _planes);
 
+                // ---- 阶段一：批量剔除（TASK-B-VIS-02 接线）--------------------------------
+                // 一个物件一次调用：把本帧相机的六个平面装进 ZrViewFrustum，对**全量** entry
+                // 算 128 位掩码（单视图，只消费第 0 位）。>128 条按 128 条一批分块，不截断。
+                // 判据与旧的 IsVisible 逐位一致（等价性由 EditMode 用例钉住，含相切/远平面外/
+                // 退化半径/随机位姿各 ≥200 组），所以 skippedFrustum 与 drawn 不会变。
+                int visibleEntries = CullVisibleEntries();
+
                 int drawn = 0;
                 int skippedDisabled = 0;
                 int skippedLayer = 0;
@@ -147,6 +173,10 @@ namespace ZFrame.Render
                 int cullingMask = camera.cullingMask;
                 for (int i = 0; i < _entries.Count; i++)
                 {
+                    // ---- 阶段二：只有掩码为 1 的条目才允许进入后续检查（mesh 句柄 / 矩阵 / 绘制）。
+                    // enabled 与 layer 这两条**只读属性**判定刻意留在掩码之前：旧路径的计数口径是
+                    // "禁用 > 层 > 视锥 > 无 mesh" 的短路顺序，换个顺序会让 skippedDisabled /
+                    // skippedLayer / skippedFrustum 互相串味（计数逐位一致是接线硬判据）。
                     Entry entry = _entries[i];
                     Renderer renderer = entry.Renderer;
                     if (renderer == null)
@@ -169,11 +199,13 @@ namespace ZFrame.Render
                         continue;
                     }
 
-                    if (!ZrSceneMath.IsVisible(_planes, renderer.bounds))
+                    if (!_visibleScratch[i])
                     {
                         skippedFrustum++;
                         continue;
                     }
+
+                    _visibilityFrame.TryConsume(i, 0); // 账本：本视图消费了一个掩码为 1 的条目
 
                     ulong handle = GetOrCreateMeshHandle(entry.Mesh);
                     if (handle == 0UL)
@@ -209,10 +241,22 @@ namespace ZFrame.Render
                               $"已上传 mesh {_meshHandles.Count} 份（每份只传一次）。");
                 }
 
-                if (drawn == 0 && _entries.Count > 0 && Time.frameCount % 300 == 0)
+                // ---- 账本：录入 N / 消费 M（M ≤ N），并进既有周期性日志（一行，每 300 帧一条）----
+                int recorded = _visibilityFrame.Recorded;
+                int consumed = _visibilityFrame.ConsumedForView(0);
+                if ((consumed > recorded || consumed > visibleEntries) && !_ledgerErrorLogged)
                 {
-                    Debug.Log($"[ZRender] 本帧无绘制：entries={_entries.Count} 禁用={skippedDisabled} " +
-                              $"层={skippedLayer} 视锥={skippedFrustum} 无可用mesh={skippedMesh}");
+                    _ledgerErrorLogged = true;
+                    Debug.LogError($"[ZRender] 可见性账本不一致：录入={recorded} 消费={consumed} " +
+                                   $"掩码可见={visibleEntries}（应当 M ≤ min(N, 掩码可见)）。");
+                }
+
+                if (_entries.Count > 0 && Time.frameCount % 300 == 0)
+                {
+                    string head = drawn == 0 ? "本帧无绘制" : "本帧统计";
+                    Debug.Log($"[ZRender] {head}：entries={_entries.Count} 绘制={drawn} " +
+                              $"禁用={skippedDisabled} 层={skippedLayer} 视锥={skippedFrustum} " +
+                              $"无可用mesh={skippedMesh} 录入={recorded} 消费={consumed}");
                 }
 
                 return LastSubmitOk;
@@ -228,6 +272,37 @@ namespace ZFrame.Render
 
                 return false;
             }
+        }
+
+        /// <summary>
+        /// 阶段一：单视图批量剔除。返回可见条目数，逐条目可见位写进 <c>_visibleScratch</c>；
+        /// 账本在这一步"录入"（每物件每帧恰好一次，与视图数无关）。
+        /// </summary>
+        private int CullVisibleEntries()
+        {
+            _views[0] = ZrSceneMath.ZrViewFrustum.FromPlanes(_planes);
+
+            _boundsScratch.Clear();
+            for (int i = 0; i < _entries.Count; i++)
+            {
+                Renderer renderer = _entries[i].Renderer;
+                _boundsScratch.Add(renderer != null ? renderer.bounds : InvalidBounds);
+            }
+
+            if (_visibleScratch.Length < _entries.Count)
+            {
+                _visibleScratch = new bool[_entries.Count];
+            }
+
+            int visible = ZrSceneMath.CullToViewVisibleFlags(_views, 1, _boundsScratch, _visibleScratch);
+
+            _visibilityFrame.BeginFrame();
+            for (int i = 0; i < _entries.Count; i++)
+            {
+                _visibilityFrame.Record(i);
+            }
+
+            return visible;
         }
 
         /// <summary>释放所有 mesh 句柄（管线销毁时调用；原生侧幂等）。</summary>
