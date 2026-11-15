@@ -6,6 +6,18 @@
 
 **快照时间**: 2026-11-15 午（**接管轮 II：五条 backlog 清零，todo=0**）｜**刷新者**: 主控（WorkBuddy 接管 GLM 会话）｜**仓库**: `C://Users//1//Desktop//zcode//GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni
 
+## ⚡ 最新（2026-11-15 接管轮 IV：视锥接线 + 帧耗门禁）
+
+- **B-VIS-02 从「库函数」变成「真在用」（630c803）**：`CullToViewMask` 接进 `ZRenderSceneBridge.Submit` 的逐物件循环，改两阶段（整批算掩码 → 只对可见条目取 mesh/矩阵/绘制），128 一条分块不截断。
+  - **接线时挖出的真问题**：球版掩码（r=|extents|）是 AABB 判定的**超集**，直接替换会在视锥边缘多画 → 补 `Bounds` 重载按 Σ|n_i|·e_i 复算，与 `TestPlanesAABB` 同式。
+  - 等价性 660 例（随机位姿×包围盒 / 远平面外 / 退化半径）分歧 **0**；相切 220 组里 10 组落在 1 ULP 膜内（三种写法对比确认是舍入，非判据差异）。512 条合成条目的五个计数**逐位相同**（禁用/层/视锥/无 mesh/drawn）。EditMode **1276**。
+- **A-PERF-02 基线变门禁（15602f2）**：`Tools/bench_player.ps1`——5 轮 cost 口径、丢首轮、每指标取中位数，比 `Tools/Probes/baseline/player-frame-baseline.json` 的包络；`-Gate` 超包络 RED exit 1，取不到数据 exit 2（「无法证明没回归」按回归算）；`-SelfTest` 52 条。
+  - 基线：GPU **3.1413** / 主 **3.5599** / 渲染 **0.7255** / SetPass 28 / Batches 84 / Tris 106738。
+  - 验收亲自变异（baseline GPU 改小 30%）→ RED exit 1 → 还原 exit 0；把 `Build/Windows64` 改名 → MISS exit 2；`bench_regression.ps1` 的 34 条自测仍过、零改动。
+- **已知缺口（登记，未做）**：`ZrVisibilityFrame.Validate` 里 `M_v ≤ N` 因自校口径**恒真**（真正有牙的是桥内断言）；`CullToViewMask` 每帧仍按条目逐个调用（未做「整帧一次校验」短路）。两处都要等有实测压力再动。
+- **产物规矩**：`out/*.log` 与 `out/frame-baseline-*.json` 入 `.gitignore`（逐轮原始档只做本地证据），基线快照以 `Tools/Probes/baseline/` 为准；6MB PNG 不进库（大文件门禁）。
+- 家底：原生 381/823,640、EditMode **1276**、PlayMode 115、arch 27/0；看板 **176 done / 0 todo / 1 held**。
+
 ## ⚡ 最新（2026-11-15 接管轮 III：第一版帧耗基线落地）
 
 - **07 清单第 1 条已做（c7365b5）**：Player 探针 `FrameBaselineProbe`（只在 `-framebaseline` / `-framebaseline-vsync0` 时启用，其余零开销零日志），SCN_Game 1080p 采样 120 warmup + 600 帧，落 `Tools/Probes/out/frame-baseline-*.json`。

@@ -94,7 +94,7 @@
 | A-R9-19 | A/URP | 色彩管线迁移（Gamma→Linear + HDR 两档 Tonemapping） | done(主控实跑验收；Linear 下 1102+88 全绿；ZRender 桥改 UNORM 视图；两档重新分层差1.48x；灯光接受新基准未重标定) | Docs/Logs/TASK-A-R9-19.md | 82daf86 |
 | A-AI-05 | A/AI | NPC 自主模式（G 键开关）+ 预约态（到达才占） | held(暂缓：简报已写、未动工；用户进入正式游戏开发，此功能后置。无半成品代码，恢复时按简报直接派施工) | Docs/Logs/TASK-A-AI-05.md | — |
 
-**统计**（行扫描口径，2026-11-15 接管轮 III）：done 175 ／ doing 0 ／ todo 0 ／ blocked 0 ／ held 1（held=A-AI-05）
+**统计**（行扫描口径，2026-11-15 接管轮 IV）：done 176 ／ doing 0 ／ todo 0 ／ blocked 0 ／ held 1（held=A-AI-05）
 
 > **2026-10-28 G-64 文档对齐（接管）**：修三处失真 ①R8 六行原被追加在「里程碑对照」标题**下方**导致表格断裂、`B-R8-03` 仍挂 `doing`（实际已 PASS，commit `be2adcf`）——已并入主表并改正状态
 > ②`HANDOFF.md` 表头仍写「R8 推进 3/4、B-R8-02 待派」（实际 47 任务全闭环）③`README.md` 与 HANDOFF 注意事项里的任务数/用例数/`TestReport.txt` 是否入库均过期。
@@ -196,7 +196,7 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | B-KERNEL-01 | B/KERNEL | 组件定位周期实测断言+文档BMI2/POPCNT表述纠正(08对照#7) | done(验收PASS K1-K7变异亲做;实测4~5/5,目标3未达如实记;353全绿) | Docs/Logs/TASK-B-KERNEL-01.md | fcbcb95 |
 | B-PLANET-02 | B/PLANET | 行星ABI头落地 | done(f5e6aa1，验收 PASS P1-P7；ApiVersion=3、§14 汇编入 zplugin.h、6 链同步、def 零 diff) | Docs/Logs/TASK-B-PLANET-02.md | f5e6aa1 |
 | B-VIS-01 | B/VIS | 多视图共享可见性核实:B-R4-02交付范围审计,裁决是否需补实现(08对照#4) | done(裁决A:需求已满足,VisibilitySet一次录入六视图消费;注记:真frustum剔除缺→B-VIS-02) | Docs/Logs/TASK-B-VIS-01.md | (本提交) |
-| B-VIS-02 | B/VIS | 真视锥剔除 CullToViewMask+帧内计数 | done(0d2d62e；128 位掩码复用 ZkMask；相切/r=0/NaN fail-closed；ZrVisibilityFrame 录入消费账本；EditMode 1268；验收 PASS+变异) | Docs/Logs/TASK-B-VIS-02.md | 0d2d62e |
+| B-VIS-02 | B/VIS | 真视锥剔除 CullToViewMask+帧内计数 | done(0d2d62e/630c803；已接线 ZRenderSceneBridge.Submit 两阶段+128 分块；128 位掩码复用 ZkMask；相切/r=0/NaN fail-closed；ZrVisibilityFrame 录入消费账本；EditMode 1268；验收 PASS+变异) | Docs/Logs/TASK-B-VIS-02.md | 0d2d62e |
 | B-PLANET-01 | B/PLANET | P2拆解+行星ABI设计稿(double原点/chunk句柄/LOD邻居/高度采样)(改进计划P2) | done(验收FAIL一轮→修订R1→复验PASS;F1-F7全落地;46导出裁决正确;D8接受) | Docs/Logs/TASK-B-PLANET-01.md | 80d82bc |
 | B-PLANET-03 | B/PLANET | 行星数学生产化(planet_math §①③④提升,语义零改动) | done(验收PASS Z1-Z6,独立worktree基线逐位回归;Native/zplanet/ 在库) | Docs/Logs/TASK-B-PLANET-03.md | 11a477f |
 | B-PLANET-04 | B/PLANET | chunk通道生产实现(句柄表/生成/上传/RenderFrame集成/剔除移植/着色器) | done(验收PASS E1-E10变异亲做;56导出;--planet3真渲染306K像素;12864顶点账目恒等式;单chunk近档7.4ms实测) | Docs/Logs/TASK-B-PLANET-04.md | 8b03db6 |
@@ -215,3 +215,4 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | B-PLANET-13 | B/PLANET | 裙边深度口径裁决 | done(ac79c50；裁决保留 2%×格距；near 裕度 0.387×=0.182px 亚像素；触发距离<147.17km 登记；验收 PASS 8/8+变异) | Docs/Logs/TASK-B-PLANET-13.md | ac79c50 |
 | X-DIAG-03 | X/DIAG | Parity 条纹同源核查+旧档重生成 | done(0d2d62e；14 写出点+3 编码器审计，仅 planet3 两条同源已修；重生成后绿通道 h/v 79.6→0.05；pitch 守卫未做如实登记) | Docs/Logs/TASK-X-DIAG-03.md | 0d2d62e |
 | A-PERF-01 | A/PERF | 第一版帧耗基线（07 清单第 1 条：跑通工程+记帧耗） | done(c7365b5；Player 探针惰性启用；1080p cost GPU p50 3.12ms/主线程 3.61/渲染线程 0.75，5 轮中位；asShipped 90Hz 钳制 11.11ms；SetPass 28/Batches 84/Tris 106k；回归门限改跨会话中位数±包络 GPU≈10%；验收有条件通过) | Docs/Logs/TASK-A-PERF-01.md | c7365b5 |
+| A-PERF-02 | A/PERF | 玩家帧耗进门禁（基线→可执行表格） | done(15602f2；bench_player.ps1 -Gate/-UpdateBaseline/-SelfTest，5 轮丢首轮取中位，超包络 RED、MISS 一律 exit 2；基线 GPU 3.1413/主 3.5599/渲染 0.7255；变异 -30% 必红；验收 PASS) | Docs/Planning/帧耗基线-2026-11-15.md | 15602f2 |

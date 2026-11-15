@@ -61,3 +61,5 @@ Tools/android_support_installer.exe
 
 # 探针运行日志（临时证据不入库；数据以 JSON 入档，6MB 级 PNG 走大文件门禁）
 Tools/Probes/out/*.log
+# 逐轮原始档不入库：基线快照以 Tools/Probes/baseline/ 为准，逐轮 JSON 只做本地证据
+Tools/Probes/out/frame-baseline-*.json
