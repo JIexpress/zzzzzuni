@@ -369,7 +369,15 @@ namespace Game.View.Colony
         {
             try
             {
-                var args = ReportPanelArgs.Create(LatestReport, CloseReportPanel);
+                // 情报点钱包注入（TASK-A-COL-07）：余额是 Governor 的活查询（面板开着时月结 +1 也即时可见），
+                // 扣点意图直连 Governor.SpendIntelPoint（不足返回 false 不扣）。建局失败（world null）→
+                // 钱包为 null → 面板走 A-COL-05 免费通道兼容口径。
+                Governor governor = _world?.Governor;
+                var args = ReportPanelArgs.Create(
+                    LatestReport,
+                    CloseReportPanel,
+                    governor == null ? null : (Func<int>)(() => governor.IntelPoints),
+                    governor == null ? null : (Func<bool>)(() => governor.SpendIntelPoint()));
                 bool pushed = await ui.Push<ReportPanelView>(ReportPanelConfig, args);
                 if (!pushed)
                 {

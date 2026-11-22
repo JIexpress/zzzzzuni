@@ -18,6 +18,7 @@ using Game.View.Colony;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 using UnityEngine.TestTools;
 using ZFrame.Core;
 using ZFrame.View;
@@ -182,6 +183,148 @@ namespace Game.View.PlayMode.Tests
             yield return null;
             Assert.IsFalse(UIManager.Instance.IsOnStack<ReportPanelView>(), "关闭后面板必须离栈");
             Assert.IsFalse(view.IsVisible, "关闭后面板必须不再显示");
+        }
+
+        /// <summary>
+        /// C5（TASK-A-COL-07）：Raw 内容超屏时 ScrollRect 可滚——content 高 &gt; viewport 高
+        /// （简报口径）。行数保障：开局对全部具名 NPC OnViolation → 第 31 天确定性涌入 100 条
+        /// 「沉默期开始」契约行（月 2 窗口 [31,60] 内），Raw 行数远超屏；toggle 开 Raw 走付费
+        /// 闸门（情报点 2+月结 1 → 扣 1 成功）。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator C5_RawScroll_ContentExceedsViewport()
+        {
+            yield return LoadFreshSlice();
+            ColonyWorldHost host = ColonyWorldHost.Instance;
+
+            // 行数编排：全具名 NPC 违约 → 第 31 天（_daysSinceViolation=31>30）批量滑入沉默期，
+            // 每人一条 Personal Contract 行，全部落在月 2 窗口 [31,60]（非自主行为，不折叠）。
+            foreach (NamedNpc n in host.World.Named)
+            {
+                n.Contract.OnViolation();
+            }
+            host.DebugFastForward(61);   // 月 2 结算（第 60 天收尾后触发，窗口 [31,60]）
+
+            host.OpenReportPanel();
+            yield return WaitFor(() =>
+                UIManager.Instance != null && UIManager.Instance.IsOnStack<ReportPanelView>(),
+                "报告面板入栈");
+            Assert.IsTrue(UIManager.Instance.TryGetView(out ReportPanelView view));
+            Assert.IsNotNull(view.CurrentVm, "前提：面板已 Render");
+            Assert.AreEqual(2, view.CurrentVm.Month, "前提：显示第 2 月报告");
+
+            Assert.Greater(view.CurrentVm.RawLines.Count, 60,
+                $"前提：编排后 Raw 行数远超一屏（实测 {view.CurrentVm.RawLines.Count} 行）");
+
+            view.RawToggle.isOn = true;   // 真实控件路径：开 Raw（付费闸门：4 → 3）
+            yield return null;
+            Assert.IsTrue(view.IsRawDisplayed, "toggle 开启后必须切到 Raw 档");
+
+            Assert.IsNotNull(view.BodyScroll, "运行时装配：正文必须包 ScrollRect");
+            Assert.IsTrue(view.BodyScroll.vertical, "垂直滚动必须开启");
+            Assert.IsNotNull(view.ScrollContent, "运行时装配：滚动 Content 必须存在");
+            Assert.IsNotNull(view.ScrollViewport, "运行时装配：滚动 Viewport 必须存在");
+            float contentHeight = view.ScrollContent.rect.height;
+            float viewportHeight = view.ScrollViewport.rect.height;
+            float row0Height = view.ScrollContent.childCount > 0
+                ? ((RectTransform)view.ScrollContent.GetChild(0)).rect.height
+                : 0f;
+            Debug.Log($"[ColonyVerticalSlice] C5 scroll metrics: content={contentHeight:0.0} viewport={viewportHeight:0.0} " +
+                $"rows={view.ScrollContent.childCount} row0H={row0Height:0.0} RawLines={view.CurrentVm.RawLines.Count}");
+            Assert.Greater(contentHeight, viewportHeight,
+                $"Raw 内容超屏必须可滚：content 高 {contentHeight:0} 必须 > viewport 高 {viewportHeight:0}" +
+                $"｜RawLines={view.CurrentVm.RawLines.Count} Displayed={view.DisplayedLineCount}" +
+                $" childCount={view.ScrollContent.childCount} row0Height={row0Height:0.0}");
+        }
+
+        /// <summary>
+        /// C6（TASK-A-COL-07）：点异常项 → 过滤视图行数 &lt; 全量 Raw 行数且高亮存在。
+        /// 编排：残垣城双镇压（组织度 0.65 越阈值 A/B）→ 第 7 天周结确定性涌现组织者
+        /// （Covert Uprising 事件落在月 1 窗口 [1,30]）；真实 UGUI 按钮路径点击（ClickAnomalyRow）。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator C6_AnomalyClick_FiltersRawByKindWithHighlights()
+        {
+            yield return LoadFreshSlice();
+            ColonyWorldHost host = ColonyWorldHost.Instance;
+
+            Settlement repressed = host.World.SettlementOf("残垣城");
+            Assert.IsNotNull(repressed, "前提：残垣城聚落存在（places.csv 人口第二）");
+            repressed.Apply(Decision.Harsh);   // 组织度 +0.30 ×2 → 0.65 > 阈值 A(0.35)/B(0.55)
+            repressed.Apply(Decision.Harsh);
+            host.DebugFastForward(31);         // 月 1 结算：第 7 天组织者涌现（Uprising Covert）在窗口内
+
+            host.OpenReportPanel();
+            yield return WaitFor(() =>
+                UIManager.Instance != null && UIManager.Instance.IsOnStack<ReportPanelView>(),
+                "报告面板入栈");
+            Assert.IsTrue(UIManager.Instance.TryGetView(out ReportPanelView view));
+            Assert.IsNotNull(view.CurrentVm);
+            Assert.AreEqual(1, view.CurrentVm.Month, "前提：显示第 1 月报告");
+
+            int fullRawCount = view.CurrentVm.RawLines.Count;
+            Assert.Greater(fullRawCount, 0, "前提：全量 Raw 行非空");
+            int orgIndex = -1;
+            for (int i = 0; i < view.CurrentVm.AnomalyLines.Count; i++)
+            {
+                if (view.CurrentVm.AnomalyLines[i].Contains("越过阈值"))
+                {
+                    orgIndex = i;
+                    break;
+                }
+            }
+            Assert.GreaterOrEqual(orgIndex, 0,
+                "前提：组织度越阈异常在高亮清单中：" + string.Join("｜", view.CurrentVm.AnomalyLines));
+
+            view.ClickAnomalyRow(orgIndex);   // 真实 UGUI 按钮路径（onClick.Invoke；付费闸门 3 → 2）
+            yield return null;
+
+            Assert.IsTrue(view.IsRawDisplayed, "点异常项必须切到 Raw 视图");
+            Assert.AreEqual(EventKind.Uprising, view.CurrentVm.RawKindFilter,
+                "组织度越阈异常必须按 Uprising 过滤");
+            Debug.Log($"[ColonyVerticalSlice] C6 filter metrics: filteredRows={view.DisplayedLineCount} " +
+                $"fullRaw={fullRawCount} hits={view.CurrentVm.RawHitFlags.Count(h => h)} " +
+                $"filter={view.CurrentVm.RawKindFilter} intel={host.World.Governor.IntelPoints}");
+            Assert.Less(view.DisplayedLineCount, fullRawCount,
+                $"过滤视图行数（{view.DisplayedLineCount}）必须 < 全量 Raw 行数（{fullRawCount}）");
+            Assert.Greater(view.CurrentVm.RawHitFlags.Count(h => h), 0, "命中行高亮必须存在");
+        }
+
+        /// <summary>
+        /// C7（TASK-A-COL-07）：IntelPoints=0 时按钮禁用态可见——toggle interactable=false、
+        /// 提示行「情报渠道不足（每月 +1）」显示、顶部情报点常驻显示 0。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator C7_ZeroIntel_RawToggleDisabledWithHint()
+        {
+            yield return LoadFreshSlice();
+            ColonyWorldHost host = ColonyWorldHost.Instance;
+            host.DebugFastForward(31);   // 月结维持费 +1：2 → 3
+
+            var governor = host.World.Governor;
+            Assert.AreEqual(3, governor.IntelPoints, "前提：初始 2 + 月度维持费 1");
+            Assert.IsTrue(governor.SpendIntelPoint());
+            Assert.IsTrue(governor.SpendIntelPoint());
+            Assert.IsTrue(governor.SpendIntelPoint());
+            Assert.AreEqual(0, governor.IntelPoints, "前提：情报点已耗尽");
+            Assert.IsFalse(governor.SpendIntelPoint(), "前提：Domain 闸门在 0 点时拒绝");
+
+            host.OpenReportPanel();
+            yield return WaitFor(() =>
+                UIManager.Instance != null && UIManager.Instance.IsOnStack<ReportPanelView>(),
+                "报告面板入栈");
+            Assert.IsTrue(UIManager.Instance.TryGetView(out ReportPanelView view));
+            Assert.IsNotNull(view.CurrentVm);
+
+            Assert.IsFalse(view.CurrentVm.RawAffordable, "VM 禁用态：余额 0");
+            Assert.IsNotNull(view.RawToggle, "禁用态载体：查 Raw toggle 必须存在");
+            Debug.Log($"[ColonyVerticalSlice] C7 disabled metrics: intel={host.World.Governor.IntelPoints} " +
+                $"interactable={view.RawToggle.interactable} hintVisible={view.IsRawHintVisible} " +
+                $"label={view.IntelPointsLabel}");
+            Assert.IsFalse(view.RawToggle.interactable, "情报点 0：查 Raw 按钮必须置灰（interactable=false）");
+            Assert.IsTrue(view.IsRawHintVisible, "提示行「情报渠道不足（每月 +1）」必须可见");
+            StringAssert.Contains("情报点 0", view.IntelPointsLabel, "顶部情报点常驻必须显示 0");
+            Assert.IsFalse(view.IsRawDisplayed, "禁用态下不得已在 Raw 档");
         }
 
         // ---- fixture 纪律与工具 -----------------------------------------------------

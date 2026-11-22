@@ -65,6 +65,28 @@ namespace Game.Domain.Colony.Player
         // ── 情报（真实感⑤：信息比资源贵——要买、会过期、有假货）
         public readonly List<IntelReport> Intel = new();
 
+        // ── 情报点（TASK-A-COL-07：信息比钱贵——查原始记录的稀缺货币）
+        /// <summary>
+        /// 情报点余额（初始 2——开局查得起一次 Raw 还有富余，简报钉死）。
+        /// 查原始记录（Raw）每次打开消耗 1 点；不足则查不了——AI 报喜不报忧有了对抗手段，
+        /// 但手段本身是稀缺资源。每月 MonthTick 补给 +1（情报渠道的月度维持费）。
+        /// </summary>
+        public int IntelPoints { get; private set; } = 2;
+
+        /// <summary>花 1 情报点（不足返回 false 不扣）——「查原始记录」的付费闸门。</summary>
+        public bool SpendIntelPoint()
+        {
+            if (IntelPoints <= 0) return false;
+            IntelPoints--;
+            return true;
+        }
+
+        /// <summary>月度维持费：情报渠道每月自动补给 1 点（GameWorld.MonthTick 调用）。</summary>
+        internal void GrantMonthlyIntel() => IntelPoints++;
+
+        /// <summary>TASK-A-COL-07：情报点是简报点名的存档字段——Restore 从存档回填（RestoreCredibility 同款 internal 通道）。</summary>
+        internal void RestoreIntelPoints(int value) => IntelPoints = Math.Max(0, value);
+
         public void Visit(string region, uint day) => LastVisit[region] = day;
 
         public IntelReport BuyIntel(uint day, string claim, int validDays, bool forged)

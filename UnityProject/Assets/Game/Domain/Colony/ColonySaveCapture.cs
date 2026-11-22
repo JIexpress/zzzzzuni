@@ -210,6 +210,7 @@ namespace Game.Domain.Colony
                 MilitaryDeed = g.Prestige.MilitaryDeed, Credibility = g.Prestige.Credibility,
                 PromisesKept = g.Prestige.PromisesKept, PromisesBroken = g.Prestige.PromisesBroken,
                 RepressionCount = g.RepressionCount, PresentRegion = g.PresentRegion,
+                IntelPoints = g.IntelPoints,               // TASK-A-COL-07：情报点随档（存档不丢点数）
                 LastVisit = new Dictionary<string, uint>(g.LastVisit),
                 Informants = g.Informants.ToList(),
             };

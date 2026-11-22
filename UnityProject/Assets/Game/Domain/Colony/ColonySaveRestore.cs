@@ -130,6 +130,7 @@ namespace Game.Domain.Colony
             w.Governor.Prestige.RestoreCredibility(g.Credibility);
             w.Governor.RepressionCount = g.RepressionCount;
             w.Governor.PresentRegion = g.PresentRegion;
+            w.Governor.RestoreIntelPoints(g.IntelPoints);   // TASK-A-COL-07：情报点随档回填（存档不丢点数）
             foreach (var kv in g.LastVisit) w.Governor.LastVisit[kv.Key] = kv.Value;
             foreach (var i in g.Informants) w.Governor.Informants.Add(i);
             foreach (var i in g.Intel)

@@ -175,12 +175,14 @@ namespace Game.Domain.Colony
         }
 
         // ── 管理者（简报点名 production/tradeValue/militaryDeed/credibility/promises/
-        //    repressionCount/lastVisit/informants/intel 含 boughtDay/validDays/forged）──
+        //    repressionCount/lastVisit/informants/intel 含 boughtDay/validDays/forged；
+        //    TASK-A-COL-07 增 intelPoints——存档不丢点数）──
         public GovernorState Governor = new();
 
         public sealed class GovernorState
         {
             public float Production, TradeValue, MilitaryDeed, Credibility;
+            public int IntelPoints;                        // TASK-A-COL-07：情报点余额随档
             public int PromisesKept, PromisesBroken;
             public int RepressionCount;
             public string PresentRegion = "";

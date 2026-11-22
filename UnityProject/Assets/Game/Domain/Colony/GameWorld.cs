@@ -210,6 +210,7 @@ namespace Game.Domain.Colony.Sim
         {
             Governor.Prestige.MonthlyDecay();
             Governor.Prestige.SettleCredibility();
+            Governor.GrantMonthlyIntel();   // 情报渠道的月度维持费：每月 +1（TASK-A-COL-07，真实感⑤）
             Log.Add(Day, EventKind.Reputation, "全局",
                 $"月度声望结算：全局 {Governor.Prestige.GlobalPrestige:0.00} → 你现在被称为 {Governor.Prestige.Title()}（信誉半衰期回归：{Governor.Prestige.Credibility:0.00}）",
                 EventVisibility.Public);

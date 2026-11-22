@@ -275,6 +275,9 @@ namespace Game.Domain.Tests
             Assert.AreEqual(orc.World.Governor.Prestige.TradeValue, restored.Governor.Prestige.TradeValue, "贸易值必须一致");
             Assert.AreEqual(orc.World.Governor.Prestige.PromisesKept, restored.Governor.Prestige.PromisesKept, "守诺计数必须一致");
             Assert.AreEqual(orc.World.Governor.RepressionCount, restored.Governor.RepressionCount, "镇压计数必须一致");
+            // ── 情报点（TASK-A-COL-07：存档不丢点数；编排跨第 30 天月结，月度维持费已 +1）──
+            Assert.AreEqual(orc.World.Governor.IntelPoints, restored.Governor.IntelPoints, "情报点必须一致（TASK-A-COL-07）");
+            Assert.AreEqual(3, restored.Governor.IntelPoints, "前提自证：初始 2 + 第 30 天月结维持费 1 = 3");
 
             // ── 全量 DTO 字段级等价（覆盖简报清单的每一节）──
             AssertFieldLevelEqual(before, after, "S1 Capture→Restore→Capture");
@@ -442,6 +445,7 @@ namespace Game.Domain.Tests
             Assert.AreEqual(before.Named.Count, after.Named.Count, "具名层规模一致");
             Assert.AreEqual(before.ProfiledSlots.Count, after.ProfiledSlots.Count, "已实例化槽规模一致");
             Assert.AreEqual(before.Governor.Credibility, after.Governor.Credibility, "governor 信誉一致");
+            Assert.AreEqual(before.Governor.IntelPoints, after.Governor.IntelPoints, "情报点一致（TASK-A-COL-07 真文件往返）");
         }
 
         /// <summary>
