@@ -1,4 +1,6 @@
 // AffordanceTests.cs —— TASK-A-AI-03：可供性扫描的纯逻辑证据（V1-V6）。
+// TASK-A-AI-05 增补 R 系预约态用例：Reserve 不占容量、FindBest 跳过他人预约（agent-aware）、
+// 自己的预约不算占位、Release 双清（占用+预约）。
 // 这一层的可伪证核心：容量是硬约束、重复 Claim 幂等、FindBest 只返回
 // 「可用且未满员的最近者」、扫描预算不抛只计数、动作打分 = 需求权重 × 距离衰减。
 // 全部手算锚点，无时钟、无随机、无 UnityEngine 生命周期。
@@ -254,8 +256,11 @@ namespace Game.Domain.Tests
             string chosen = brain.Tick(State(0.8f), 0.1f);
 
             Assert.AreEqual("Affordance.Rest", chosen, "有可用可供性时必须选中可供性动作");
-            Assert.AreSame(bed, rest.LastClaimed, "Execute 必须记录 LastClaimed");
-            Assert.AreEqual(1, bed.Occupants, "Execute 必须真正占用容量");
+            Assert.AreSame(bed, rest.LastClaimed, "Execute 必须记录 LastClaimed（TASK-A-AI-05 起为预约目标）");
+            // TASK-A-AI-05 语义更新（登记于施工报告）：A-AI-03 时代「选中即 Claim」被改为
+            // 「选中只 Reserve、到达才 Claim」，本断言随新契约更新为预约断言。
+            Assert.AreEqual(0, bed.Occupants, "TASK-A-AI-05：选中只预约不占容量（到达才 Claim）");
+            Assert.AreEqual("npc-a", bed.ReservedBy, "TASK-A-AI-05：Execute 必须写预约");
 
             registry.Unregister(bed);
             Assert.AreEqual(UtilityBrain.IdleActionName, brain.Tick(State(0.8f), 0.2f),
@@ -263,6 +268,107 @@ namespace Game.Domain.Tests
 
             rest.ReleaseClaim();
             Assert.AreEqual(0, bed.Occupants, "ReleaseClaim 释放占用");
+            Assert.IsNull(bed.ReservedBy, "TASK-A-AI-05：ReleaseClaim 同时清预约（双清）");
+        }
+
+        // ---- R 预约态（TASK-A-AI-05）---------------------------------------------
+
+        [Test]
+        public void Reserve_BlocksOthersFindBest_SelfStillSelectable_ReleaseRestores()
+        {
+            var registry = new AffordanceRegistry();
+            Affordance bed = Bed("bed", 2f);
+            registry.Register(bed);
+
+            Assert.IsTrue(registry.Reserve(bed, "npc-a"), "首预约必须成功");
+            Assert.AreEqual("npc-a", bed.ReservedBy, "预约必须落在 ReservedBy");
+            Assert.AreEqual(0, bed.Occupants, "预约不占容量");
+
+            Assert.IsNull(registry.FindBest(Vector3.zero, AffordanceKind.Rest, 20f, "npc-b"),
+                "A 预约后 B 的 FindBest 必须跳过该条（V7 变异靶点）");
+            Assert.IsNull(registry.FindBest(Vector3.zero, AffordanceKind.Rest, 20f),
+                "匿名调用同样跳过被预约条目");
+            Assert.AreSame(bed, registry.FindBest(Vector3.zero, AffordanceKind.Rest, 20f, "npc-a"),
+                "A 自己仍能选中自己的预约");
+
+            AffordanceAction actionB = AffordanceAction.CreateTracked(
+                registry, AffordanceKind.Rest, "npc-b", () => Vector3.zero, 20f);
+            AffordanceAction actionA = AffordanceAction.CreateTracked(
+                registry, AffordanceKind.Rest, "npc-a", () => Vector3.zero, 20f);
+            Assert.AreEqual(0f, actionB.Action.Score(State(0.8f)), "B 的动作打分必须归 0（预约排除）");
+            Assert.Greater(actionA.Action.Score(State(0.8f)), 0f, "A 对自己的预约仍可打分选中");
+
+            Assert.IsTrue(registry.Release(bed, "npc-a"), "释放必须报告清了预约");
+            Assert.IsNull(bed.ReservedBy, "Release 必须同时清预约");
+            Assert.AreSame(bed, registry.FindBest(Vector3.zero, AffordanceKind.Rest, 20f, "npc-b"),
+                "释放后恢复可被 B 选中");
+        }
+
+        [Test]
+        public void Reserve_IsIdempotent_ReservedByBlocksOthers_ButNotSelf()
+        {
+            var registry = new AffordanceRegistry();
+            Affordance bed = Bed("bed", 1f, capacity: 1);
+            registry.Register(bed);
+
+            Assert.IsTrue(registry.Reserve(bed, "npc-a"));
+            Assert.IsTrue(registry.Reserve(bed, "npc-a"), "重复预约幂等（返回 true）");
+            Assert.IsFalse(registry.Reserve(bed, "npc-b"), "他人预约必须失败");
+            Assert.AreEqual("npc-a", bed.ReservedBy, "失败的他人预约不得覆盖预约人");
+            Assert.AreEqual(0, bed.Occupants, "预约不占容量");
+
+            Assert.IsFalse(bed.IsAvailable, "参数版 IsAvailable：被预约即不可用（未满员且未被任何人预约才可用）");
+            Assert.IsTrue(bed.IsAvailableFor("npc-a"), "自己的预约不算占位");
+            Assert.IsFalse(bed.IsAvailableFor("npc-b"), "他人视角下被预约不可用");
+            Assert.IsFalse(bed.IsAvailableFor(null), "匿名视角下被预约不可用");
+
+            Assert.Throws<ArgumentNullException>(() => registry.Reserve(null, "npc-a"));
+            Assert.Throws<ArgumentException>(() => registry.Reserve(bed, ""));
+        }
+
+        [Test]
+        public void Claim_AfterOwnReserve_ConvertsToOccupancy_ReleaseClearsBoth()
+        {
+            var registry = new AffordanceRegistry();
+            Affordance bed = Bed("bed", 1f, capacity: 1);
+            registry.Register(bed);
+
+            Assert.IsTrue(registry.Reserve(bed, "npc-a"));
+            Assert.AreEqual(0, bed.Occupants, "选中（预约）后到达前 Occupants 必须 0（V2）");
+
+            Assert.IsTrue(registry.Claim(bed, "npc-a"), "预约人到达后 Claim 必须成功（自己的预约不算占位）");
+            Assert.AreEqual(1, bed.Occupants, "到达后 Occupants == 1（V2）");
+            Assert.AreEqual("npc-a", bed.ReservedBy, "Claim 不清预约（随 Release 双清）");
+
+            Assert.IsFalse(registry.Claim(bed, "npc-c"), "被预约后他人 Claim 必须失败");
+            Assert.AreEqual(1, bed.Occupants, "失败 Claim 不得改变占用");
+
+            Assert.IsTrue(registry.Release(bed, "npc-a"));
+            Assert.AreEqual(0, bed.Occupants, "放弃/停止后占用清零（V3）");
+            Assert.IsNull(bed.ReservedBy, "放弃/停止后预约清零（V3）");
+            Assert.IsTrue(bed.IsAvailable, "双清后恢复可用");
+        }
+
+        [Test]
+        public void Release_ByOtherAgent_KeepsReservation_RepeatReleaseReturnsFalse()
+        {
+            var registry = new AffordanceRegistry();
+            Affordance table = new Affordance("table", AffordanceKind.Social, Vector3.zero, 0.6f, 2);
+            registry.Register(table);
+
+            Assert.IsTrue(registry.Reserve(table, "npc-a"));
+            // TASK-A-AI-05 补跑修复（Round A 复现）：预约也挡他人的 Claim（R3 已断言同口径），
+            // 本用例原稿误断言 B 可占容量 2 的另一名额——与产品语义矛盾，按语义修正用例。
+            Assert.IsFalse(registry.Claim(table, "npc-b"), "被 A 预约后 B 不得占用（预约同时挡选择与占用）");
+            Assert.IsFalse(registry.Release(table, "npc-b"), "B 无任何 stake：Release 返回 false（不抛）");
+            Assert.AreEqual("npc-a", table.ReservedBy, "B 的 Release 不得动 A 的预约");
+            Assert.AreEqual(0, table.Occupants, "B 无从占用");
+
+            Assert.IsTrue(registry.Release(table, "npc-a"), "A 释放预约（占用本就为 0）");
+            Assert.IsNull(table.ReservedBy, "A 的预约已清");
+
+            Assert.IsFalse(registry.Release(table, "npc-a"), "重复 Release 返回 false（不抛）");
+            Assert.IsFalse(registry.Release(table, "npc-z"), "从未持 stake 的代理 Release 返回 false");
         }
     }
 }

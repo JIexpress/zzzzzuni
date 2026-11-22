@@ -94,7 +94,8 @@ namespace Game.Domain.AI.Affordances
         /// Takes a slot on <paramref name="affordance"/> for
         /// <paramref name="agentId"/>. Returns true when the agent holds a slot
         /// afterwards: repeating the same claim is idempotent, a full
-        /// affordance returns false. Null affordance / empty agent id throw.
+        /// affordance (or one reserved by ANOTHER agent — TASK-A-AI-05)
+        /// returns false. Null affordance / empty agent id throw.
         /// </summary>
         public bool Claim(Affordance affordance, string agentId)
         {
@@ -112,9 +113,36 @@ namespace Game.Domain.AI.Affordances
         }
 
         /// <summary>
-        /// Frees <paramref name="agentId"/>'s slot. Returns true when a slot was
-        /// released; releasing twice (or never claimed) returns false and never
-        /// throws.
+        /// Reserves <paramref name="affordance"/> for <paramref name="agentId"/>
+        /// (TASK-A-AI-05): marks "this agent selected it and is on the way"
+        /// WITHOUT taking a capacity slot — others must skip it in
+        /// <see cref="FindBest"/> and <see cref="Claim"/> while
+        /// <see cref="Affordance.ReservedBy"/> is set, the reserver itself
+        /// keeps seeing it as available. Idempotent for the same agent;
+        /// returns false when another agent holds the reservation. Null
+        /// affordance / empty agent id throw.
+        /// </summary>
+        public bool Reserve(Affordance affordance, string agentId)
+        {
+            if (affordance == null)
+            {
+                throw new ArgumentNullException(nameof(affordance));
+            }
+
+            if (string.IsNullOrEmpty(agentId))
+            {
+                throw new ArgumentException("AffordanceRegistry: agentId must not be empty.", nameof(agentId));
+            }
+
+            return affordance.TrySetReservation(agentId);
+        }
+
+        /// <summary>
+        /// Frees <paramref name="agentId"/>'s stake: occupancy slot AND —
+        /// TASK-A-AI-05 — the agent's own reservation, so "give up" always
+        /// fully clears both (V3). Returns true when anything was freed;
+        /// releasing twice (or a stake never taken) returns false and never
+        /// throws. Other agents' reservations/claims are never touched.
         /// </summary>
         public bool Release(Affordance affordance, string agentId)
         {
@@ -128,19 +156,37 @@ namespace Game.Domain.AI.Affordances
                 throw new ArgumentException("AffordanceRegistry: agentId must not be empty.", nameof(agentId));
             }
 
-            return affordance.RemoveOccupant(agentId);
+            bool removed = affordance.RemoveOccupant(agentId);
+            bool cleared = affordance.ClearReservation(agentId);
+            return removed || cleared;
         }
 
         /// <summary>
         /// Nearest AVAILABLE affordance of <paramref name="kind"/> within
         /// <paramref name="maxDistance"/> metres on the XZ plane, or null.
-        /// Full (IsAvailable=false) and farther-than-max entries are skipped.
+        /// Full and farther-than-max entries are skipped.
         /// At most <see cref="ScanBudget"/> entries are visited per call; when
         /// the registry is larger the scan stops, increments
         /// <see cref="BudgetExceededCount"/> and returns the best found so far
         /// (never throws). Ties go to the earliest registered.
         /// </summary>
         public Affordance FindBest(Vector3 from, AffordanceKind kind, float maxDistance)
+        {
+            return FindBest(from, kind, maxDistance, null);
+        }
+
+        /// <summary>
+        /// Agent-aware <see cref="FindBest"/> (TASK-A-AI-05): additionally
+        /// skips entries reserved by a DIFFERENT agent — the reserver itself
+        /// still finds and selects its own reservation (V1). A null/empty
+        /// <paramref name="agentId"/> is an anonymous caller: any reservation
+        /// blocks it. Without reservations anywhere the scan is bit-identical
+        /// to the original occupancy-only behaviour (A-AI-03's 13 assertions
+        /// stay green). THE reservation-exclusion check below is the V7
+        /// mutation target: removing it must turn the V1 reservation tests
+        /// red.
+        /// </summary>
+        public Affordance FindBest(Vector3 from, AffordanceKind kind, float maxDistance, string agentId)
         {
             if (float.IsNaN(maxDistance) || maxDistance < 0f)
             {
@@ -160,7 +206,7 @@ namespace Game.Domain.AI.Affordances
 
                 visited++;
                 Affordance candidate = _affordances[i];
-                if (candidate.Kind != kind || !candidate.IsAvailable)
+                if (candidate.Kind != kind || !candidate.IsAvailableFor(agentId))
                 {
                     continue;
                 }

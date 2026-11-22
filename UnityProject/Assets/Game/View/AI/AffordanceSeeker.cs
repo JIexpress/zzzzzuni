@@ -9,7 +9,11 @@ namespace Game.View.AI
     /// <summary>
     /// TASK-A-AI-04：会走路的 NPC——自己的 <see cref="UtilityBrain"/>（Idle + 4 个
     /// 可供性动作）选中一个可供性后，朝它以 <see cref="MoveSpeed"/>（默认 1.5 m/s）
-    /// 走过去；到达半径内即 <see cref="AffordanceRegistry.Claim"/> 并停住。
+    /// 走过去；到达半径内才 <see cref="AffordanceRegistry.Claim"/> 并停住。
+    ///
+    /// TASK-A-AI-05 预约态：大脑「选中」动作只 <see cref="AffordanceRegistry.Reserve"/>
+    /// （不占容量，只挡住别的 agent 再选同一个）；走到半径内才 Claim 转正式占用；
+    /// 放弃（超时）/ <see cref="Stop"/> / 销毁 → Release 同时清占用与预约（双清）。
     ///
     /// 设计边界（很重要）：
     ///  - **不自动挂载**：本组件不会被场景/宿主 AddComponent，必须由调用方显式挂到
@@ -19,7 +23,7 @@ namespace Game.View.AI
     ///  - 决策仍然完全在 Domain：本类只做「驱动」（tick brain / 平移 / 计时），
     ///    不复制打分公式。
     ///  - 超时保护：同一个目标追 <see cref="AbandonSeconds"/>（默认 10s）未达 →
-    ///    释放占用、停止（防卡死）。
+    ///    释放占用+预约、停止（防卡死）。
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class AffordanceSeeker : MonoBehaviour
@@ -133,7 +137,7 @@ namespace Game.View.AI
             }
         }
 
-        /// <summary>开始寻找（幂等；会先释放上一次的占用并立刻选一次目标）。</summary>
+        /// <summary>开始寻找（幂等；会先释放上一次的占用/预约并立刻选一次目标）。</summary>
         public void StartSeeking()
         {
             if (!EnsureConfigured())
@@ -141,22 +145,22 @@ namespace Game.View.AI
                 return;
             }
 
-            ReleaseOwnedExcept(null);
+            ReleaseStakesExcept(null);
             _target = null;
             _arrived = false;
             _seeking = true;
             _chaseStartedAt = _clock;
 
-            Step(0f); // 立刻选目标（dt = 0，不产生位移）
+            Step(0f); // 立刻选目标（dt = 0，不产生位移；TASK-A-AI-05：选中 = Reserve）
         }
 
-        /// <summary>停止并释放占用；之后 Update / Simulate 都不再移动。</summary>
+        /// <summary>停止并释放占用与预约（双清）；之后 Update / Simulate 都不再移动。</summary>
         public void Stop()
         {
             _seeking = false;
             _arrived = false;
             _target = null;
-            ReleaseOwnedExcept(null);
+            ReleaseStakesExcept(null);
         }
 
         /// <summary>测试/调试：以固定步长推进若干秒（不依赖帧率）。</summary>
@@ -223,12 +227,14 @@ namespace Game.View.AI
             float dt = Mathf.Max(0f, deltaTime);
             _clock += dt;
 
-            // 关键顺序：先把自己上一拍的占用放掉，再让大脑打分。
-            // AffordanceAction 的 Score 走 FindBest，而 FindBest 会跳过「已满」的条目——
-            // 若不放，自己占着的目标在下一拍就变成不可用、分数归零，NPC 会在几种
-            // 可供性之间来回抖（永远到不了、也永远不超时）。释放只发生在这一拍内部，
-            // 本拍结束时赢家会重新 Claim，外部看到的占用是连续的。
-            ReleaseOwnedExcept(null);
+            // 关键顺序：先把自己上一拍的全部 stake（占用 + 预约）放掉，再让大脑打分。
+            // AffordanceAction 的 Score 走 FindBest（agent-aware），FindBest 会跳过
+            // 「已满」和「被别人预约」的条目——若不放，自己占/约着的目标在下一拍对
+            // 自己仍然可用（自己的预约不算占位），但对自己「满员」的旧占用会把分数
+            // 归零，NPC 会在几种可供性之间来回抖（永远到不了、也永远不超时）。
+            // 释放只发生在这一拍内部，本拍结束时赢家会重新 Reserve（并按需 Claim），
+            // 外部看到的占用/预约是连续的。
+            ReleaseStakesExcept(null);
 
             string choice = _brain.Tick(_state, _clock);
             LastChoice = choice;
@@ -236,15 +242,15 @@ namespace Game.View.AI
             Affordance next = TargetFor(choice);
             if (next == null)
             {
-                // 没有可用目标（Idle / 全被占）：清空占用，下一拍再挑。
-                ReleaseOwnedExcept(null);
+                // 没有可用目标（Idle / 全被占/被约）：清空 stake，下一拍再挑。
+                ReleaseStakesExcept(null);
                 _target = null;
                 _arrived = false;
                 _chaseStartedAt = _clock;
                 return;
             }
 
-            ReleaseOwnedExcept(next);
+            ReleaseStakesExcept(next);
 
             if (!ReferenceEquals(next, _target))
             {
@@ -255,8 +261,16 @@ namespace Game.View.AI
 
             if (_arrived)
             {
-                // 已到达：保持占用、保持不动（Claim 幂等，防止被别的 NPC 抢走后静默失效）。
-                _registry.Claim(_target, _agentId);
+                // 已到达：保持占用、保持不动（Claim 幂等；预约不占容量——重新入座）。
+                if (!_registry.Claim(_target, _agentId))
+                {
+                    // 被别人占了最后一个名额：丢掉目标（预约下拍首释放），下一拍重新选。
+                    _registry.Release(_target, _agentId);
+                    _target = null;
+                    _arrived = false;
+                    _chaseStartedAt = _clock;
+                }
+
                 return;
             }
 
@@ -292,7 +306,7 @@ namespace Game.View.AI
                 return tracked.LastClaimed;
             }
 
-            // 注入的第三方大脑：没有 tracked 句柄时以「本 agent 实际占用的最近条目」为准。
+            // 注入的第三方大脑：没有 tracked 句柄时以「本 agent 实际持有 stake（占用或预约）的最近条目」为准。
             return NearestOwnedAffordance();
         }
 
@@ -304,7 +318,7 @@ namespace Game.View.AI
             for (int i = 0; i < all.Count; i++)
             {
                 Affordance candidate = all[i];
-                if (!candidate.IsOccupiedBy(_agentId))
+                if (!HoldsStakeOn(candidate))
                 {
                     continue;
                 }
@@ -320,7 +334,18 @@ namespace Game.View.AI
             return best;
         }
 
-        private void ReleaseOwnedExcept(Affordance keep)
+        /// <summary>本 agent 是否在该条目上持有任何 stake：占用名额或预约（TASK-A-AI-05）。</summary>
+        private bool HoldsStakeOn(Affordance candidate)
+        {
+            return candidate.IsOccupiedBy(_agentId)
+                || (candidate.ReservedBy != null && string.Equals(candidate.ReservedBy, _agentId, StringComparison.Ordinal));
+        }
+
+        /// <summary>
+        /// 释放除 <paramref name="keep"/> 外本 agent 持有的全部 stake（占用 + 预约）。
+        /// TASK-A-AI-05：Release 同时清占用与预约（双清）。
+        /// </summary>
+        private void ReleaseStakesExcept(Affordance keep)
         {
             if (_registry == null)
             {
@@ -331,7 +356,7 @@ namespace Game.View.AI
             for (int i = 0; i < all.Count; i++)
             {
                 Affordance candidate = all[i];
-                if (!ReferenceEquals(candidate, keep) && candidate.IsOccupiedBy(_agentId))
+                if (!ReferenceEquals(candidate, keep) && HoldsStakeOn(candidate))
                 {
                     _registry.Release(candidate, _agentId);
                 }
@@ -345,9 +370,11 @@ namespace Game.View.AI
                 return;
             }
 
+            // TASK-A-AI-05：到达（≤ 半径）才把预约转成正式占用。
             if (!_registry.Claim(_target, _agentId))
             {
-                // 被别人占了：丢掉目标，下一拍重新选。
+                // 被别人占了最后一个名额：连预约一起清掉，丢目标，下一拍重新选。
+                _registry.Release(_target, _agentId);
                 _target = null;
                 _arrived = false;
                 _chaseStartedAt = _clock;
@@ -365,7 +392,7 @@ namespace Game.View.AI
                     $"[AffordanceSeeker] '{name}' gave up on '{_target.Id}' after {AbandonSeconds:0.#}s without arriving.");
             }
 
-            ReleaseOwnedExcept(null);
+            ReleaseStakesExcept(null);
             _target = null;
             _arrived = false;
             _seeking = false;

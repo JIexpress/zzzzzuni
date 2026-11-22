@@ -18,9 +18,14 @@ namespace Game.Domain.AI.Affordances
     /// EXISTING <see cref="NPCWorldState.Keys"/> channels — no new state
     /// system. No available affordance ⇒ exactly 0 (the availability term).
     ///
-    /// Execute re-runs the same lookup and CLAIMS the winner through the
-    /// registry, recording it in <see cref="LastClaimed"/> (assertion anchor).
-    /// Re-claiming on consecutive winning ticks is idempotent by design.
+    /// Execute re-runs the same lookup and RESERVES the winner through the
+    /// registry (TASK-A-AI-05: selection no longer occupies — the agent only
+    /// holds the spot against other selectors), recording it in
+    /// <see cref="LastClaimed"/> (assertion anchor). Converting the
+    /// reservation into a real occupancy claim happens on ARRIVAL, driven by
+    /// the view-side seeker; <see cref="ReleaseClaim"/> clears both the
+    /// occupancy and the reservation. Re-reserving on consecutive winning
+    /// ticks is idempotent by design.
     /// </summary>
     public sealed class AffordanceAction
     {
@@ -77,7 +82,13 @@ namespace Game.Domain.AI.Affordances
         /// <summary>The standard utility action to register on a brain.</summary>
         public UtilityAction Action { get; }
 
-        /// <summary>Last affordance claimed by <see cref="UtilityAction.Execute"/> (null before the first claim; test anchor).</summary>
+        /// <summary>
+        /// Last affordance RESERVED by <see cref="UtilityAction.Execute"/>
+        /// (null before the first selection; test anchor). TASK-A-AI-05: the
+        /// name keeps the A-AI-03 era identifier for assertion continuity,
+        /// but since this task the winner is only reserved on selection —
+        /// occupancy starts on arrival (the view-side seeker claims).
+        /// </summary>
         public Affordance LastClaimed { get; private set; }
 
         /// <summary>
@@ -124,8 +135,10 @@ namespace Game.Domain.AI.Affordances
         }
 
         /// <summary>
-        /// Frees the last claim (owner teardown / switching spots). Safe to call
-        /// when nothing was claimed; the next winning tick may claim again.
+        /// Frees the last stake — occupancy AND reservation (TASK-A-AI-05
+        /// dual clear: registry.Release clears both). Owner teardown /
+        /// switching spots. Safe to call when nothing was held; the next
+        /// winning tick may reserve again.
         /// </summary>
         public void ReleaseClaim()
         {
@@ -188,9 +201,11 @@ namespace Game.Domain.AI.Affordances
         private float Score(NPCWorldState state)
         {
             // Pure by contract: the registry lookup mutates nothing, and the
-            // claim happens only in Execute.
+            // reservation happens only in Execute. TASK-A-AI-05: the lookup is
+            // agent-aware — spots reserved by OTHER agents score 0; the
+            // agent's own reservation keeps scoring normally ("A 自己仍能选中").
             Vector3 from = _positionProvider();
-            Affordance best = _registry.FindBest(from, Kind, _maxDistance);
+            Affordance best = _registry.FindBest(from, Kind, _maxDistance, _agentId);
             if (best == null)
             {
                 return 0f; // no available affordance ⇒ availability term = 0
@@ -203,13 +218,17 @@ namespace Game.Domain.AI.Affordances
 
         private void Execute()
         {
-            Affordance best = _registry.FindBest(_positionProvider(), Kind, _maxDistance);
+            // TASK-A-AI-05: selection = Reserve (no capacity slot taken).
+            // The reservation stops other agents from selecting/occupying the
+            // same spot; converting it into a real occupancy claim happens on
+            // ARRIVAL (AffordanceSeeker.Arrive).
+            Affordance best = _registry.FindBest(_positionProvider(), Kind, _maxDistance, _agentId);
             if (best == null)
             {
-                return; // world changed between score and execute: no claim, no stale LastClaimed
+                return; // world changed between score and execute: no reserve, no stale LastClaimed
             }
 
-            if (_registry.Claim(best, _agentId))
+            if (_registry.Reserve(best, _agentId))
             {
                 LastClaimed = best;
             }
