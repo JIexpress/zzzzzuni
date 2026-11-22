@@ -152,6 +152,7 @@ namespace Game.Domain.Tests
                 ["promisesKept"] = gov.PromisesKept,
                 ["promisesBroken"] = gov.PromisesBroken,
                 ["repressionCount"] = gov.RepressionCount,
+                ["intelPoints"] = gov.IntelPoints,         // TASK-A-COL-07：情报点随档（缺一处=存档丢状态）
                 ["presentRegion"] = S(gov.PresentRegion),
                 ["lastVisit"] = JObject.FromObject(gov.LastVisit),
                 ["informants"] = new JArray(gov.Informants.Select(i => new JValue(i))),
@@ -407,6 +408,7 @@ namespace Game.Domain.Tests
                 PromisesKept = RI(g, "promisesKept"),
                 PromisesBroken = RI(g, "promisesBroken"),
                 RepressionCount = RI(g, "repressionCount"),
+                IntelPoints = RI(g, "intelPoints"),
                 PresentRegion = RS(g, "presentRegion"),
                 Intel = Arr(g, "intel").Select(t =>
                 {

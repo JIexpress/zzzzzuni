@@ -63,3 +63,7 @@ Tools/android_support_installer.exe
 Tools/Probes/out/*.log
 # 逐轮原始档不入库：基线快照以 Tools/Probes/baseline/ 为准，逐轮 JSON 只做本地证据
 Tools/Probes/out/frame-baseline-*.json
+# 月报面板截图探针（TASK-A-COL-08）：逐轮截图+锚 JSON 只做本地证据，
+# 基线快照 = Tools/Probes/baseline/colony-report-baseline.json（入库）
+Tools/Probes/out/colony_report-*.png
+Tools/Probes/out/colony_report-*.json

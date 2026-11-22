@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "probe": "colony-report",
+  "date": "2026-11-23",
+  "unity": "2022.3.62f3c1",
+  "seed": 20261122,
+  "scene": "SCN_Game",
+  "criterion": "content anchors exact-match vs baseline (fixed seed + deterministic domain); booleans must be true; image floors are runner constants; RED exit 1 (with -Gate) / MISS exit 2 - bench_player.ps1 semantics",
+  "content": {
+    "month": 1,
+    "summary.rowsVm": 7,
+    "summary.rowsRendered": 7,
+    "summary.exactMatchCount": 7,
+    "summary.anomalyLinesVm": 2,
+    "summary.anomalyRowsRendered": 2,
+    "summary.anomalyHighlightedRows": 2,
+    "summary.anomalyButtons": 2,
+    "raw.rowsVm": 23,
+    "raw.rowsRendered": 23,
+    "raw.delta": 16,
+    "panel.exists": true,
+    "panel.underPanelLayerCanvas": true,
+    "panel.onStack": true,
+    "panel.visible": true,
+    "panel.built": true,
+    "summary.rowsRenderedEqualsVm": true,
+    "summary.renderedNonEmpty": true,
+    "raw.rowsRenderedEqualsVm": true,
+    "raw.rowCountChanged": true,
+    "raw.toggleInteractable": true,
+    "raw.paidGateConsumedIntel": true
+  },
+  "imageFloors": {
+    "images.summaryNonBlackRatio": 0.02,
+    "images.summaryBrightPixels": 50,
+    "images.summaryAmberPixels": 10,
+    "images.rawNonBlackRatio": 0.02,
+    "images.rawBrightPixels": 50,
+    "images.summaryVsRawDiffRatio": 0.005
+  },
+  "anchorJson": "colony_report-2026-11-22T17-51-56.json",
+  "unityExit": 0,
+  "notes": [
+    "counts are exact-match: the colony world is fixed-seed (20261122) + deterministic domain, so rendered content counts must not drift at all",
+    "a content change (new report lines, new anomalies) is a conscious -UpdateBaseline, never a silent pass"
+  ]
+}
