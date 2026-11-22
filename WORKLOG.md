@@ -4,6 +4,7 @@
 
 | 日期 | 任务 | 结果 | commit |
 |---|---|---|---|
+| 2026-11-23 | A-COL-09 第二批内容250条进引擎+三引擎 | done：施工→验收 PASS(E1-E6;EditMode 1321全绿;2650格0mismatch;E3变异5%精确抓;存档旧档可载) | (见G-191) |
 | 2026-11-23 | A-AI-05v2 自主行为场景可见化+预约态 | done：施工→验收 PASS(V1-V8;EditMode 1315+PlayMode 127两轮同形;PixelEvidence 15/15;异位变异复红;看板销号held) | 10298e2 |
 | 2026-11-23 | A-COL-08 月度报告截图探针入门禁 | done：施工→验收 PASS(四轮一致;内容锚+像素地板;Gate/SelfTest;基线变异RED exit1) | 3749ba1 |
 | 2026-11-23 | A-COL-07 报告面板迭代+情报点玩法 | done：施工→验收 PASS(N1-N5+C5-C7;EditMode 1311+PlayMode三轮122同形;S系变异独立复红;修行高压0装配bug) | 917e650 |

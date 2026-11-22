@@ -4,6 +4,17 @@
 > ⚡ **给下一个 LLM 主控**：先读 `Docs/LLM-HANDOFF-NOTES.md`——132 个任务沉淀的全部操作手册（派发模板/变异验证法/故障处置手册/技术坑备忘/工具调用技巧/额度管理），照做即可满血接力。
 > 历史交接记录已归档 git 历史（`git show G-113:HANDOFF.md`），WORKLOG.md 有全部任务索引。
 
+**快照时间**: 2026-11-23（**A-COL-09 第二批内容 250 条进引擎**）｜**刷新者**: 主控（ZCode 会话）｜**仓库**: `C://Users//1//Desktop//zcode//GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni（已同步至 G-190，本批待推）
+
+## ⚡ 最新（2026-11-23 第三批：A-COL-09 三表三引擎）
+
+- **250 条内容全部进引擎（本 commit）**：ColonyRelations(40)/ColonyTrades(20)/ColonyLife(190) 三表走 A-COL-02 管线（missingInCsv=0/errors=0，生成 6 产物零手写）+ 三引擎：`RelationEngine`（visibility 闸门 Covert 每日 1 条/无边补边/aftermath 延迟 30 天）+`TradeEngine`（impact 串→市场 5% 倍数精确落地）+`LifeEngine`（rewrite 解析「从『X』改为『Y』」真实改写 Want/Conflict/Secret、旧值留痕、48 行业 settlement_effect 映射）。存档三进度集合读侧宽容=旧档可载、Restore 不重放。
+- **E1-E6 全过**；EditMode **1321/1321/0**（1315+E 系）+ PlayMode 两轮 127 同形 + 探针 Gate PASS（锚不破）+ E6 三引擎 30 天 0.064s<80ms；验收 2650 格 0 mismatch + 异位变异 E3 精确抓 5% 偏差。
+- **主控认可六项**：贸易 EventId×5 确定性调度/贸易 d_* 落 NPC 状态留后续/rewrite 留痕用真实旧值（0/145 命中卡字段，诚实处理）/48 行业映射/生产宿主未接第二批内容（探针基线保护，UI 接线单独任务）/Configs 路径先例解释。
+- **内容管线全景**：任务 6/7/9 已接入；任务 8 危机链（6 链×4-6 节点）草稿已备未生成；第二批任务包任务 6-9 自包含 prompt 全就绪。
+- **A/COL 序列候选**：ColonyWorldHost 接三引擎+探针基线重制（UI 一行接线）；Colony 行为 3D 角色化；真机数据加载正路径；三档报告选择深化。
+- 家底：原生 381/823,640、EditMode **1321**、PlayMode 127、arch 28/14 条目/0 违规；看板 **186 done / 0 todo / 0 held**。
+
 **快照时间**: 2026-11-23（**A-AI-05 v2 场景可见化 + A-COL-08 截图门禁入账**）｜**刷新者**: 主控（ZCode 会话）｜**仓库**: `C://Users//1//Desktop//zcode//GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni（已同步）
 
 ## ⚡ 最新（2026-11-23 第二批：G 键场景自主 + 报告截图门禁）

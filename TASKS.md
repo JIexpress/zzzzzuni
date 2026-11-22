@@ -224,3 +224,4 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | A-COL-06 | A/COL | NPC自主行为:效用评分+任务板接涌现 | done(25aaadb；方案B轻量自建零新引用；五行为+泄压阀；T4涌现加速+0.621对照0；T5性能0.019s；EditMode 1306+PlayMode 119两轮同形；Enemy/AI零diff；验收泄压阀独立证实+零taskkill用户编辑器) | Docs/Logs/TASK-A-COL-06.md | 25aaadb |
 | A-COL-07 | A/COL | 报告面板迭代:滚动+异常项跳转+情报点买Raw | done(917e650；ScrollRect实测118行可滚+修行高压0装配bug；异常项按钮化Kind过滤琥珀高亮；IntelPoints 2/月+1/Raw消耗闸门+存档同步；EditMode 1311+PlayMode三轮122同形；验收S系变异独立复红6/6) | Docs/Logs/TASK-A-COL-07.md | 917e650 |
 | A-COL-08 | A/COL | 月度报告截图探针入门禁 | done(3749ba1；-acol08probe惰性启用；内容锚精确比对+像素地板；runner -Gate/-SelfTest对齐bench_player；四轮一致；验收基线变异RED exit1；ColonySaveBridge随档核销) | Docs/Logs/TASK-A-COL-08.md | 3749ba1 |
+| A-COL-09 | A/COL | 第二批内容三表接入+三引擎 | done(本commit；三表40/20/190管线零错误；三引擎visibility/市场/改写；存档三进度集旧档可载；E1-E6；EditMode 1321+PlayMode 127两轮同形+Gate PASS；验收2650格0mismatch+E3变异5%精确抓；主控认可六项) | Docs/Logs/TASK-A-COL-09.md | (见G-191) |
