@@ -4,6 +4,15 @@
 > ⚡ **给下一个 LLM 主控**：先读 `Docs/LLM-HANDOFF-NOTES.md`——132 个任务沉淀的全部操作手册（派发模板/变异验证法/故障处置手册/技术坑备忘/工具调用技巧/额度管理），照做即可满血接力。
 > 历史交接记录已归档 git 历史（`git show G-113:HANDOFF.md`），WORKLOG.md 有全部任务索引。
 
+**快照时间**: 2026-11-22（**A-COL-04 月度报告+AI 瞒报入账**）｜**刷新者**: 主控（ZCode 会话）｜**仓库**: `C://Users//1//Desktop//zcode//GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni
+
+## ⚡ 最新（2026-11-22 第四批：A-COL-04 月度报告三档 + AI 执政官瞒报）
+
+- **指挥代理规格落地（3910c68）**：`MonthlyReport`（Summary/Standard/Raw 三档 + 四类异常项标出；**视野纪律=Summary/Standard 只吃 Public+亲历，Covert 只进 Raw**——报告「可对不上」的机制来源）+ `AiSteward`（AiPersona 四原型；激进 AI 月度「过度优化」产量+0.02/怨气+0.08 加速涌现链，Public《增产令》报喜、Covert【暗账】留痕；Verbosity<0.3 报告缩水；自我豁免过滤）。EditMode **1297/1297/0**（1292+M1-M5）；验收双变异复红（施工 M3/验收 M4 不同位置）。
+- **主控流程事故与修正（如实登记）**：① A-COL-03 commit（dfeb0f3）时主控 add 命令只取 untracked，漏了施工交付的 9 个已跟踪文件修改（internal 通道）→ 补账 **369b3cd**（验收代理 git show --stat 逐一核实与施工清单一致）；② A-COL-04 验收代理在变异 RED 阶段被 600s 超时切断，变异短暂滞留工作区 → 主控核查 sha256 发现后提醒代理无损还原（回 ef7aab0b…与施工还原值逐字节一致）。**教训**：主控 add 必须覆盖 untracked+modified 两类；验收代理变异必须先落 sha256 备份再动手。
+- 家底：原生 381/823,640、EditMode **1297**、PlayMode 115、arch 28/14 条目/0 违规；看板 **180 done / 0 todo / 1 held**。
+- **A/COL 序列剩余**：A-COL-05 TaskBoard/UtilityAI 接组织度涌现（Game/AI 资产消费）；后续月度报告接 UI（UIFramework MVP）。
+
 **快照时间**: 2026-11-22（**A-COL-03 存档入账**）｜**刷新者**: 主控（ZCode 会话）｜**仓库**: `C://Users//1//Desktop//zcode//GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni
 
 ## ⚡ 最新（2026-11-22 第三批：A-COL-03 存档/读档闭环）
