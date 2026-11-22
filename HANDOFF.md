@@ -4,6 +4,16 @@
 > ⚡ **给下一个 LLM 主控**：先读 `Docs/LLM-HANDOFF-NOTES.md`——132 个任务沉淀的全部操作手册（派发模板/变异验证法/故障处置手册/技术坑备忘/工具调用技巧/额度管理），照做即可满血接力。
 > 历史交接记录已归档 git 历史（`git show G-113:HANDOFF.md`），WORKLOG.md 有全部任务索引。
 
+**快照时间**: 2026-11-22（**A-COL-02 数据管线入账**）｜**刷新者**: 主控（ZCode 会话）｜**仓库**: `C://Users//1//Desktop//zcode//GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni
+
+## ⚡ 最新（2026-11-22 第二批：A-COL-02 真实数据进 ConfigService）
+
+- **GLM 内容五数据源正式进引擎配置管线（b16429e）**：npcs(100)/places(120)/policies(40)/quests(12)/dialogue(300) 五张 CSV → A-CONF-02 表类零手写流程（生成 10 个 Row/Table 类）→ 真菜单链路导入 5 个 CFG_*Table.asset（errors=0、就地更新不换 GUID）。ColonyDataLoader 从 ConfigService 建局（origin→文化映射 §21 注释来源）。EditMode **1287/1287/0**（家底 1283+D1-D4）；验收 3452 cells 双侧 0 mismatch + 双变异复红。
+- **架构裁决（沿用）**：Game.Domain.Colony 仍只引 ZFrame.Core；ConfigService→DTO 投影放测试侧 ColonyConfigAdapter，生产接线时宿主程序集承担——Domain 保持零配置资产依赖。
+- **主控数据 bug 记录**：md→CSV 转换抓错正则分组导致 quests 选项列一度是字母占位符，已修复并同步（OptionA/B/C 12 行完整文本，Q01-Q12 Id 契约）。
+- **下一步**：A-COL-03 存档/读档（简报已写：ColonySaveData DTO+Capture/Restore+SaveSystem payload 桥+S1-S5 确定性断言）；随后 A-COL-04 月度报告（Summary/Raw 瞒报分歧）、A-COL-05 TaskBoard/UtilityAI 接涌现。
+- 家底：原生 381/823,640、EditMode **1287**、PlayMode 115、arch 28 asmdef/14 条目/0 违规；看板 **178 done / 0 todo / 1 held**。
+
 **快照时间**: 2026-11-22（**游戏本体首接线：A-COL-01 闭环**）｜**刷新者**: 主控（ZCode 会话）｜**仓库**: `C://Users//1//Desktop//zcode//GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni
 
 ## ⚡ 最新（2026-11-22：A-COL-01 殖民地模拟核心迁入 Game.Domain）
