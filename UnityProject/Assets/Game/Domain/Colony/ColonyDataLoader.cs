@@ -127,6 +127,15 @@ namespace Game.Domain.Colony
         /// <summary>主城数量：人口前三建 RegionState+Settlement（Program.cs：Take(3)）。</summary>
         private const int MainPlaceCount = 3;
 
+        /// <summary>
+        /// 内容共享随机流的盐（原 Program.cs/A-COL-01 fixture 同款 seed^0xC0FFEE）。
+        /// TASK-A-COL-03：存档 Restore 要重放这条流重建 NpcDirectory 槽位采样，盐值必须有唯一权威出处。
+        /// </summary>
+        public const ulong ContentRngSalt = 0xC0FFEEUL;
+
+        /// <summary>建局流上每张卡的 MF 抽取次数（Range×6）——Restore 重放按 卡数×此值 消费同样的段。</summary>
+        public const int MoralFoundationDraws = 6;
+
         /// <summary>背景层规模（Program.cs 建局段：十万背景层只是数字，8B/槽）。</summary>
         private const int BackgroundNpcCount = 100_000;
 
@@ -213,11 +222,11 @@ namespace Game.Domain.Colony
                 npcs.Add(BuildNpc(data.Npcs[i], i, seed));
             }
 
-            var rr = new Rng(seed ^ 0xC0FFEE);   // Program.cs 同款：文化/MF/背景层的共享随机流
+            var rr = new Rng(seed ^ ContentRngSalt);   // Program.cs 同款：文化/MF/背景层的共享随机流
             foreach (var n in npcs)
             {
                 n.Culture = CultureOfOrigin(n.Origin);
-                for (int i = 0; i < 6; i++) n.MF[i] = rr.Range(0.2f, 0.9f);
+                for (int i = 0; i < MoralFoundationDraws; i++) n.MF[i] = rr.Range(0.2f, 0.9f);
                 n.Quirk = n.Speech.Length > 12 ? n.Speech[..12] : n.Speech;
             }
 

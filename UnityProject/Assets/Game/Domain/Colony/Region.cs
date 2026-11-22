@@ -38,6 +38,11 @@ namespace Game.Domain.Colony
         private readonly List<LocalDeed> _deeds = new();     // 有目击者 → 直接进地区声望
         private readonly List<LocalDeed> _rumorPool = new(); // 无目击者 → 只进传闻池，会被加工、失真
 
+        // TASK-A-COL-03：deeds/rumorPool 是简报点名的地区声望输入——Capture 读，Restore 经 AddDeed 回填
+        // （WitnessCount 路由不变），同程序集 internal。
+        internal IReadOnlyList<LocalDeed> Deeds => _deeds;
+        internal IReadOnlyList<LocalDeed> Rumors => _rumorPool;
+
         public RegionState(string name, float avgAttitude)
         {
             Name = name;

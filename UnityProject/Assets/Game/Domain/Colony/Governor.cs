@@ -31,6 +31,9 @@ namespace Game.Domain.Colony.Player
         /// <summary>每 30 天向 0.5 回归一点（§1.1）。</summary>
         public void MonthlyDecay() => Credibility = Math.Clamp(Credibility + (0.5f - Credibility) * 0.05f, 0f, 1f);
 
+        /// <summary>TASK-A-COL-03：信誉是简报点名的存档字段（private set）——Restore 从存档回填，同程序集 internal。</summary>
+        internal void RestoreCredibility(float value) => Credibility = Math.Clamp(value, 0f, 1f);
+
         /// <summary>§1 原式。</summary>
         public float GlobalPrestige => Production * 0.30f + TradeValue * 0.25f + Credibility * 0.25f + MilitaryDeed * 0.20f;
 

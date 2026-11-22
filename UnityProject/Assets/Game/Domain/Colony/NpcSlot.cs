@@ -74,6 +74,37 @@ namespace Game.Domain.Colony
         public int Count => _slots.Length;
         public int ProfiledCount { get { int n = 0; foreach (var s in _slots) if (s.Profiled) n++; return n; } }
 
+        // ── 存档/读档（TASK-A-COL-03）：§4.4——目录本体不入档（种子确定性重建），
+        //    只读/写「已实例化标记 + 档案覆盖值」。同程序集内的 Capture/Restore 专用面。──
+
+        /// <summary>槽位原始值（Flag/BaseAttitude/RegionId）——存档时读已实例化槽的标记位。</summary>
+        public NpcSlot GetSlot(int slotId) => _slots[slotId];
+
+        /// <summary>已实例化（有档案）的槽位 id，升序枚举。</summary>
+        public IEnumerable<int> ProfiledSlotIds
+        {
+            get
+            {
+                for (int i = 0; i < _slots.Length; i++)
+                    if (_slots[i].Profiled) yield return i;
+            }
+        }
+
+        /// <summary>读已实例化槽位的档案（不触发实例化——与 EnsureProfile 的区别是没有副作用）。</summary>
+        public bool TryGetProfile(int slotId, out NpcProfile profile) => _profiles.TryGetValue(slotId, out profile);
+
+        /// <summary>
+        /// 读档回填：恢复槽位标记位并注入存档覆盖值。注入的档案与「原种子重新生成」逐字段一致
+        /// （种子确定性兜底），这里写覆盖值是为了不依赖重放路径的顺序细节。
+        /// </summary>
+        public void RestoreSlot(int slotId, byte flag, NpcProfile profile)
+        {
+            var slot = _slots[slotId];
+            slot.Flag = flag;
+            _slots[slotId] = slot;
+            if (profile != null) _profiles[slotId] = profile;
+        }
+
         /// <summary>玩家远远看见：否（只渲染，不建档案）（§4.3）。</summary>
         public void Seen(int slotId) { /* 故意什么都不做 */ }
 

@@ -18,6 +18,8 @@ namespace Game.Domain.Colony.Sim
     {
         public uint Day = 1;
         public Rng Rng;
+        /// <summary>建局原种子（TASK-A-COL-03）：存档要带它——读档后 NpcDirectory 的确定性实例化与流重放都以它为根。</summary>
+        public readonly ulong WorldSeed;
         public readonly List<string> DailyLog = new();      // 每日系统级事件（契约推进等）
 
         public RegionState[] Regions;
@@ -38,7 +40,11 @@ namespace Game.Domain.Colony.Sim
         private readonly Dictionary<int, uint> _migrantUntil = new();
         private readonly Dictionary<int, string> _npcRegion = new();
 
-        public GameWorld(ulong seed) => Rng = new Rng(seed);
+        public GameWorld(ulong seed)
+        {
+            WorldSeed = seed;
+            Rng = new Rng(seed);
+        }
 
         // ── 建局 ──────────────────────────────────────────────
         public void BindRegions(RegionState[] regions)
@@ -54,17 +60,22 @@ namespace Game.Domain.Colony.Sim
             {
                 Named.Add(n);
                 NamedById[n.Id] = n;
-                // 按 origin 分地区：船民去港口，难民去堡，其余进大城
-                _npcRegion[n.Id] = n switch
-                {
-                    _ when n.Culture.Target == CulturalFrame.LoyaltyTarget.Doctrine => Regions[1].Name,
-                    _ when n.Origin.StartsWith("船") || n.Origin.Contains("船民") => Regions[0].Name,
-                    _ when n.Origin.Contains("难民") => Regions[1].Name,
-                    _ => Regions[Regions.Length > 2 ? 2 : 0].Name,
-                };
+                _npcRegion[n.Id] = DefaultRegionOf(n);
                 Relations.AddFromCard(n, NamedById, Rng);   // 见 RelationshipGraph 扩展：每人 5~15 条边
             }
         }
+
+        /// <summary>
+        /// 按 origin 分地区：船民去港口，难民去堡，教义文化进堡，其余进大城。
+        /// TASK-A-COL-03：RegisterNamed 与存档 Restore 共用同一份实现，两条路径永不漂移。
+        /// </summary>
+        public string DefaultRegionOf(NamedNpc n) => n switch
+        {
+            _ when n.Culture.Target == CulturalFrame.LoyaltyTarget.Doctrine => Regions[1].Name,
+            _ when n.Origin.StartsWith("船") || n.Origin.Contains("船民") => Regions[0].Name,
+            _ when n.Origin.Contains("难民") => Regions[1].Name,
+            _ => Regions[Regions.Length > 2 ? 2 : 0].Name,
+        };
 
         public string RegionOf(NamedNpc n) => _npcRegion.TryGetValue(n.Id, out var r) ? r : Regions[0].Name;
         public Settlement SettlementOf(string name) => Settlements.FirstOrDefault(s => s.Name == name);
@@ -72,6 +83,17 @@ namespace Game.Domain.Colony.Sim
         // ── 延迟后果（真实感三支柱：不可逆的事会回来找你）──
         public void Delayed(uint dueDay, EventKind kind, string where, string text, EventVisibility vis)
             => _delayed.Add((dueDay, kind, where, text, vis));
+
+        // TASK-A-COL-03：延迟后果队列是简报点名的存档字段——Capture 读、Restore 写，同程序集 internal。
+        internal IReadOnlyList<(uint dueDay, EventKind kind, string where, string text, EventVisibility vis)> DelayedEntries
+            => _delayed;
+
+        internal void RestoreDelayedEntries(
+            IEnumerable<(uint dueDay, EventKind kind, string where, string text, EventVisibility vis)> entries)
+        {
+            _delayed.Clear();
+            foreach (var e in entries) _delayed.Add(e);
+        }
 
         // ── 时间推进 ──────────────────────────────────────────
         public void AdvanceDays(int days)
@@ -178,7 +200,11 @@ namespace Game.Domain.Colony.Sim
                 EventVisibility.Public);
         }
 
-        private void RegisterSingle(NamedNpc n, string region)
+        /// <summary>
+        /// 单个具名 NPC 注册（不建关系边——组织者不走卡片建网）。
+        /// TASK-A-COL-03：Restore 按存档重建具名层时复用同一入口（RegionOf 的地区映射随之成立）。
+        /// </summary>
+        public void RegisterSingle(NamedNpc n, string region)
         {
             Named.Add(n);
             NamedById[n.Id] = n;

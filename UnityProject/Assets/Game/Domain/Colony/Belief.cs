@@ -41,6 +41,16 @@ namespace Game.Domain.Colony
 
         private int _daysSinceViolation;
 
+        /// <summary>
+        /// 距上次违背的天数（TASK-A-COL-03 存档字段：不存档会把 30/60 天升级线清零，
+        /// 读档后沉默/离开时点整体漂移）。同程序集 Capture/Restore 专用。
+        /// </summary>
+        internal int DaysSinceViolation
+        {
+            get => _daysSinceViolation;
+            set => _daysSinceViolation = value;
+        }
+
         /// <summary>玩家做了违背 Won't 的事（§4.1 原逻辑）。</summary>
         public void OnViolation()
         {

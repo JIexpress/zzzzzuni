@@ -29,6 +29,21 @@ namespace Game.Domain.Colony.Quest
         public List<QuestDef> Library = new();
         private readonly List<(QuestDef q, uint dueDay)> _delayed = new();
 
+        // TASK-A-COL-03：支线延迟回找队列随档走（读档世界「世界不等你」的到期回找不能凭空消失）。
+        internal IReadOnlyList<(QuestDef q, uint dueDay)> DelayedEntries => _delayed;
+
+        /// <summary>按库序号回填延迟队列（Capture 侧以 Library 下标登记支线）。</summary>
+        internal void RestoreDelayed(IEnumerable<(int questIndex, uint dueDay)> entries)
+        {
+            _delayed.Clear();
+            foreach (var (index, due) in entries)
+            {
+                if (index < 0 || index >= Library.Count)
+                    throw new ArgumentOutOfRangeException(nameof(entries), $"延迟回找队列引用了不存在的支线下标 {index}");
+                _delayed.Add((Library[index], due));
+            }
+        }
+
         public void CheckTriggers(GameWorld w)
         {
             foreach (var q in Library)

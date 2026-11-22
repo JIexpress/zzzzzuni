@@ -35,6 +35,14 @@ namespace Game.Domain.Colony.Dialogue
             }
         }
 
+        /// <summary>TASK-A-COL-03：台词库随档走（Restore 的唯一输入是存档 DTO）——Capture 侧逐行读出，同程序集 internal。</summary>
+        internal IEnumerable<(string role, string topic, string line)> AllLines()
+        {
+            foreach (var pair in _lines)
+                foreach (var line in pair.Value)
+                    yield return (pair.Key.role, pair.Key.topic, line);
+        }
+
         public int Total => _lines.Values.Sum(l => l.Count);
 
         /// <summary>§13 语气合成：关系定基调，场合定正式度，状态定 rambling。同一 NPC 对玩家和对同事应像两个人。</summary>
