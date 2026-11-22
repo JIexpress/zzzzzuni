@@ -4,6 +4,8 @@
 
 | 日期 | 任务 | 结果 | commit |
 |---|---|---|---|
+| 2026-11-23 | A-AI-05v2 自主行为场景可见化+预约态 | done：施工→验收 PASS(V1-V8;EditMode 1315+PlayMode 127两轮同形;PixelEvidence 15/15;异位变异复红;看板销号held) | 10298e2 |
+| 2026-11-23 | A-COL-08 月度报告截图探针入门禁 | done：施工→验收 PASS(四轮一致;内容锚+像素地板;Gate/SelfTest;基线变异RED exit1) | 3749ba1 |
 | 2026-11-23 | A-COL-07 报告面板迭代+情报点玩法 | done：施工→验收 PASS(N1-N5+C5-C7;EditMode 1311+PlayMode三轮122同形;S系变异独立复红;修行高压0装配bug) | 917e650 |
 | 2026-11-22 | A-COL-06 NPC自主行为 | done：施工→验收 PASS(T1-T5;EditMode 1306+PlayMode 119两轮同形;T4涌现加速对照;泄压阀变异独立证实;哑弹如实登记) | 25aaadb |
 | 2026-11-22 | A-COL-05 垂直切片:游戏循环+报告UI | done：施工→验收 PASS(P1-P4+C1-C4;EditMode 1301+PlayMode 119两轮同形;场景零手改;C2变异复红零滞留) | a1e67f7 |

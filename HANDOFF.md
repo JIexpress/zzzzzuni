@@ -4,6 +4,18 @@
 > ⚡ **给下一个 LLM 主控**：先读 `Docs/LLM-HANDOFF-NOTES.md`——132 个任务沉淀的全部操作手册（派发模板/变异验证法/故障处置手册/技术坑备忘/工具调用技巧/额度管理），照做即可满血接力。
 > 历史交接记录已归档 git 历史（`git show G-113:HANDOFF.md`），WORKLOG.md 有全部任务索引。
 
+**快照时间**: 2026-11-23（**A-AI-05 v2 场景可见化 + A-COL-08 截图门禁入账**）｜**刷新者**: 主控（ZCode 会话）｜**仓库**: `C://Users//1//Desktop//zcode//GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni（已同步）
+
+## ⚡ 最新（2026-11-23 第二批：G 键场景自主 + 报告截图门禁）
+
+- **A-AI-05 v2 落地（10298e2）——用户按 G 键，NPC 在场景里自己动**：预约态（Reserve→到达才 Claim→双清；无预约场景逐位一致）+`NpcAutonomyMode`（G 键默认关，挂 3 seeker、NPC 位置逐位复位无残留）+`ColonyAutonomyBridge`（两层自主统一呈现：seeker+Colony 行为分布 HUD 四行，投影只读）。V8 实况修正：SCN_Game 无 npc-anim-* 名单（属 SCN_Anim），闲置候选 1 个，seeker=min(3,候选)；DeviceBroken 演示口径让 NPC 决定性走向木桶。EditMode **1315/1315/0**（1311+R1-R4）+ PlayMode 两轮 127 同形（122+V7V8V9分布）+ PixelEvidence 15/15；验收异位变异复红（IsAvailableFor 本体）。
+- **A-COL-08 报告截图探针入门禁（3749ba1）**：`-acol08probe` 惰性启用（全量轮 Skipped 零开销）；内容锚（Summary 7 行/异常项 2/Raw 23/情报点闸门 3→2）精确比对+像素地板；runner `Tools/probe_colony_report.ps1`（-Gate RED exit 1 / MISS exit 2，对齐 bench_player；-SelfTest 39 例）；基线入库、逐轮 PNG gitignore。四轮一致；验收异位变异（基线 23→24）RED exit 1。
+- **主控追认三项**：T13/Tick 旧契约用例更新（选中即 Claim→预约新语义）；V4 seeker 数改 min 式（场景实况）；V8 DeviceBroken 演示口径。**随档补入**：ColonySaveBridge.cs（A-COL-07 漏 add，本批核销）。
+- **内容管线（WorkBuddy 侧，机检全过待接入）**：任务 6 关系网事件 40 条（引用一致性 100%、五组合各 8）+ 任务 7 贸易事件 20 条（价格 5% 倍数/一涨一跌镜像）+ 任务 9 人生节点 190 条（100 人全覆盖、家庭自洽、改写 145 条）——第二批任务包草稿亦已产出（任务 6-9 自包含 prompt）。接入排 A-COL-09（ConfigService 第 6/7/9 张表+消费逻辑）。
+- **勘误与工具**：DevServer（127.0.0.1:17321，[InitializeOnLoad] 自动启动）可在用户编辑器开着时触发全量测试——本次因用户实例未启用未走通，已登记为编辑器占用期的标准备选路径。
+- 家底：原生 381/823,640、EditMode **1315**、PlayMode **127**、arch 28/14 条目/0 违规；看板 **185 done / 0 todo / 0 held**（A-AI-05 销号）。
+- **A/COL 序列候选**：A-COL-09 内容接入（任务 6/7/9 三表）；Colony 行为 3D 角色化（A-AI-05 登记的后续：具名 NPC 场景身份映射）；真机数据加载正路径；三档报告选择深化。
+
 **快照时间**: 2026-11-23（**A-COL-07 面板迭代 + A-AI-05 合流改写入账**）｜**刷新者**: 主控（ZCode 会话）｜**仓库**: `C://Users//1//Desktop//zcode//GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni（已同步）
 
 ## ⚡ 最新（2026-11-23：A-COL-07 面板迭代 + A-AI-05 v2 合流改写）
