@@ -4,6 +4,7 @@
 
 | 日期 | 任务 | 结果 | commit |
 |---|---|---|---|
+| 2026-11-22 | A-COL-03 Colony存档读档+确定性实例化 | done：施工→验收 PASS(S1-S5;EditMode 1292全绿;双变异复红不同位置;读档世界不残缺追认) | (见G-185) |
 | 2026-11-22 | A-COL-02 GLM数据走ConfigService+数据驱动建局 | done：施工→验收 PASS(D1-D4;EditMode 1287全绿;3452cells 0mismatch;变异复红不同位置;Domain零配置依赖裁决) | b16429e |
 | 2026-11-22 | A-COL-01 ColonyCore迁入Game.Domain.Colony+政策→抗议→报告垂直闭环 | done：施工→验收 PASS(V1-V7独立亲证;EditMode 1283/1283/0;双变异复红不同位置;Rng=class防序列冻结登记;arch 14条目0违规) | 16afa34 |
 | 2026-11-14 | B-PLANET-14 流式排名阈值修复 | done：验收PASS(B1-B7)；第三判据累计位移>max(500m,0.02×弧长)——纯海拔爬升 258km 必触发/贴地微动不触发；12 条锚定测试；EditMode 1235(+12)全绿；50km 三层跳变不受影响；捎带闭环 X-FLAKY-01 | 41adfdd |

@@ -4,6 +4,16 @@
 > ⚡ **给下一个 LLM 主控**：先读 `Docs/LLM-HANDOFF-NOTES.md`——132 个任务沉淀的全部操作手册（派发模板/变异验证法/故障处置手册/技术坑备忘/工具调用技巧/额度管理），照做即可满血接力。
 > 历史交接记录已归档 git 历史（`git show G-113:HANDOFF.md`），WORKLOG.md 有全部任务索引。
 
+**快照时间**: 2026-11-22（**A-COL-03 存档入账**）｜**刷新者**: 主控（ZCode 会话）｜**仓库**: `C://Users//1//Desktop//zcode//GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni
+
+## ⚡ 最新（2026-11-22 第三批：A-COL-03 存档/读档闭环）
+
+- **世界可以存档了**：`ColonySaveData` DTO + `ColonySaveCapture/Restore`（纯 Domain）+ SaveSystem payload 桥（测试侧，Newtonsoft 对齐 ZFrame.Data.Tests 先例）。**规格 §4.4 落地**：背景层目录不入档、读档后 `EnsureProfile` 种子重放逐位一致（「读档后他性格变了」被 S2 断言钉死）；关系边按档重建、组织者按聚落 namedNpcs 反推注册地。EditMode **1292/1292/0**（1287+S1-S5）；验收双变异复红（施工 S2/验收 S3 不同位置）。
+- **主控追认两处**：测试 asmdef precompiledReferences + Newtonsoft.Json.dll；DTO 增配 Policies/Quests(+QuestDelayed)/Dialogue 三节——Restore 是唯一输入，内容库不可种子重导，否则读档世界支线全空。
+- **登记**：世界 Rng 流不入档（确定性契约只钉 NpcSlot，读档后随机事件序列不逐位复现——S3 只断言延续性）；TrySpawnOrganizer 重复同 id 涌现为 A-COL-01 既有行为，S3 按身份集合断言。
+- **下一步**：A-COL-04 月度报告（ReportDetail Summary/Standard/Raw 三档+异常项+AI 瞒报分歧——指挥代理规格）；A-COL-05 TaskBoard/UtilityAI 接涌现。
+- 家底：原生 381/823,640、EditMode **1292**、PlayMode 115、arch 28/14 条目/0 违规；看板 **179 done / 0 todo / 1 held**。
+
 **快照时间**: 2026-11-22（**A-COL-02 数据管线入账**）｜**刷新者**: 主控（ZCode 会话）｜**仓库**: `C://Users//1//Desktop//zcode//GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni
 
 ## ⚡ 最新（2026-11-22 第二批：A-COL-02 真实数据进 ConfigService）
