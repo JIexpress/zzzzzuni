@@ -89,9 +89,15 @@ namespace ZFrame.Editor
                 },
                 ["Game.View"] = new AsmdefRule
                 {
+                    // TASK-A-COL-05（登记待主控裁决）：+Game.Domain.Colony——Colony 游戏循环宿主
+                    // （ColonyWorldHost）与月度报告 MVP（ReportPresenter/ReportPanel）落地 View 层，
+                    // 按简报以纯 C# 接口消费 Colony Domain（GameWorld/MonthlyReport/AiSteward）。
+                    // Domain 侧零引擎依赖不变（Game.Domain.Colony 矩阵条目原样）；纯度扫描
+                    // （Assets/Game/Domain 禁引擎 token）原样覆盖。
                     AllowedReferences = new[]
                     {
                         "ZFrame.Core", "ZFrame.Data", "ZFrame.Gameplay", "ZFrame.View", "Game.Domain",
+                        "Game.Domain.Colony",
                     },
                 },
                 ["Game.Bootstrap"] = new AsmdefRule

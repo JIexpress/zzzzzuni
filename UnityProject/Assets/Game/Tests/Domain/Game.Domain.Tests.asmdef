@@ -6,7 +6,9 @@
         "ZFrame.Data",
         "ZFrame.Gameplay",
         "Game.Domain",
-        "Game.Domain.Colony"
+        "Game.Domain.Colony",
+        "ZFrame.View",
+        "Game.View"
     ],
     "includePlatforms": [
         "Editor"

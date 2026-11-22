@@ -8,6 +8,7 @@
         "ZFrame.Gameplay",
         "ZFrame.View",
         "Game.Domain",
+        "Game.Domain.Colony",
         "Game.View",
         "ZFrame.Render",
         "ZFrame.Render.Bindings"
