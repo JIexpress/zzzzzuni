@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Game.Domain.Colony.Autonomy;
 using Game.Domain.Colony.Dialogue;
 using Game.Domain.Colony.Economy;
 using Game.Domain.Colony.Policy;
@@ -26,6 +27,16 @@ namespace Game.Domain.Colony.Sim
         public List<Settlement> Settlements = new();
         public List<NamedNpc> Named = new();
         public Dictionary<int, NamedNpc> NamedById = new();
+
+        // ── NPC 自主行为（TASK-A-COL-06：效用 AI/任务板接组织度涌现）──
+        /// <summary>自主行为开关（默认开——「NPC 不是按预设跑，而是自己找事」；对照实验可关）。</summary>
+        public bool AutonomyEnabled = true;
+        /// <summary>今日自主行为计数（每日 tick 清零；对比断言用）。</summary>
+        public int AutonomousActionsToday;
+        /// <summary>今日每个具名 NPC 的自主选择（npcId → ColonyAction；每日 tick 清零——
+        /// 开发者可解释性入口：配合 ColonyTaskBoard.Ranked 能复盘「他为什么选这个」）。</summary>
+        public readonly Dictionary<int, ColonyAction> AutonomousChoicesToday = new();
+
         public NpcDirectory Background;
         public RelationshipGraph Relations = new();
         public EventLog Log = new();
@@ -110,9 +121,13 @@ namespace Game.Domain.Colony.Sim
         private void DailyTick()
         {
             DailyLog.Clear();
-            // 具名层：契约推进 / 面具裂缝 / 离开事件（每天，§2）
+            // 具名层：自主行为结算（TASK-A-COL-06，复用现有具名层循环不加新循环）
+            //   + 契约推进 / 面具裂缝 / 离开事件（每天，§2）
+            AutonomousActionsToday = 0;
+            AutonomousChoicesToday.Clear();
             foreach (var n in Named)
             {
+                ColonyDailyBehavior.SettleFor(this, n);
                 DailyLog.Clear();
                 if (!n.DailyTick(Day, Rng, DailyLog)) continue;
                 foreach (var line in DailyLog)

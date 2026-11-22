@@ -12,6 +12,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Domain.Colony;
+using Game.Domain.Colony.Autonomy;
 using Game.Domain.Colony.Sim;
 
 namespace Game.Domain.Colony.Player
@@ -215,12 +216,39 @@ namespace Game.Domain.Colony.Player
             return lines;
         }
 
+        /// <summary>
+        /// Raw 档：Truth 全量事件逐条呈现——唯一例外是 NPC 自主行为日志（文本以
+        /// <see cref="ColonyDailyBehavior.AutonomyLogMarker"/> 开头）：按 Kind 折叠成计数行。
+        /// 原因（TASK-A-COL-06）：自主行为是「每个具名 NPC 每天 ≥1 条」的量级（100 人 × 30 天
+        /// ≈ 3000 条），逐条渲染会让报告面板的 UGUI Text 超过 65000 顶点硬上限直接抛异常
+        /// （PlayMode C4 实证）。折叠只影响 Raw 的显示行；Truth 日志（Log.All）与
+        /// <see cref="Report.Referenced"/>（视野断言口径）仍逐条全量，Covert 纪律不变。
+        /// </summary>
         private static List<string> BuildRaw(List<GameEvent> eaten, List<string> anomalies, uint fromDay, uint toDay)
         {
             var lines = new List<string>
             { $"【月度报告 Raw·Truth 全量】第 {fromDay}–{toDay} 天（{eaten.Count} 条，含 Covert）" };
+            var autonomy = new Dictionary<EventKind, (int count, uint firstDay, uint lastDay)>();
             foreach (GameEvent e in eaten)
+            {
+                if (e.Text != null
+                    && e.Text.StartsWith(ColonyDailyBehavior.AutonomyLogMarker, StringComparison.Ordinal))
+                {
+                    (int count, uint firstDay, uint lastDay) g = autonomy.TryGetValue(e.Kind, out var x)
+                        ? (x.count + 1, x.firstDay, e.Day)
+                        : (1, e.Day, e.Day);
+                    autonomy[e.Kind] = g;
+                    continue;
+                }
+
                 lines.Add($"[{e.Day}d][{e.Vis}][{e.Kind}][{e.Where}] {e.Text}");
+            }
+
+            foreach (KeyValuePair<EventKind, (int count, uint firstDay, uint lastDay)> g in autonomy)
+            {
+                lines.Add($"[自主折叠][{g.Key}] 窗口内自主行为 {g.Value.count} 条（第 {g.Value.firstDay}–{g.Value.lastDay} 天）" +
+                          "——逐条明细在 Truth 日志（Log.All），报告行按 Kind 折叠（UGUI Text 65k 顶点上限）");
+            }
 
             if (anomalies.Count > 0)
             {
