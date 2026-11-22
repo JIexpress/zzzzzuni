@@ -1,0 +1,975 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 33aa4e080c1bfbd4db7dab67de043918, type: 3}
+  m_Name: CFG_PlacesTable
+  m_EditorClassIdentifier: 
+  _rows:
+  - <Id>k__BackingField: 1
+    <Name>k__BackingField: "\u767D\u6C99\u6E2F"
+    <Type>k__BackingField: "\u6E2F\u53E3"
+    <Population>k__BackingField: 5800
+    <Industry>k__BackingField: "\u6E14\u4E1A+\u6652\u76D0"
+    <Blurb>k__BackingField: "\u76D0\u573A\u7801\u5934\u8D77\u5BB6\uFF0C\u5982\u4ECA\u6652\u76D0\u6536\u7F29\u3001\u6E14\u6C5B\u6491\u573A\uFF0C\u7A7A\u51FA\u7684\u6CCA\u4F4D\u79DF\u7ED9\u8FC7\u8DEF\u8D27\u8239\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 2
+    <Name>k__BackingField: "\u9ED1\u6C34\u6E2F"
+    <Type>k__BackingField: "\u6E2F\u53E3"
+    <Population>k__BackingField: 9200
+    <Industry>k__BackingField: "\u77FF\u8FD0+\u8F6C\u8FD0"
+    <Blurb>k__BackingField: "\u4E0A\u6E38\u77FF\u533A\u7684\u51FA\u6C5F\u53E3\uFF0C\u7801\u5934\u663C\u591C\u5378\u77FF\uFF0C\u6700\u8FD1\u88C5\u5378\u5DE5\u4E3A\u7C89\u5C18\u8865\u507F\u5728\u95F9\u7F62\u5DE5\uFF0C\u4E24\u6761\u6CCA\u4F4D\u505C\u4E86\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 1
+  - <Id>k__BackingField: 3
+    <Name>k__BackingField: "\u53CC\u6CB3\u6E2F"
+    <Type>k__BackingField: "\u6E2F\u53E3"
+    <Population>k__BackingField: 7600
+    <Industry>k__BackingField: "\u8F6C\u8FD0+\u6E14\u4E1A"
+    <Blurb>k__BackingField: "\u4E24\u6CB3\u4EA4\u6C47\u7684\u8F6C\u8FD0\u67A2\u7EBD\uFF0C\u5317\u77FF\u5357\u7CAE\u5728\u8FD9\u91CC\u6362\u8239\uFF0C\u6E2F\u52A1\u7A0E\u662F\u53CC\u6CB3\u57CE\u8D22\u653F\u7684\u547D\u6839\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 4
+    <Name>k__BackingField: "\u957F\u6EE9\u6E2F"
+    <Type>k__BackingField: "\u6E2F\u53E3"
+    <Population>k__BackingField: 4300
+    <Industry>k__BackingField: "\u6E14\u4E1A+\u4FEE\u8239"
+    <Blurb>k__BackingField: "\u6B96\u6C11\u521D\u671F\u552F\u4E00\u7684\u6DF1\u6C34\u6E2F\uFF0C\u822A\u9053\u6DE4\u6D45\u540E\u5927\u8239\u6539\u505C\u9ED1\u6C34\u6E2F\uFF0C\u5982\u4ECA\u9760\u8FD1\u6D77\u6E14\u6C5B\u548C\u4FEE\u5C0F\u8239\u8FC7\u6D3B\u3002"
+    <Decay>k__BackingField: 1
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 5
+    <Name>k__BackingField: "\u76D0\u6E56\u6E2F"
+    <Type>k__BackingField: "\u6E2F\u53E3"
+    <Population>k__BackingField: 2100
+    <Industry>k__BackingField: "\u76D0\u8FD0+\u9A73\u8FD0"
+    <Blurb>k__BackingField: "\u6E56\u4E0A\u9A73\u8239\u628A\u76D0\u8FD0\u5F80\u94C1\u8DEF\u5C3D\u5934\uFF0C\u6E56\u9762\u9010\u5E74\u9000\u7F29\uFF0C\u9A73\u8239\u822A\u9053\u4E09\u5E74\u6539\u4E86\u4E24\u6B21\u3002"
+    <Decay>k__BackingField: 1
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 6
+    <Name>k__BackingField: "\u767D\u6C99\u6E7E"
+    <Type>k__BackingField: "\u6D77\u6E7E"
+    <Population>k__BackingField: 2700
+    <Industry>k__BackingField: "\u6C34\u4EA7\u517B\u6B96"
+    <Blurb>k__BackingField: "\u6E7E\u5185\u98CE\u6D6A\u5C0F\uFF0C\u7F51\u7BB1\u6392\u5230\u6E7E\u53E3\uFF0C\u4ECA\u5E74\u8D64\u6F6E\u63D0\u524D\u4E00\u4E2A\u6708\uFF0C\u517B\u6B96\u6237\u5B88\u7740\u589E\u6C27\u673A\u4E0D\u6562\u5408\u773C\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 1
+  - <Id>k__BackingField: 7
+    <Name>k__BackingField: "\u9ED1\u6C34\u6E7E"
+    <Type>k__BackingField: "\u6D77\u6E7E"
+    <Population>k__BackingField: 3100
+    <Industry>k__BackingField: "\u6E14\u4E1A+\u4FEE\u8239"
+    <Blurb>k__BackingField: "\u6CB3\u53E3\u6E7E\u54B8\u6DE1\u6C34\u4EA4\u754C\u9C7C\u7FA4\u5BC6\uFF0C\u8239\u575E\u80FD\u4FEE\u4E09\u5343\u5428\u9A73\u8239\uFF0C\u4FEE\u8239\u7684\u6D3B\u6BD4\u6253\u9C7C\u7A33\u5F53\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 8
+    <Name>k__BackingField: "\u53CC\u6CB3\u6E7E"
+    <Type>k__BackingField: "\u6D77\u6E7E"
+    <Population>k__BackingField: 2400
+    <Industry>k__BackingField: "\u6E14\u4E1A"
+    <Blurb>k__BackingField: "\u6E7E\u53E3\u6697\u7901\u5BC6\u5E03\u5927\u8239\u8FDB\u4E0D\u6765\uFF0C\u53CD\u5012\u7559\u4F4F\u51E0\u5341\u6761\u4E0D\u80AF\u642C\u53BB\u9ED1\u6C34\u6E2F\u7684\u5C0F\u6E14\u8239\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 9
+    <Name>k__BackingField: "\u957F\u6EE9\u6E7E"
+    <Type>k__BackingField: "\u6D77\u6E7E"
+    <Population>k__BackingField: 1900
+    <Industry>k__BackingField: "\u6652\u76D0+\u6E14\u4E1A"
+    <Blurb>k__BackingField: "\u9000\u6F6E\u9732\u51FA\u51E0\u91CC\u6EE9\u6D82\uFF0C\u4E09\u4EE3\u76D0\u5DE5\u7684\u76D0\u7530\u6CBF\u6E7E\u5E95\u94FA\u5F00\uFF0C\u76D0\u7A0E\u517B\u7740\u534A\u4E2A\u6E7E\u6751\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 10
+    <Name>k__BackingField: "\u5BD2\u6CC9\u6E7E"
+    <Type>k__BackingField: "\u6D77\u6E7E"
+    <Population>k__BackingField: 1400
+    <Industry>k__BackingField: "\u6E14\u4E1A+\u51B7\u85CF"
+    <Blurb>k__BackingField: "\u6CC9\u6C34\u5165\u6E7E\u5904\u6C34\u6E29\u4F4E\u9C7C\u7FA4\u805A\uFF0C\u51B7\u5E93\u5EFA\u5728\u6CC9\u773C\u4E0A\uFF0C\u51B7\u85CF\u8D39\u6BD4\u522B\u5904\u4FBF\u5B9C\u4E09\u6210\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 11
+    <Name>k__BackingField: "\u767D\u6C99\u6E21"
+    <Type>k__BackingField: "\u6E21\u53E3"
+    <Population>k__BackingField: 1500
+    <Industry>k__BackingField: "\u6446\u6E21+\u8865\u7ED9"
+    <Blurb>k__BackingField: "\u53BB\u5CAD\u5317\u7684\u6700\u540E\u4E00\u4E2A\u6E21\u53E3\uFF0C\u5CAD\u5317\u516C\u8DEF\u901A\u8F66\u540E\u8F66\u961F\u4E0D\u518D\u7B49\u8239\uFF0C\u53EA\u5269\u6563\u5BA2\u548C\u7272\u53E3\u3002"
+    <Decay>k__BackingField: 1
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 12
+    <Name>k__BackingField: "\u9ED1\u6C34\u6E21"
+    <Type>k__BackingField: "\u6E21\u53E3"
+    <Population>k__BackingField: 1100
+    <Industry>k__BackingField: "\u6446\u6E21"
+    <Blurb>k__BackingField: "\u4E0A\u6E38\u8001\u6E21\u53E3\uFF0C\u53CC\u6CB3\u5927\u6865\u901A\u8F66\u540E\u53EA\u5269\u6CBF\u5CB8\u6751\u6C11\u5750\uFF0C\u6E21\u8239\u8FD8\u662F\u4E09\u5341\u5E74\u524D\u90A3\u6761\u3002"
+    <Decay>k__BackingField: 1
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 13
+    <Name>k__BackingField: "\u53CC\u6CB3\u6E21"
+    <Type>k__BackingField: "\u6E21\u53E3"
+    <Population>k__BackingField: 900
+    <Industry>k__BackingField: "\u6446\u6E21"
+    <Blurb>k__BackingField: "\u7D27\u6328\u53CC\u6CB3\u57CE\u53D6\u6C34\u53E3\uFF0C\u6E21\u8239\u5F52\u6C34\u52A1\u5C40\u7BA1\uFF0C\u4E3A\u5927\u575D\u6269\u5EFA\u8BA9\u8DEF\uFF0C\u5DF2\u5728\u62C6\u64A4\u540D\u5355\u4E0A\u3002"
+    <Decay>k__BackingField: 1
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 14
+    <Name>k__BackingField: "\u957F\u6EE9\u6E21"
+    <Type>k__BackingField: "\u6E21\u53E3"
+    <Population>k__BackingField: 700
+    <Industry>k__BackingField: "\u6446\u6E21"
+    <Blurb>k__BackingField: "\u957F\u6EE9\u5C3D\u5934\u7684\u8001\u6E21\u53E3\uFF0C\u5BF9\u5CB8\u6797\u573A\u505C\u4F10\u540E\uFF0C\u8FC7\u6E21\u7684\u591A\u662F\u62A4\u6797\u5458\u548C\u90AE\u5DEE\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 15
+    <Name>k__BackingField: "\u5BD2\u6CC9\u6E21"
+    <Type>k__BackingField: "\u6E21\u53E3"
+    <Population>k__BackingField: 1200
+    <Industry>k__BackingField: "\u6446\u6E21+\u6C34\u7AD9"
+    <Blurb>k__BackingField: "\u6CC9\u773C\u5C31\u5728\u6E21\u53E3\u8FB9\uFF0C\u8FC7\u8DEF\u8F66\u961F\u90FD\u8981\u704C\u6C34\uFF0C\u5317\u7EBF\u65B0\u6865\u5408\u9F99\u90A3\u5929\u8D77\u6E21\u73ED\u8868\u7A7A\u4E86\u4E00\u534A\u3002"
+    <Decay>k__BackingField: 1
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 16
+    <Name>k__BackingField: "\u9752\u77F3\u57CE"
+    <Type>k__BackingField: "\u57CE\u5E02"
+    <Population>k__BackingField: 38000
+    <Industry>k__BackingField: "\u91C7\u77F3+\u5EFA\u6750"
+    <Blurb>k__BackingField: "\u4F9D\u6258\u9752\u77F3\u77FF\u8109\u5EFA\u7684\u516C\u53F8\u57CE\uFF0C\u534A\u4E2A\u6B96\u6C11\u5730\u7684\u8F68\u9053\u5730\u57FA\u7528\u8FD9\u91CC\u7684\u77F3\u6599\uFF0C\u77F3\u5C18\u662F\u5168\u57CE\u7684\u516C\u654C\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 17
+    <Name>k__BackingField: "\u767D\u6C99\u57CE"
+    <Type>k__BackingField: "\u57CE\u5E02"
+    <Population>k__BackingField: 15000
+    <Industry>k__BackingField: "\u6E14\u5E02+\u5546\u8D38"
+    <Blurb>k__BackingField: "\u767D\u6C99\u6EE9\u5C3D\u5934\u7684\u8001\u57CE\uFF0C\u6E14\u5E02\u548C\u5357\u7EBF\u4E2D\u8F6C\u4ED3\u6491\u8D77\u7A0E\u6536\uFF0C\u53F0\u98CE\u5B63\u5168\u57CE\u62A2\u6536\u7F51\u5177\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 18
+    <Name>k__BackingField: "\u9ED1\u6C34\u57CE"
+    <Type>k__BackingField: "\u57CE\u5E02"
+    <Population>k__BackingField: 31000
+    <Industry>k__BackingField: "\u51B6\u70BC+\u6CB3\u8FD0"
+    <Blurb>k__BackingField: "\u6CBF\u9ED1\u6C34\u5EFA\u51B6\u70BC\u57CE\uFF0C\u77FF\u77F3\u987A\u6C34\u4E0B\u6765\u5728\u6B64\u7194\u70BC\uFF0C\u6CB3\u6C34\u53D8\u8272\u5C31\u662F\u4ECE\u8FD9\u4E00\u6BB5\u5F00\u59CB\u7684\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 19
+    <Name>k__BackingField: "\u9AD8\u5CAD\u57CE"
+    <Type>k__BackingField: "\u57CE\u5E02"
+    <Population>k__BackingField: 21000
+    <Industry>k__BackingField: "\u7A00\u571F\u77FF\u4E1A"
+    <Blurb>k__BackingField: "\u9AD8\u5CAD\u5C71\u810A\u4E0B\u7684\u7A00\u571F\u57CE\uFF0C\u77FF\u8109\u8D8A\u6316\u8D8A\u6DF1\uFF0C\u584C\u65B9\u533A\u7684\u56F4\u680F\u53C8\u5F80\u5916\u632A\u4E86\u4E00\u9053\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 20
+    <Name>k__BackingField: "\u53CC\u6CB3\u57CE"
+    <Type>k__BackingField: "\u57CE\u5E02"
+    <Population>k__BackingField: 86000
+    <Industry>k__BackingField: "\u884C\u653F+\u5546\u8D38"
+    <Blurb>k__BackingField: "\u6B96\u6C11\u5730\u9996\u5E9C\uFF0C\u4E24\u6CB3\u4EA4\u6C47\u5904\u8D77\u5BB6\uFF0C\u8BAE\u4F1A\u3001\u6D77\u5173\u548C\u6700\u5927\u7684\u7CAE\u98DF\u5E02\u573A\u90FD\u5728\u8FD9\u91CC\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 21
+    <Name>k__BackingField: "\u5B64\u5CF0\u57CE"
+    <Type>k__BackingField: "\u57CE\u5E02"
+    <Population>k__BackingField: 18000
+    <Industry>k__BackingField: "\u6DF1\u4E95\u77FF\u4E1A"
+    <Blurb>k__BackingField: "\u73AF\u5B64\u5CF0\u800C\u5EFA\u7684\u8001\u77FF\u57CE\uFF0C\u4E3B\u77FF\u5C42\u91C7\u7A7A\u540E\u4EBA\u53E3\u8D70\u4E86\u4E00\u534A\uFF0C\u4E95\u67B6\u8FD8\u7ACB\u7740\uFF0C\u706F\u53EA\u5F00\u4E00\u534A\u3002"
+    <Decay>k__BackingField: 1
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 22
+    <Name>k__BackingField: "\u957F\u6EE9\u57CE"
+    <Type>k__BackingField: "\u57CE\u5E02"
+    <Population>k__BackingField: 23000
+    <Industry>k__BackingField: "\u884C\u653F+\u4FEE\u8239"
+    <Blurb>k__BackingField: "\u6B96\u6C11\u521D\u671F\u7684\u884C\u653F\u4E2D\u5FC3\uFF0C\u9996\u5E9C\u8FC1\u8D70\u540E\u7559\u4E0B\u6CD5\u9662\u3001\u6E14\u653F\u548C\u4FEE\u8239\u6240\uFF0C\u8282\u594F\u6162\u4E86\u534A\u62CD\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 23
+    <Name>k__BackingField: "\u94C1\u7827\u57CE"
+    <Type>k__BackingField: "\u57CE\u5E02"
+    <Population>k__BackingField: 16000
+    <Industry>k__BackingField: "\u51B6\u70BC+\u953B\u9020"
+    <Blurb>k__BackingField: "\u94C1\u7827\u5CA9\u4E0B\u7684\u5DE5\u4E1A\u57CE\uFF0C\u5408\u91D1\u4E0E\u519B\u68B0\u953B\u9020\u662F\u547D\u6839\u5B50\uFF0C\u8BA2\u5355\u4E00\u51CF\u5168\u57CE\u8F6E\u73ED\u6B47\u7089\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 24
+    <Name>k__BackingField: "\u843D\u661F\u57CE"
+    <Type>k__BackingField: "\u57CE\u5E02"
+    <Population>k__BackingField: 26000
+    <Industry>k__BackingField: "\u79D1\u8003+\u5546\u8D38"
+    <Blurb>k__BackingField: "\u7ED5\u661F\u69CE\u53F7\u6B8B\u9AB8\u5EFA\u7684\u57CE\uFF0C\u9760\u79D1\u8003\u670D\u52A1\u548C\u89C2\u5149\u8BB8\u53EF\u5403\u996D\uFF0C\u6B8B\u9AB8\u533A\u8FB9\u7F18\u5730\u5C42\u4E0B\u9677\uFF0C\u4E1C\u57CE\u533A\u6B63\u5728\u5206\u6279\u64A4\u79BB\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 1
+  - <Id>k__BackingField: 25
+    <Name>k__BackingField: "\u6B8B\u57A3\u57CE"
+    <Type>k__BackingField: "\u57CE\u5E02"
+    <Population>k__BackingField: 52000
+    <Industry>k__BackingField: "\u5546\u8D38+\u4ED3\u50A8"
+    <Blurb>k__BackingField: "\u5EFA\u5728\u9996\u6279\u6B96\u6C11\u70B9\u5E9F\u589F\u5916\u56F4\u7684\u5546\u57CE\uFF0C\u65E7\u5899\u7559\u7740\u505A\u7EAA\u5FF5\uFF0C\u65B0\u57CE\u8D27\u6808\u4E00\u5929\u5230\u665A\u5378\u8D27\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 26
+    <Name>k__BackingField: "\u9752\u77F3\u9547"
+    <Type>k__BackingField: "\u57CE\u9547"
+    <Population>k__BackingField: 9500
+    <Industry>k__BackingField: "\u91C7\u77F3"
+    <Blurb>k__BackingField: "\u9752\u77F3\u91C7\u573A\u5DE5\u4EBA\u805A\u5C45\u7684\u9547\uFF0C\u77F3\u6599\u8F66\u961F\u663C\u591C\u8FC7\u8857\uFF0C\u5168\u9547\u623F\u5B50\u88AB\u77F3\u7C89\u538B\u5F97\u53D1\u7070\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 27
+    <Name>k__BackingField: "\u767D\u6C99\u9547"
+    <Type>k__BackingField: "\u57CE\u9547"
+    <Population>k__BackingField: 4200
+    <Industry>k__BackingField: "\u6E14\u4E1A"
+    <Blurb>k__BackingField: "\u767D\u6C99\u6E7E\u540E\u65B9\u7684\u6E14\u9547\uFF0C\u51B7\u85CF\u8239\u4E00\u5230\uFF0C\u5168\u9547\u7801\u5934\u8FDE\u8F74\u8F6C\u4E09\u5929\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 28
+    <Name>k__BackingField: "\u9ED1\u6C34\u9547"
+    <Type>k__BackingField: "\u57CE\u9547"
+    <Population>k__BackingField: 7800
+    <Industry>k__BackingField: "\u6CB3\u8FD0\u670D\u52A1"
+    <Blurb>k__BackingField: "\u9ED1\u6C34\u9A73\u8239\u8239\u5458\u7684\u8865\u7ED9\u9547\uFF0C\u4FEE\u8239\u3001\u62BC\u8FD0\u3001\u9152\u9986\uFF0C\u6536\u5165\u5168\u62F4\u5728\u6CB3\u8FD0\u884C\u60C5\u4E0A\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 29
+    <Name>k__BackingField: "\u9AD8\u5CAD\u9547"
+    <Type>k__BackingField: "\u57CE\u9547"
+    <Population>k__BackingField: 3600
+    <Industry>k__BackingField: "\u57A6\u6B96"
+    <Blurb>k__BackingField: "\u9AD8\u5CAD\u5C71\u8170\u7684\u57A6\u6B96\u9547\uFF0C\u68AF\u7530\u4E00\u5C42\u5C42\u5F80\u4E91\u91CC\u94FA\uFF0C\u6536\u6210\u5168\u770B\u971C\u671F\u65E9\u665A\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 30
+    <Name>k__BackingField: "\u53CC\u6CB3\u9547"
+    <Type>k__BackingField: "\u57CE\u9547"
+    <Population>k__BackingField: 8200
+    <Industry>k__BackingField: "\u519C\u4E1A+\u6C34\u8FD0"
+    <Blurb>k__BackingField: "\u53CC\u6CB3\u4E0B\u6E38\u7684\u7CAE\u9547\uFF0C\u7CAE\u8239\u76F4\u653E\u53CC\u6CB3\u57CE\uFF0C\u7CAE\u4EF7\u4E00\u6CE2\u52A8\u5168\u9547\u8D26\u623F\u5148\u77E5\u9053\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 31
+    <Name>k__BackingField: "\u5B64\u5CF0\u9547"
+    <Type>k__BackingField: "\u57CE\u9547"
+    <Population>k__BackingField: 2800
+    <Industry>k__BackingField: "\u7267\u4E1A"
+    <Blurb>k__BackingField: "\u5B64\u5CF0\u5411\u9633\u5761\u7684\u7267\u9547\uFF0C\u7F8A\u7FA4\u4E0B\u5C71\u8981\u8FC7\u94C1\u7827\u57CE\u5730\u754C\uFF0C\u8349\u573A\u534F\u8BAE\u5E74\u5E74\u5728\u8C08\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 32
+    <Name>k__BackingField: "\u957F\u6EE9\u9547"
+    <Type>k__BackingField: "\u57CE\u9547"
+    <Population>k__BackingField: 3900
+    <Industry>k__BackingField: "\u6E14\u4E1A+\u6652\u76D0"
+    <Blurb>k__BackingField: "\u957F\u6EE9\u6E2F\u80CC\u540E\u7684\u8001\u9547\uFF0C\u6E2F\u53E3\u8870\u4E86\u4E4B\u540E\uFF0C\u534A\u6761\u8857\u7684\u95E8\u9762\u6302\u7740\u8F6C\u8BA9\u3002"
+    <Decay>k__BackingField: 1
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 33
+    <Name>k__BackingField: "\u94C1\u7827\u9547"
+    <Type>k__BackingField: "\u57CE\u9547"
+    <Population>k__BackingField: 11000
+    <Industry>k__BackingField: "\u51B6\u70BC+\u91C7\u77FF"
+    <Blurb>k__BackingField: "\u94C1\u7827\u77FF\u533A\u7684\u751F\u6D3B\u9547\uFF0C\u77FF\u706F\u623F\u4E09\u73ED\u5012\u4EAE\u7740\uFF0C\u77FF\u96BE\u629A\u6064\u6761\u4F8B\u5168\u9547\u4EBA\u624B\u4E00\u4EFD\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 34
+    <Name>k__BackingField: "\u843D\u661F\u9547"
+    <Type>k__BackingField: "\u57CE\u9547"
+    <Population>k__BackingField: 2400
+    <Industry>k__BackingField: "\u65C5\u6E38+\u5546\u8D38"
+    <Blurb>k__BackingField: "\u661F\u69CE\u53F7\u6B8B\u9AB8\u89C2\u5149\u7684\u8D77\u70B9\u9547\uFF0C\u7EAA\u5FF5\u54C1\u94FA\u5B50\u6BD4\u4F4F\u6237\u591A\uFF0C\u770B\u6B8B\u9AB8\u5F97\u5148\u4E70\u8BB8\u53EF\u8BC1\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 35
+    <Name>k__BackingField: "\u6B8B\u57A3\u9547"
+    <Type>k__BackingField: "\u57CE\u9547"
+    <Population>k__BackingField: 3100
+    <Industry>k__BackingField: "\u62FE\u8352+\u56DE\u6536"
+    <Blurb>k__BackingField: "\u5B88\u7740\u9996\u6279\u6B96\u6C11\u70B9\u5E9F\u589F\u7684\u56DE\u6536\u9547\uFF0C\u65E7\u5408\u91D1\u3001\u8001\u7EBF\u7F06\u62C6\u51FA\u6765\u8BBA\u5428\u5356\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 36
+    <Name>k__BackingField: "\u76D0\u6E56\u9547"
+    <Type>k__BackingField: "\u57CE\u9547"
+    <Population>k__BackingField: 5600
+    <Industry>k__BackingField: "\u76D0\u4E1A"
+    <Blurb>k__BackingField: "\u76D0\u6E56\u8FB9\u6700\u5927\u7684\u4EA7\u76D0\u9547\uFF0C\u6E56\u9000\u4E00\u91CC\u76D0\u7530\u8352\u4E00\u7247\uFF0C\u76D0\u5DE5\u6B63\u4E00\u6237\u6237\u5F80\u5317\u8FC1\u3002"
+    <Decay>k__BackingField: 1
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 37
+    <Name>k__BackingField: "\u98CE\u53E3\u9547"
+    <Type>k__BackingField: "\u57CE\u9547"
+    <Population>k__BackingField: 1900
+    <Industry>k__BackingField: "\u98CE\u7535+\u7267\u4E1A"
+    <Blurb>k__BackingField: "\u5EFA\u5728\u98CE\u53E3\u4E0A\u7684\u9547\u5B50\uFF0C\u98CE\u673A\u6BD4\u623F\u5B50\u591A\uFF0C\u6536\u5165\u4E00\u534A\u9760\u7535\u7F51\u4E00\u534A\u9760\u7F8A\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 38
+    <Name>k__BackingField: "\u67AF\u6768\u9547"
+    <Type>k__BackingField: "\u57CE\u9547"
+    <Population>k__BackingField: 1700
+    <Industry>k__BackingField: "\u6797\u4E1A\u7BA1\u62A4"
+    <Blurb>k__BackingField: "\u9632\u98CE\u6797\u67AF\u6B7B\u540E\u7684\u6797\u4E1A\u9547\uFF0C\u952F\u6728\u5382\u505C\u4E86\u5927\u534A\uFF0C\u6539\u80B2\u8010\u65F1\u82D7\uFF0C\u6210\u6750\u8981\u7B49\u4E8C\u5341\u5E74\u3002"
+    <Decay>k__BackingField: 1
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 39
+    <Name>k__BackingField: "\u7EA2\u5D16\u9547"
+    <Type>k__BackingField: "\u57CE\u9547"
+    <Population>k__BackingField: 3300
+    <Industry>k__BackingField: "\u91C7\u77FF"
+    <Blurb>k__BackingField: "\u7EA2\u5D16\u77FF\u533A\u7684\u636E\u70B9\u9547\uFF0C\u5D16\u58C1\u4E0A\u5168\u662F\u77FF\u6D1E\u53E3\uFF0C\u8FD0\u77FF\u7D22\u9053\u4ECE\u5D16\u9876\u76F4\u4E0B\u5230\u8F66\u7AD9\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 40
+    <Name>k__BackingField: "\u77F3\u95E8\u9547"
+    <Type>k__BackingField: "\u57CE\u9547"
+    <Population>k__BackingField: 4100
+    <Industry>k__BackingField: "\u901A\u9053\u5546\u8D38"
+    <Blurb>k__BackingField: "\u77F3\u95E8\u5173\u5916\u7684\u5546\u9547\uFF0C\u8FDB\u5C71\u7269\u8D44\u5728\u6B64\u5B8C\u7A0E\u6362\u9A6E\u961F\uFF0C\u5173\u7A0E\u4E00\u626F\u76AE\u5546\u961F\u5C31\u5835\u5728\u9547\u4E0A\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 41
+    <Name>k__BackingField: "\u8001\u9E26\u9547"
+    <Type>k__BackingField: "\u57CE\u9547"
+    <Population>k__BackingField: 2200
+    <Industry>k__BackingField: "\u755C\u7267+\u62FE\u8352"
+    <Blurb>k__BackingField: "\u8001\u9E26\u5D16\u4E0B\u7684\u7267\u9547\uFF0C\u9E26\u7FA4\u6210\u707E\u5544\u98DF\u7F94\u7F8A\uFF0C\u9547\u91CC\u60AC\u8D4F\u6536\u9E26\u86CB\uFF0C\u5012\u6210\u4E86\u5B69\u5B50\u7684\u96F6\u82B1\u94B1\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 42
+    <Name>k__BackingField: "\u5BD2\u6CC9\u9547"
+    <Type>k__BackingField: "\u57CE\u9547"
+    <Population>k__BackingField: 6200
+    <Industry>k__BackingField: "\u6C34\u6E90+\u519C\u4E1A"
+    <Blurb>k__BackingField: "\u5BD2\u6CC9\u6C34\u7CFB\u4E0A\u7684\u6C34\u6E90\u9547\uFF0C\u7BA1\u7F51\u628A\u6CC9\u6C34\u9001\u5230\u4E09\u5EA7\u57CE\uFF0C\u9760\u6C34\u8D39\u548C\u7BA1\u7F51\u7EF4\u62A4\u5408\u540C\u8FC7\u6D3B\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 43
+    <Name>k__BackingField: "\u9752\u77F3\u7AD9"
+    <Type>k__BackingField: "\u9A7F\u7AD9"
+    <Population>k__BackingField: 900
+    <Industry>k__BackingField: "\u77F3\u6599\u8F6C\u8FD0"
+    <Blurb>k__BackingField: "\u9752\u77F3\u77F3\u6599\u5916\u8FD0\u7684\u5934\u4E00\u73ED\u8F6C\u8FD0\u7AD9\uFF0C\u77F3\u6599\u8F66\u6392\u961F\u8FDB\u7AD9\uFF0C\u7AD9\u53F0\u88AB\u538B\u6C89\u4E86\u534A\u5C3A\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 44
+    <Name>k__BackingField: "\u767D\u6C99\u7AD9"
+    <Type>k__BackingField: "\u9A7F\u7AD9"
+    <Population>k__BackingField: 600
+    <Industry>k__BackingField: "\u5546\u961F\u8865\u7ED9"
+    <Blurb>k__BackingField: "\u767D\u6C99\u7EBF\u5546\u961F\u7684\u5B9A\u70B9\u8865\u7ED9\u7AD9\uFF0C\u6C34\u3001\u8349\u6599\u3001\u9632\u6C99\u677F\u662F\u4E09\u5927\u5B97\uFF0C\u65FA\u5B63\u4E00\u5929\u8FC7\u56DB\u5341\u961F\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 45
+    <Name>k__BackingField: "\u9ED1\u6C34\u7AD9"
+    <Type>k__BackingField: "\u9A7F\u7AD9"
+    <Population>k__BackingField: 2200
+    <Industry>k__BackingField: "\u6CB3\u8FD0\u8C03\u5EA6"
+    <Blurb>k__BackingField: "\u9ED1\u6C34\u822A\u6BB5\u7684\u9A73\u8239\u8C03\u5EA6\u7AD9\uFF0C\u4E0A\u4E0B\u884C\u8239\u5728\u6B64\u7F16\u961F\uFF0C\u8C03\u5EA6\u4EE4\u6BD4\u6CD5\u4EE4\u597D\u4F7F\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 46
+    <Name>k__BackingField: "\u9AD8\u5CAD\u7AD9"
+    <Type>k__BackingField: "\u9A7F\u7AD9"
+    <Population>k__BackingField: 800
+    <Industry>k__BackingField: "\u5C71\u8DEF\u8F6C\u8FD0"
+    <Blurb>k__BackingField: "\u9AD8\u5CAD\u76D8\u5C71\u9053\u7684\u8001\u8F6C\u8FD0\u7AD9\uFF0C\u65B0\u96A7\u9053\u901A\u8F66\u540E\u8F66\u6D41\u5168\u8D70\u5E95\u4E0B\uFF0C\u7AD9\u623F\u6539\u6210\u4E86\u8336\u6C34\u94FA\u3002"
+    <Decay>k__BackingField: 1
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 47
+    <Name>k__BackingField: "\u53CC\u6CB3\u7AD9"
+    <Type>k__BackingField: "\u67A2\u7EBD\u7AD9"
+    <Population>k__BackingField: 3100
+    <Industry>k__BackingField: "\u94C1\u8DEF\u7F16\u7EC4"
+    <Blurb>k__BackingField: "\u53CC\u6CB3\u57CE\u5916\u7684\u94C1\u8DEF\u7F16\u7EC4\u7AD9\uFF0C\u5357\u5317\u5E72\u7EBF\u5728\u6B64\u62C6\u89E3\u91CD\u7EC4\uFF0C\u8BEF\u70B9\u5341\u5206\u949F\u5168\u57CE\u90FD\u77E5\u9053\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 48
+    <Name>k__BackingField: "\u5B64\u5CF0\u7AD9"
+    <Type>k__BackingField: "\u9A7F\u7AD9"
+    <Population>k__BackingField: 400
+    <Industry>k__BackingField: "\u7D22\u9053\u8F6C\u8FD0"
+    <Blurb>k__BackingField: "\u5B64\u5CF0\u7D22\u9053\u7684\u5C71\u4E0A\u7AD9\uFF0C\u77FF\u77F3\u4ECE\u5CF0\u9876\u6ED1\u4E0B\u6765\u88C5\u8F66\uFF0C\u7D22\u9053\u4E00\u68C0\u4FEE\u5168\u7AD9\u5C31\u95F2\u4E86\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 49
+    <Name>k__BackingField: "\u957F\u6EE9\u7AD9"
+    <Type>k__BackingField: "\u9A7F\u7AD9"
+    <Population>k__BackingField: 1100
+    <Industry>k__BackingField: "\u6CBF\u6D77\u73ED\u8F66"
+    <Blurb>k__BackingField: "\u6CBF\u6D77\u73ED\u8F66\u7684\u5927\u7AD9\uFF0C\u4E00\u5929\u516D\u73ED\uFF0C\u73ED\u8F66\u4E00\u8BEF\u70B9\u5C31\u6709\u4EBA\u5728\u7AD9\u53F0\u6253\u5730\u94FA\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 50
+    <Name>k__BackingField: "\u94C1\u7827\u7AD9"
+    <Type>k__BackingField: "\u9A7F\u7AD9"
+    <Population>k__BackingField: 1600
+    <Industry>k__BackingField: "\u8D27\u8FD0\u573A\u7AD9"
+    <Blurb>k__BackingField: "\u94C1\u7827\u57CE\u5916\u5708\u7684\u8D27\u8FD0\u573A\u7AD9\uFF0C\u5408\u91D1\u952D\u4E0E\u7089\u6E23\u4E00\u8FDB\u4E00\u51FA\uFF0C\u7AD9\u53F0\u7684\u5927\u79E4\u6700\u5FD9\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 51
+    <Name>k__BackingField: "\u843D\u661F\u7AD9"
+    <Type>k__BackingField: "\u9A7F\u7AD9"
+    <Population>k__BackingField: 700
+    <Industry>k__BackingField: "\u79D1\u8003\u8F6C\u8FD0"
+    <Blurb>k__BackingField: "\u8FDB\u6B8B\u9AB8\u7981\u533A\u524D\u7684\u8F6C\u8FD0\u7AD9\uFF0C\u79D1\u8003\u8BBE\u5907\u4E0E\u6253\u635E\u4EF6\u5728\u6B64\u8FC7\u79E4\u767B\u8BB0\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 52
+    <Name>k__BackingField: "\u6B8B\u57A3\u7AD9"
+    <Type>k__BackingField: "\u9A7F\u7AD9"
+    <Population>k__BackingField: 300
+    <Industry>k__BackingField: "\u8001\u516C\u8DEF"
+    <Blurb>k__BackingField: "\u7B2C\u4E00\u4EE3\u6B96\u6C11\u516C\u8DEF\u4E0A\u7684\u8001\u9A7F\u7AD9\uFF0C\u65B0\u8DEF\u7ED5\u5F00\u5E9F\u589F\u5E26\u540E\u4E00\u5929\u8FC7\u4E0D\u4E86\u5341\u8F86\u8F66\u3002"
+    <Decay>k__BackingField: 1
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 53
+    <Name>k__BackingField: "\u76D0\u6E56\u7AD9"
+    <Type>k__BackingField: "\u9A7F\u7AD9"
+    <Population>k__BackingField: 1300
+    <Industry>k__BackingField: "\u76D0\u8FD0\u94C1\u8DEF"
+    <Blurb>k__BackingField: "\u76D0\u8FD0\u94C1\u8DEF\u7684\u5C3D\u5934\u7AD9\uFF0C\u76D0\u8F66\u76F4\u8FBE\u6E56\u8FB9\u6808\u6865\uFF0C\u6E56\u9000\u4E00\u6BB5\u94C1\u8DEF\u5C31\u5F80\u6E56\u5FC3\u94FA\u4E00\u6BB5\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 54
+    <Name>k__BackingField: "\u98CE\u53E3\u7AD9"
+    <Type>k__BackingField: "\u9A7F\u7AD9"
+    <Population>k__BackingField: 950
+    <Industry>k__BackingField: "\u5C71\u53E3\u8FD0\u8F93"
+    <Blurb>k__BackingField: "\u98CE\u53E3\u5C71\u53E3\u7684\u98CE\u969C\u9A7F\u7AD9\uFF0C\u5B63\u98CE\u5B63\u5C01\u53E3\uFF0C\u8F66\u961F\u5835\u5728\u7AD9\u91CC\u8D4C\u5929\u6C14\uFF0C\u8D4C\u6CE8\u662F\u771F\u91D1\u767D\u94F6\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 1
+  - <Id>k__BackingField: 55
+    <Name>k__BackingField: "\u67AF\u6768\u7AD9"
+    <Type>k__BackingField: "\u9A7F\u7AD9"
+    <Population>k__BackingField: 350
+    <Industry>k__BackingField: "\u6797\u533A\u652F\u7EBF"
+    <Blurb>k__BackingField: "\u6797\u533A\u652F\u7EBF\u7684\u5C3D\u5934\u5C0F\u7AD9\uFF0C\u8FD0\u6750\u8F66\u4E00\u5468\u6765\u4E24\u8D9F\uFF0C\u7AD9\u5458\u987A\u5E26\u7ED9\u62A4\u6797\u5458\u634E\u8865\u7ED9\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 56
+    <Name>k__BackingField: "\u7EA2\u5D16\u7AD9"
+    <Type>k__BackingField: "\u9A7F\u7AD9"
+    <Population>k__BackingField: 850
+    <Industry>k__BackingField: "\u7D22\u9053\u77FF\u8FD0"
+    <Blurb>k__BackingField: "\u7EA2\u5D16\u77FF\u533A\u7D22\u9053\u7684\u5D16\u4E0B\u7AD9\uFF0C\u77FF\u6597\u4ECE\u5D16\u9876\u653E\u4E0B\u6765\uFF0C\u7EA2\u571F\u628A\u7AD9\u623F\u67D3\u4E86\u534A\u622A\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 57
+    <Name>k__BackingField: "\u77F3\u95E8\u7AD9"
+    <Type>k__BackingField: "\u9A7F\u7AD9"
+    <Population>k__BackingField: 1200
+    <Industry>k__BackingField: "\u5173\u53E3\u8FD0\u8F93"
+    <Blurb>k__BackingField: "\u77F3\u95E8\u5173\u5185\u4FA7\u7684\u5173\u53E3\u7AD9\uFF0C\u8FDB\u5C71\u8F66\u8F86\u5728\u6B64\u9A8C\u5173\u6362\u8BC1\uFF0C\u5173\u7A0E\u7EA0\u7EB7\u4E00\u95F9\u5C31\u6392\u6210\u957F\u9F99\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 1
+  - <Id>k__BackingField: 58
+    <Name>k__BackingField: "\u5BD2\u6CC9\u7AD9"
+    <Type>k__BackingField: "\u9A7F\u7AD9"
+    <Population>k__BackingField: 1000
+    <Industry>k__BackingField: "\u5E72\u7EBF\u6C34\u7AD9"
+    <Blurb>k__BackingField: "\u5317\u90E8\u5E72\u7EBF\u7684\u8865\u6C34\u7AD9\uFF0C\u8F66\u961F\u4E13\u7A0B\u7ED5\u8DEF\u6765\u704C\u5BD2\u6CC9\u6C34\uFF0C\u8FD1\u671F\u6B63\u4E3A\u6C34\u91CF\u5206\u914D\u8DDF\u5BD2\u6CC9\u9547\u95F9\u50F5\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 1
+  - <Id>k__BackingField: 59
+    <Name>k__BackingField: "\u7070\u5CA9\u7AD9"
+    <Type>k__BackingField: "\u9A7F\u7AD9"
+    <Population>k__BackingField: 550
+    <Industry>k__BackingField: "\u91C7\u77F3\u652F\u7EBF"
+    <Blurb>k__BackingField: "\u7070\u5CA9\u91C7\u77F3\u573A\u7684\u652F\u7EBF\u7AD9\uFF0C\u788E\u77F3\u8F66\u5B9A\u65F6\u53D1\u8F66\uFF0C\u7AD9\u53F0\u7684\u788E\u77F3\u5806\u5F97\u6BD4\u7AD9\u724C\u9AD8\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 60
+    <Name>k__BackingField: "\u65AD\u6865\u7AD9"
+    <Type>k__BackingField: "\u9A7F\u7AD9"
+    <Population>k__BackingField: 750
+    <Industry>k__BackingField: "\u4FBF\u9053\u8F6C\u8FD0"
+    <Blurb>k__BackingField: "\u9ED1\u6C34\u4E2D\u6E38\u5927\u6865\u65AD\u540E\u4E34\u65F6\u8D77\u7684\u4FBF\u9053\u7AD9\uFF0C\u8F66\u8F86\u6392\u5230\u4E03\u91CC\u5916\uFF0C\u4FBF\u9053\u4E00\u573A\u96E8\u5C31\u5F97\u91CD\u4FEE\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 1
+  - <Id>k__BackingField: 61
+    <Name>k__BackingField: "\u9752\u77F3\u5821"
+    <Type>k__BackingField: "\u519B\u5821"
+    <Population>k__BackingField: 2200
+    <Industry>k__BackingField: "\u91C7\u77F3+\u9A7B\u9632"
+    <Blurb>k__BackingField: "\u8FB9\u5883\u51B2\u7A81\u65F6\u671F\u4E3A\u5B88\u91C7\u77F3\u573A\u4FEE\u7684\u5821\uFF0C\u9A7B\u519B\u64A4\u7F16\u540E\u77FF\u5DE5\u4F4F\u4E86\u8FDB\u53BB\uFF0C\u579B\u53E3\u8FD8\u7559\u7740\u5C04\u51FB\u4F4D\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 62
+    <Name>k__BackingField: "\u767D\u6C99\u5821"
+    <Type>k__BackingField: "\u519B\u5821"
+    <Population>k__BackingField: 1500
+    <Industry>k__BackingField: "\u6D77\u9632\u77AD\u671B"
+    <Blurb>k__BackingField: "\u8FB9\u9632\u7F09\u79C1\u961F\u4E3A\u76EF\u8D70\u79C1\u8239\u5EFA\u7684\u5821\uFF0C\u961F\u4F0D\u5E76\u7F16\u64A4\u8D70\u540E\uFF0C\u5821\u53F0\u6539\u6210\u4E86\u6E14\u6C5B\u77AD\u671B\u5854\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 63
+    <Name>k__BackingField: "\u9ED1\u6C34\u5821"
+    <Type>k__BackingField: "\u519B\u5821"
+    <Population>k__BackingField: 2600
+    <Industry>k__BackingField: "\u77FF\u4E1A+\u4FEE\u8239"
+    <Blurb>k__BackingField: "\u7B2C\u4E8C\u6B21\u8FB9\u5883\u51B2\u7A81\u65F6\u7684\u56E2\u7EA7\u9A7B\u5730\uFF0C\u505C\u6218\u540E\u9A7B\u519B\u64A4\u8D70\u3001\u77FF\u5DE5\u7559\u4E0B\uFF0C\u5821\u5899\u91CC\u5916\u90FD\u662F\u77FF\u5DE5\u68DA\u5C4B\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 64
+    <Name>k__BackingField: "\u9AD8\u5CAD\u5821"
+    <Type>k__BackingField: "\u519B\u5821"
+    <Population>k__BackingField: 900
+    <Industry>k__BackingField: "\u70FD\u71E7\u54E8"
+    <Blurb>k__BackingField: "\u620D\u5352\u6CBF\u9AD8\u5CAD\u5C71\u810A\u7B51\u7684\u70FD\u71E7\u94FE\u4E3B\u5821\uFF0C\u9A7F\u4F20\u88C1\u64A4\u540E\u65E0\u4EBA\u6362\u5C97\uFF0C\u70FD\u53F0\u7531\u7267\u6C11\u987A\u624B\u7167\u770B\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 65
+    <Name>k__BackingField: "\u53CC\u6CB3\u5821"
+    <Type>k__BackingField: "\u519B\u5821"
+    <Population>k__BackingField: 1800
+    <Industry>k__BackingField: "\u6CB3\u9632+\u6E21\u7A0E"
+    <Blurb>k__BackingField: "\u4E3A\u5B88\u53CC\u6CB3\u6E21\u53E3\u7B51\u7684\u6CB3\u9632\u5821\uFF0C\u6253\u8FC7\u4E24\u6B21\u62E6\u622A\u6218\uFF0C\u9A7B\u519B\u64A4\u7F16\u540E\u5821\u4E01\u6539\u6536\u6E21\u53E3\u7A0E\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 66
+    <Name>k__BackingField: "\u5B64\u5CF0\u5821"
+    <Type>k__BackingField: "\u519B\u5821"
+    <Population>k__BackingField: 650
+    <Industry>k__BackingField: "\u89C2\u901A\u54E8"
+    <Blurb>k__BackingField: "\u5B64\u5CF0\u9876\u4E0A\u7684\u89C2\u901A\u5821\uFF0C\u80FD\u671B\u4E09\u6761\u5C71\u9053\u7684\u52A8\u9759\uFF0C\u9A7B\u519B\u64A4\u8D70\u540E\u53EA\u5269\u4E00\u6237\u770B\u5854\u4EBA\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 67
+    <Name>k__BackingField: "\u957F\u6EE9\u5821"
+    <Type>k__BackingField: "\u519B\u5821"
+    <Population>k__BackingField: 1100
+    <Industry>k__BackingField: "\u6E14\u5E02"
+    <Blurb>k__BackingField: "\u957F\u6EE9\u6E2F\u9F0E\u76DB\u671F\u7684\u6D77\u9632\u5821\uFF0C\u8230\u961F\u88C1\u64A4\u3001\u9A7B\u519B\u64A4\u7A7A\u540E\uFF0C\u5821\u5899\u5185\u4FA7\u6539\u6210\u4E86\u6E14\u5E02\u3002"
+    <Decay>k__BackingField: 1
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 68
+    <Name>k__BackingField: "\u94C1\u7827\u5821"
+    <Type>k__BackingField: "\u519B\u5821"
+    <Population>k__BackingField: 2000
+    <Industry>k__BackingField: "\u519B\u68B0\u6539\u5236"
+    <Blurb>k__BackingField: "\u6218\u65F6\u4FEE\u70AE\u7684\u519B\u68B0\u5821\uFF0C\u548C\u5E73\u540E\u5DE5\u5320\u6539\u4FEE\u77FF\u673A\uFF0C\u5C01\u5B58\u7684\u70AE\u67B6\u5728\u5E93\u623F\u91CC\u5F53\u8D27\u67B6\u3002"
+    <Decay>k__BackingField: 1
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 69
+    <Name>k__BackingField: "\u843D\u661F\u5821"
+    <Type>k__BackingField: "\u519B\u5821"
+    <Population>k__BackingField: 700
+    <Industry>k__BackingField: "\u7981\u533A\u8B66\u536B"
+    <Blurb>k__BackingField: "\u6B8B\u9AB8\u7981\u533A\u7684\u8B66\u536B\u5821\uFF0C\u7B2C\u4E00\u4EE3\u662F\u9A7B\u519B\uFF0C\u5982\u4ECA\u6362\u6210\u5B89\u4FDD\u516C\u53F8\uFF0C\u89C4\u77E9\u6CA1\u53D8\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 70
+    <Name>k__BackingField: "\u6B8B\u57A3\u5821"
+    <Type>k__BackingField: "\u519B\u5821"
+    <Population>k__BackingField: 1400
+    <Industry>k__BackingField: "\u9057\u5740\u8B66\u536B"
+    <Blurb>k__BackingField: "\u56F4\u7740\u9996\u6279\u6B96\u6C11\u70B9\u5E9F\u589F\u5916\u7EBF\u7B51\u7684\u8B66\u536B\u5821\uFF0C\u9632\u7684\u662F\u76D7\u6398\u56E2\u4F19\uFF0C\u5982\u4ECA\u5821\u5175\u4E00\u534A\u5728\u7ED9\u8003\u53E4\u961F\u6253\u5DE5\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 71
+    <Name>k__BackingField: "\u76D0\u6E56\u5821"
+    <Type>k__BackingField: "\u519B\u5821"
+    <Population>k__BackingField: 900
+    <Industry>k__BackingField: "\u76D0\u9053\u62A4\u8FD0"
+    <Blurb>k__BackingField: "\u76D0\u8FD0\u8DEF\u7EBF\u4E0A\u7684\u9A7B\u9632\u5821\uFF0C\u76D0\u8B66\u64A4\u7F16\u540E\uFF0C\u5821\u91CC\u6539\u4F4F\u76D0\u573A\u7684\u62A4\u77FF\u961F\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 72
+    <Name>k__BackingField: "\u98CE\u53E3\u5821"
+    <Type>k__BackingField: "\u519B\u5821"
+    <Population>k__BackingField: 1300
+    <Industry>k__BackingField: "\u5C71\u53E3\u9A7B\u9632"
+    <Blurb>k__BackingField: "\u5361\u98CE\u53E3\u8981\u9053\u7684\u9A7B\u9632\u5821\uFF0C\u5F53\u5E74\u4E00\u592B\u5F53\u5173\uFF0C\u5982\u4ECA\u5821\u5175\u7684\u4E3B\u4E1A\u662F\u62A2\u4FEE\u88AB\u98CE\u6380\u7684\u5C4B\u9876\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 73
+    <Name>k__BackingField: "\u67AF\u6768\u5821"
+    <Type>k__BackingField: "\u519B\u5821"
+    <Population>k__BackingField: 600
+    <Industry>k__BackingField: "\u62A4\u6797\u8FB9\u54E8"
+    <Blurb>k__BackingField: "\u9632\u98CE\u6797\u5E26\u7684\u8FB9\u54E8\u5821\uFF0C\u62A4\u6797\u961F\u63A5\u4E86\u9632\u52A1\uFF0C\u4E3B\u8981\u5BF9\u624B\u53D8\u6210\u4E86\u76D7\u4F10\u7684\u591C\u8F66\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 74
+    <Name>k__BackingField: "\u7EA2\u5D16\u5821"
+    <Type>k__BackingField: "\u519B\u5821"
+    <Population>k__BackingField: 850
+    <Industry>k__BackingField: "\u5D16\u9876\u9632\u52A1"
+    <Blurb>k__BackingField: "\u7EA2\u5D16\u77FF\u533A\u7684\u5D16\u9876\u9632\u5821\uFF0C\u9632\u7684\u662F\u77FF\u532A\uFF0C\u7D22\u9053\u4E00\u51FA\u4E8B\u5821\u91CC\u7B2C\u4E00\u4E2A\u62C9\u8B66\u62A5\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 75
+    <Name>k__BackingField: "\u77F3\u95E8\u5821"
+    <Type>k__BackingField: "\u519B\u5821"
+    <Population>k__BackingField: 2400
+    <Industry>k__BackingField: "\u5173\u53E3\u9A7B\u519B"
+    <Blurb>k__BackingField: "\u77F3\u95E8\u5173\u6B63\u5173\u7684\u9A7B\u519B\u5821\uFF0C\u4E09\u4EE3\u9A7B\u519B\u628A\u5899\u52A0\u539A\u4E09\u56DE\uFF0C\u5982\u4ECA\u6B63\u4E3A\u5173\u7A0E\u65B0\u89C4\u8DDF\u5546\u56E2\u50F5\u7740\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 1
+  - <Id>k__BackingField: 76
+    <Name>k__BackingField: "\u8001\u9E26\u5821"
+    <Type>k__BackingField: "\u519B\u5821"
+    <Population>k__BackingField: 500
+    <Industry>k__BackingField: "\u8FB9\u54E8\u9057\u5821"
+    <Blurb>k__BackingField: "\u8FB9\u5883\u51B2\u7A81\u672B\u671F\u4FEE\u7684\u6700\u540E\u4E00\u5EA7\u54E8\u5821\uFF0C\u6CA1\u7B49\u542F\u7528\u5C31\u505C\u7F16\uFF0C\u5982\u4ECA\u4F4F\u7740\u51E0\u4E2A\u6536\u5E9F\u589F\u7684\u9000\u4F0D\u5175\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 77
+    <Name>k__BackingField: "\u7070\u5CA9\u5821"
+    <Type>k__BackingField: "\u519B\u5821"
+    <Population>k__BackingField: 750
+    <Industry>k__BackingField: "\u91C7\u77F3\u8B66\u5907"
+    <Blurb>k__BackingField: "\u7070\u5CA9\u91C7\u533A\u7684\u9A7B\u519B\u8B66\u5907\u5821\uFF0C\u9A7B\u519B\u62BC\u7740\u5DE5\u7A0B\u961F\u91C7\u4E86\u5341\u5E74\u77F3\uFF0C\u505C\u5F79\u540E\u5821\u623F\u6539\u6210\u4E86\u5DE5\u68DA\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 78
+    <Name>k__BackingField: "\u9752\u77F3\u8425"
+    <Type>k__BackingField: "\u519B\u8425"
+    <Population>k__BackingField: 800
+    <Industry>k__BackingField: "\u5DE5\u5175\u9A7B\u5730"
+    <Blurb>k__BackingField: "\u4FEE\u9752\u77F3\u8981\u585E\u5DE5\u4E8B\u7684\u5DE5\u5175\u8425\u9A7B\u5730\uFF0C\u5DE5\u4E8B\u505C\u5EFA\u540E\uFF0C\u8425\u623F\u79DF\u7ED9\u4E86\u91C7\u77F3\u961F\u5F53\u5DE5\u68DA\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 79
+    <Name>k__BackingField: "\u767D\u6C99\u8425"
+    <Type>k__BackingField: "\u519B\u8425"
+    <Population>k__BackingField: 450
+    <Industry>k__BackingField: "\u6D77\u9632\u54E8"
+    <Blurb>k__BackingField: "\u767D\u6C99\u6E7E\u53E3\u7684\u6D77\u9632\u8425\uFF0C\u7F16\u5236\u4E00\u64A4\u518D\u64A4\uFF0C\u5982\u4ECA\u5269\u4E00\u4E2A\u73ED\u5B88\u4E00\u5EA7\u7A7A\u7801\u5934\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 80
+    <Name>k__BackingField: "\u9ED1\u6C34\u8425"
+    <Type>k__BackingField: "\u519B\u8425"
+    <Population>k__BackingField: 1500
+    <Industry>k__BackingField: "\u6CB3\u9632"
+    <Blurb>k__BackingField: "\u9ED1\u6C34\u4E0B\u6E38\u7684\u6CB3\u9632\u8425\uFF0C\u6C5B\u671F\u62A2\u9669\u5E73\u7D20\u67E5\u79C1\uFF0C\u6CB3\u4E0A\u8239\u53EA\u89C1\u4E86\u8425\u65D7\u90FD\u8981\u9760\u5E2E\u53D7\u68C0\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 81
+    <Name>k__BackingField: "\u9AD8\u5CAD\u8425"
+    <Type>k__BackingField: "\u519B\u8425"
+    <Population>k__BackingField: 600
+    <Industry>k__BackingField: "\u5C71\u5730\u9A7B\u8BAD"
+    <Blurb>k__BackingField: "\u9AD8\u5CAD\u5C71\u5730\u7684\u9A7B\u8BAD\u8425\uFF0C\u4E13\u7EC3\u5C71\u5730\u62C9\u7EC3\uFF0C\u9547\u4E0A\u4EBA\u5BB6\u9760\u7ED9\u8425\u91CC\u9001\u83DC\u8D5A\u94B1\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 82
+    <Name>k__BackingField: "\u53CC\u6CB3\u8425"
+    <Type>k__BackingField: "\u519B\u8425"
+    <Population>k__BackingField: 1100
+    <Industry>k__BackingField: "\u6865\u6881\u9A7B\u9632"
+    <Blurb>k__BackingField: "\u4E3A\u5B88\u53CC\u6CB3\u5927\u6865\u8BBE\u7684\u9A7B\u9632\u8425\uFF0C\u6865\u4FEE\u4E86\u4E09\u56DE\u3001\u8425\u6362\u4E86\u56DB\u832C\u756A\u53F7\uFF0C\u756A\u53F7\u6BD4\u6865\u9F84\u8FD8\u4E71\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 83
+    <Name>k__BackingField: "\u5B64\u5CF0\u8425"
+    <Type>k__BackingField: "\u519B\u8425"
+    <Population>k__BackingField: 200
+    <Industry>k__BackingField: "\u9AD8\u5C71\u54E8"
+    <Blurb>k__BackingField: "\u5B64\u5CF0\u5C71\u8170\u7684\u9AD8\u5C71\u54E8\u8425\uFF0C\u8865\u7ED9\u9760\u7D22\u9053\uFF0C\u7F16\u5236\u7F29\u5230\u4E00\u4E2A\u73ED\uFF0C\u5927\u96EA\u5C01\u5C71\u5E38\u4E0E\u4E16\u9694\u7EDD\u3002"
+    <Decay>k__BackingField: 1
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 84
+    <Name>k__BackingField: "\u957F\u6EE9\u8425"
+    <Type>k__BackingField: "\u519B\u8425"
+    <Population>k__BackingField: 700
+    <Industry>k__BackingField: "\u6D77\u5CB8\u5DE1\u9632"
+    <Blurb>k__BackingField: "\u957F\u6EE9\u6D77\u5CB8\u5DE1\u9632\u8425\uFF0C\u5DE1\u903B\u8247\u4FEE\u4E0D\u8D77\u6539\u5F92\u6B65\u5DE1\u6EE9\uFF0C\u5DE1\u5230\u54EA\u5403\u5230\u54EA\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 85
+    <Name>k__BackingField: "\u94C1\u7827\u8425"
+    <Type>k__BackingField: "\u519B\u8425"
+    <Population>k__BackingField: 1200
+    <Industry>k__BackingField: "\u8F8E\u91CD\u56E4\u50A8"
+    <Blurb>k__BackingField: "\u94C1\u7827\u57CE\u5916\u56E4\u519B\u68B0\u7269\u8D44\u7684\u8F8E\u91CD\u8425\uFF0C\u7269\u8D44\u8D26\u76EE\u51FA\u4E86\u540D\u7684\u4E71\uFF0C\u4E3B\u5B98\u6362\u4E86\u4E94\u4EFB\u6CA1\u7406\u6E05\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 86
+    <Name>k__BackingField: "\u843D\u661F\u8425"
+    <Type>k__BackingField: "\u519B\u8425"
+    <Population>k__BackingField: 400
+    <Industry>k__BackingField: "\u7981\u533A\u9A7B\u9632"
+    <Blurb>k__BackingField: "\u6B8B\u9AB8\u7981\u533A\u5916\u56F4\u7684\u9A7B\u9632\u8425\uFF0C\u4EFB\u52A1\u4ECE\u6218\u65F6\u9632\u8C0D\u6539\u6210\u9632\u76D7\u6398\uFF0C\u4E00\u5E74\u6293\u7684\u591A\u662F\u6361\u5E9F\u94C1\u7684\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 87
+    <Name>k__BackingField: "\u6B8B\u57A3\u8425"
+    <Type>k__BackingField: "\u519B\u8425"
+    <Population>k__BackingField: 1600
+    <Industry>k__BackingField: "\u9057\u5740\u9A7B\u9632"
+    <Blurb>k__BackingField: "\u8FB9\u5883\u51B2\u7A81\u540E\u4E3A\u770B\u5B88\u9996\u6279\u6B96\u6C11\u70B9\u5E9F\u589F\u8BBE\u7684\u9A7B\u519B\u8425\uFF0C\u5E9F\u589F\u5212\u51FA\u53C2\u89C2\u533A\u540E\u517C\u7BA1\u9057\u5740\u6CBB\u5B89\u4E0E\u95E8\u7968\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 88
+    <Name>k__BackingField: "\u76D0\u6E56\u8425"
+    <Type>k__BackingField: "\u519B\u8425"
+    <Population>k__BackingField: 550
+    <Industry>k__BackingField: "\u76D0\u8DEF\u9A7B\u9632"
+    <Blurb>k__BackingField: "\u62A4\u76D0\u8DEF\u7684\u9A7B\u9632\u8425\uFF0C\u76D0\u8F66\u8D70\u5230\u54EA\u62A4\u5230\u54EA\uFF0C\u6E56\u9762\u9000\u7F29\u540E\u62A4\u7684\u8DEF\u6BB5\u4E00\u5E74\u6BD4\u4E00\u5E74\u77ED\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 89
+    <Name>k__BackingField: "\u98CE\u53E3\u8425"
+    <Type>k__BackingField: "\u519B\u8425"
+    <Population>k__BackingField: 900
+    <Industry>k__BackingField: "\u5C71\u53E3\u9A7B\u519B"
+    <Blurb>k__BackingField: "\u5361\u5728\u98CE\u53E3\u5C71\u53E3\u7684\u9A7B\u519B\u8425\uFF0C\u8425\u623F\u7A97\u6237\u9489\u4E86\u4E09\u5C42\u677F\uFF0C\u65B0\u5175\u7B2C\u4E00\u8BFE\u662F\u9876\u7740\u98CE\u7AD9\u5C97\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 90
+    <Name>k__BackingField: "\u67AF\u6768\u8425"
+    <Type>k__BackingField: "\u519B\u8425"
+    <Population>k__BackingField: 300
+    <Industry>k__BackingField: "\u6797\u5E26\u9A7B\u54E8"
+    <Blurb>k__BackingField: "\u9632\u98CE\u6797\u5E26\u7684\u9A7B\u54E8\u8425\uFF0C\u6797\u5B50\u67AF\u6B7B\u540E\u4EFB\u52A1\u6539\u6210\u9632\u706B\uFF0C\u8425\u533A\u6210\u4E86\u62A4\u6797\u7AD9\u7684\u534A\u4E2A\u5BB6\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 91
+    <Name>k__BackingField: "\u7EA2\u5D16\u8425"
+    <Type>k__BackingField: "\u519B\u8425"
+    <Population>k__BackingField: 1400
+    <Industry>k__BackingField: "\u5D16\u533A\u9A7B\u519B"
+    <Blurb>k__BackingField: "\u7EA2\u5D16\u5D16\u9876\u7684\u9A7B\u519B\u8425\uFF0C\u6700\u8FD1\u5D16\u4F53\u51FA\u73B0\u88C2\u7F1D\uFF0C\u8425\u533A\u4E00\u534A\u5E10\u7BF7\u632A\u5230\u4E86\u80CC\u5D16\u9762\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 1
+  - <Id>k__BackingField: 92
+    <Name>k__BackingField: "\u9752\u77F3\u8C37"
+    <Type>k__BackingField: "\u8C37\u5730"
+    <Population>k__BackingField: 5200
+    <Industry>k__BackingField: "\u91C7\u77F3"
+    <Blurb>k__BackingField: "\u9752\u77F3\u77FF\u8109\u7A7F\u8C37\u800C\u8FC7\uFF0C\u8C37\u91CC\u91C7\u573A\u8FDE\u7740\u91C7\u573A\uFF0C\u7206\u7834\u65F6\u95F4\u5168\u8C37\u7528\u6765\u5BF9\u8868\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 93
+    <Name>k__BackingField: "\u767D\u6C99\u8C37"
+    <Type>k__BackingField: "\u8C37\u5730"
+    <Population>k__BackingField: 2100
+    <Industry>k__BackingField: "\u6C99\u7530\u79CD\u690D"
+    <Blurb>k__BackingField: "\u98CE\u628A\u767D\u6C99\u5439\u8FDB\u8C37\u5E95\u79EF\u6210\u6C99\u7530\uFF0C\u79CD\u74DC\u6700\u751C\uFF0C\u6C99\u7530\u6D41\u8F6C\u8D39\u4E00\u5E74\u5E74\u6DA8\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 94
+    <Name>k__BackingField: "\u9ED1\u6C34\u8C37"
+    <Type>k__BackingField: "\u8C37\u5730"
+    <Population>k__BackingField: 4300
+    <Industry>k__BackingField: "\u6CB3\u8FD0+\u519C\u4E1A"
+    <Blurb>k__BackingField: "\u9ED1\u6C34\u4E0A\u6E38\u6700\u5BBD\u7684\u8C37\u6BB5\uFF0C\u9A73\u8239\u80FD\u8FDB\u5230\u8C37\u53E3\uFF0C\u8C37\u91CC\u7684\u7CAE\u534A\u6570\u987A\u6CB3\u8FD0\u51FA\u53BB\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 95
+    <Name>k__BackingField: "\u53CC\u6CB3\u8C37"
+    <Type>k__BackingField: "\u8C37\u5730"
+    <Population>k__BackingField: 6800
+    <Industry>k__BackingField: "\u704C\u6E89\u519C\u4E1A"
+    <Blurb>k__BackingField: "\u4E24\u6CB3\u5939\u6301\u7684\u8C37\u5730\uFF0C\u6E20\u7F51\u5BC6\u5F97\u50CF\u7EC7\u5E03\uFF0C\u6E20\u9996\u5206\u6C34\u95F8\u5E38\u5E74\u6709\u4EBA\u76EF\u7740\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 96
+    <Name>k__BackingField: "\u957F\u6EE9\u8C37"
+    <Type>k__BackingField: "\u8C37\u5730"
+    <Population>k__BackingField: 1900
+    <Industry>k__BackingField: "\u755C\u7267"
+    <Blurb>k__BackingField: "\u957F\u6EE9\u80CC\u540E\u7684\u8C37\u5730\u7267\u573A\uFF0C\u6D77\u98CE\u5439\u4E0D\u8FDB\u6765\uFF0C\u7267\u8349\u5E26\u54B8\u5473\uFF0C\u7F8A\u8D29\u5B50\u8BF4\u8FD9\u91CC\u7684\u7F8A\u4E0D\u7528\u52A0\u76D0\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 97
+    <Name>k__BackingField: "\u843D\u661F\u8C37"
+    <Type>k__BackingField: "\u8C37\u5730"
+    <Population>k__BackingField: 1100
+    <Industry>k__BackingField: "\u62FE\u8352\u56DE\u6536"
+    <Blurb>k__BackingField: "\u661F\u69CE\u53F7\u6B8B\u9AB8\u6563\u843D\u6700\u591A\u7684\u8C37\u5730\uFF0C\u79D1\u8003\u7AD9\u64A4\u7F16\u540E\u62FE\u8352\u961F\u8FDB\u6765\u63A5\u4E86\u6D3B\uFF0C\u8C37\u53E3\u8B66\u6212\u6869\u8FD8\u7ACB\u7740\u3002"
+    <Decay>k__BackingField: 1
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 98
+    <Name>k__BackingField: "\u6B8B\u57A3\u8C37"
+    <Type>k__BackingField: "\u8C37\u5730"
+    <Population>k__BackingField: 1500
+    <Industry>k__BackingField: "\u9057\u8FF9\u56DE\u6536"
+    <Blurb>k__BackingField: "\u9996\u6279\u6B96\u6C11\u70B9\u7684\u5E9F\u589F\u5806\u5728\u8C37\u91CC\uFF0C\u56DE\u6536\u961F\u6309\u7247\u627F\u5305\uFF0C\u6316\u5230\u8001\u4ED3\u623F\u7B49\u4E8E\u4E2D\u5F69\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 99
+    <Name>k__BackingField: "\u9752\u77F3\u539F"
+    <Type>k__BackingField: "\u5E73\u539F"
+    <Population>k__BackingField: 7400
+    <Industry>k__BackingField: "\u57A6\u6B96"
+    <Blurb>k__BackingField: "\u9752\u77F3\u77FF\u533A\u5916\u56F4\u7684\u5927\u5E73\u539F\uFF0C\u57A6\u8352\u961F\u6309\u7F51\u683C\u5206\u5730\uFF0C\u589E\u4EA7\u5168\u9760\u591A\u6253\u4E95\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 100
+    <Name>k__BackingField: "\u767D\u6C99\u539F"
+    <Type>k__BackingField: "\u5E73\u539F"
+    <Population>k__BackingField: 3600
+    <Industry>k__BackingField: "\u7267\u4E1A+\u74DC\u679C"
+    <Blurb>k__BackingField: "\u767D\u6C99\u8986\u76D6\u7684\u5E73\u539F\uFF0C\u79CD\u7CAE\u4E0D\u6210\u5C31\u79CD\u74DC\uFF0C\u74DC\u7530\u4E00\u76F4\u94FA\u5230\u5730\u5E73\u7EBF\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 101
+    <Name>k__BackingField: "\u9ED1\u6C34\u539F"
+    <Type>k__BackingField: "\u5E73\u539F"
+    <Population>k__BackingField: 8900
+    <Industry>k__BackingField: "\u704C\u6E89\u519C\u4E1A"
+    <Blurb>k__BackingField: "\u5F15\u9ED1\u6C34\u81EA\u6D41\u704C\u6E89\u7684\u5927\u5E73\u539F\uFF0C\u6309\u6E20\u8BBE\u6751\uFF0C\u6E20\u9996\u95F8\u95E8\u4E00\u5F00\uFF0C\u79CB\u5929\u7CAE\u4ED3\u5168\u662F\u6EE1\u7684\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 102
+    <Name>k__BackingField: "\u53CC\u6CB3\u539F"
+    <Type>k__BackingField: "\u5E73\u539F"
+    <Population>k__BackingField: 9800
+    <Industry>k__BackingField: "\u5546\u54C1\u7CAE"
+    <Blurb>k__BackingField: "\u4E24\u6CB3\u4E4B\u95F4\u7684\u5546\u54C1\u7CAE\u57FA\u5730\uFF0C\u4ECA\u5E74\u4E0A\u6E38\u622A\u6C34\u5EFA\u84C4\u6C34\u7AD9\uFF0C\u6E20\u5C3E\u5341\u51E0\u4E2A\u6751\u6B63\u8054\u540D\u544A\u72B6\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 1
+  - <Id>k__BackingField: 103
+    <Name>k__BackingField: "\u957F\u6EE9\u539F"
+    <Type>k__BackingField: "\u5E73\u539F"
+    <Population>k__BackingField: 2400
+    <Industry>k__BackingField: "\u7267\u4E1A"
+    <Blurb>k__BackingField: "\u957F\u6EE9\u5185\u4FA7\u7684\u6EE8\u6D77\u539F\uFF0C\u8349\u573A\u4E0E\u76D0\u7530\u63D2\u82B1\u5206\u5E03\uFF0C\u7267\u6C11\u548C\u76D0\u5DE5\u7684\u5730\u754C\u5B98\u53F8\u6253\u4E86\u5341\u5E74\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 104
+    <Name>k__BackingField: "\u843D\u661F\u539F"
+    <Type>k__BackingField: "\u5E73\u539F"
+    <Population>k__BackingField: 1300
+    <Industry>k__BackingField: "\u519C\u4E1A+\u89C2\u5149"
+    <Blurb>k__BackingField: "\u6B8B\u9AB8\u788E\u5757\u6492\u843D\u7684\u5E73\u539F\uFF0C\u7530\u91CC\u7281\u51FA\u8FC7\u91D1\u5C5E\u788E\u7247\uFF0C\u89C2\u5149\u5BA2\u4E13\u6311\u300C\u661F\u7530\u300D\u62CD\u7167\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 105
+    <Name>k__BackingField: "\u6B8B\u57A3\u539F"
+    <Type>k__BackingField: "\u5E73\u539F"
+    <Population>k__BackingField: 2800
+    <Industry>k__BackingField: "\u8003\u53E4+\u57A6\u6B96"
+    <Blurb>k__BackingField: "\u5E73\u539F\u4E0B\u57CB\u7740\u9996\u6279\u6B96\u6C11\u70B9\u7684\u5916\u56F4\u519C\u573A\uFF0C\u8003\u53E4\u961F\u548C\u57A6\u8352\u961F\u4E3A\u53D1\u6398\u8FB9\u754C\u62C9\u626F\u4E86\u4E09\u5E74\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 106
+    <Name>k__BackingField: "\u76D0\u6E56\u539F"
+    <Type>k__BackingField: "\u5E73\u539F"
+    <Population>k__BackingField: 900
+    <Industry>k__BackingField: "\u76D0\u58F3\u91C7\u96C6"
+    <Blurb>k__BackingField: "\u6E56\u6C34\u9000\u8D70\u9732\u51FA\u7684\u6E56\u5E8A\u5E73\u539F\uFF0C\u76D0\u58F3\u4E00\u671B\u65E0\u9645\uFF0C\u590D\u57A6\u8BD5\u79CD\u4E24\u5B63\u5168\u8D25\u5728\u76D0\u78B1\u4E0A\u3002"
+    <Decay>k__BackingField: 1
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 107
+    <Name>k__BackingField: "\u9752\u77F3\u96C6"
+    <Type>k__BackingField: "\u96C6\u5E02"
+    <Population>k__BackingField: 4800
+    <Industry>k__BackingField: "\u77F3\u6599\u4EA4\u6613"
+    <Blurb>k__BackingField: "\u91C7\u77F3\u961F\u4E0E\u8FD0\u8F93\u6237\u8BAE\u4EF7\u7684\u77F3\u6599\u96C6\uFF0C\u89C4\u77E9\u662F\u79E4\u4E0A\u89C1\u771F\u7AE0\uFF0C\u6700\u8FD1\u4E3A\u538B\u4EF7\u7F62\u5E02\u4E09\u5929\u4E86\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 1
+  - <Id>k__BackingField: 108
+    <Name>k__BackingField: "\u53CC\u6CB3\u96C6"
+    <Type>k__BackingField: "\u96C6\u5E02"
+    <Population>k__BackingField: 5200
+    <Industry>k__BackingField: "\u767E\u8D27\u96C6\u6563"
+    <Blurb>k__BackingField: "\u53CC\u6CB3\u57CE\u5916\u56F4\u7684\u767E\u8D27\u96C6\uFF0C\u5357\u6765\u5317\u5F80\u7684\u8239\u5728\u6B64\u5378\u5C3E\u8D27\uFF0C\u70ED\u95F9\u5F97\u50CF\u4E0D\u7761\u89C9\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 109
+    <Name>k__BackingField: "\u67AF\u6768\u96C6"
+    <Type>k__BackingField: "\u96C6\u5E02"
+    <Population>k__BackingField: 900
+    <Industry>k__BackingField: "\u6728\u6750\u4EA4\u6613"
+    <Blurb>k__BackingField: "\u67AF\u6768\u6797\u533A\u7684\u6728\u6750\u96C6\uFF0C\u7981\u4F10\u4EE4\u4E0B\u6765\u540E\uFF0C\u9022\u96C6\u53EA\u5269\u96F6\u661F\u51E0\u4E2A\u65E7\u6599\u644A\u3002"
+    <Decay>k__BackingField: 1
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 110
+    <Name>k__BackingField: "\u767D\u6C99\u574A"
+    <Type>k__BackingField: "\u5DE5\u574A\u533A"
+    <Population>k__BackingField: 1300
+    <Industry>k__BackingField: "\u71AC\u76D0"
+    <Blurb>k__BackingField: "\u767D\u6C99\u6EE9\u4E0A\u7684\u71AC\u76D0\u574A\u533A\uFF0C\u571F\u7076\u6210\u6392\uFF0C\u65B0\u76D0\u5382\u6295\u4EA7\u540E\u53EA\u5269\u516D\u5BB6\u8FD8\u5728\u70E7\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 111
+    <Name>k__BackingField: "\u9ED1\u6C34\u574A"
+    <Type>k__BackingField: "\u5DE5\u574A\u533A"
+    <Population>k__BackingField: 2200
+    <Industry>k__BackingField: "\u9020\u8239"
+    <Blurb>k__BackingField: "\u9ED1\u6C34\u6CB3\u6E7E\u7684\u9020\u8239\u574A\u533A\uFF0C\u9A73\u8239\u9F99\u9AA8\u4E00\u6839\u63A5\u4E00\u6839\u6392\u5F00\uFF0C\u8BA2\u5355\u6392\u5230\u4E24\u5E74\u540E\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 112
+    <Name>k__BackingField: "\u6B8B\u57A3\u574A"
+    <Type>k__BackingField: "\u5DE5\u574A\u533A"
+    <Population>k__BackingField: 700
+    <Industry>k__BackingField: "\u65E7\u4EF6\u7FFB\u65B0"
+    <Blurb>k__BackingField: "\u5E9F\u589F\u8FB9\u4E0A\u7FFB\u65B0\u65E7\u4EF6\u7684\u574A\u533A\uFF0C\u62C6\u51FA\u7684\u8001\u673A\u5668\u4FEE\u597D\u518D\u5356\uFF0C\u539F\u6599\u5168\u9760\u5E9F\u589F\u3002"
+    <Decay>k__BackingField: 1
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 113
+    <Name>k__BackingField: "\u843D\u661F\u576A"
+    <Type>k__BackingField: "\u53F0\u576A"
+    <Population>k__BackingField: 600
+    <Industry>k__BackingField: "\u62FE\u8352+\u5411\u5BFC"
+    <Blurb>k__BackingField: "\u661F\u69CE\u53F7\u4E3B\u5760\u843D\u70B9\u7684\u53F0\u576A\uFF0C\u6700\u8FD1\u4F20\u51FA\u6316\u5230\u5B8C\u6574\u8231\u6BB5\uFF0C\u62FE\u8352\u961F\u8FDE\u591C\u5F80\u576A\u4E0A\u6D8C\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 1
+  - <Id>k__BackingField: 114
+    <Name>k__BackingField: "\u9AD8\u5CAD\u94FA"
+    <Type>k__BackingField: "\u9A7F\u94FA"
+    <Population>k__BackingField: 300
+    <Industry>k__BackingField: "\u9A7F\u4F20\u670D\u52A1"
+    <Blurb>k__BackingField: "\u9AD8\u5CAD\u5C71\u9053\u4E0A\u7684\u9012\u94FA\uFF0C\u516C\u6587\u6539\u8D70\u65E0\u7EBF\u540E\u88C1\u4E86\u5927\u534A\uFF0C\u8001\u94FA\u5934\u6539\u5356\u70ED\u6C64\u3002"
+    <Decay>k__BackingField: 1
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 115
+    <Name>k__BackingField: "\u957F\u6EE9\u94FA"
+    <Type>k__BackingField: "\u9A7F\u94FA"
+    <Population>k__BackingField: 250
+    <Industry>k__BackingField: "\u6CBF\u6D77\u9012\u94FA"
+    <Blurb>k__BackingField: "\u6CBF\u6D77\u90AE\u8DEF\u7684\u672B\u68A2\u94FA\uFF0C\u90AE\u4EF6\u6BCF\u5468\u4E24\u5230\uFF0C\u94FA\u4E3B\u987A\u5E26\u7ED9\u6E14\u8239\u634E\u4FE1\u8D5A\u811A\u94B1\u3002"
+    <Decay>k__BackingField: 1
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 116
+    <Name>k__BackingField: "\u77F3\u95E8\u94FA"
+    <Type>k__BackingField: "\u9A7F\u94FA"
+    <Population>k__BackingField: 400
+    <Industry>k__BackingField: "\u5173\u9053\u9012\u94FA"
+    <Blurb>k__BackingField: "\u77F3\u95E8\u5173\u9053\u7684\u9012\u94FA\uFF0C\u8FDB\u5C71\u516C\u6587\u4E0E\u5173\u7A0E\u6536\u636E\u5728\u6B64\u6362\u9A6C\uFF0C\u5546\u961F\u4E5F\u5728\u6B64\u634E\u5BB6\u4FE1\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 117
+    <Name>k__BackingField: "\u8001\u9E26\u5BE8"
+    <Type>k__BackingField: "\u5C71\u5BE8"
+    <Population>k__BackingField: 900
+    <Industry>k__BackingField: "\u62A4\u8FD0+\u9ED1\u5E02"
+    <Blurb>k__BackingField: "\u8001\u9E26\u5D16\u4E0A\u7684\u532A\u5BE8\u62DB\u5B89\u6539\u7F16\u7684\u62A4\u8FD0\u961F\uFF0C\u4E24\u4EFB\u5BE8\u4E3B\u4E3A\u8DEF\u7EBF\u5206\u6210\u95F9\u5230\u706B\u5E76\u8FB9\u7F18\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 1
+  - <Id>k__BackingField: 118
+    <Name>k__BackingField: "\u7EA2\u5D16\u5BE8"
+    <Type>k__BackingField: "\u5C71\u5BE8"
+    <Population>k__BackingField: 450
+    <Industry>k__BackingField: "\u5D16\u5C45\u519C\u4E1A"
+    <Blurb>k__BackingField: "\u7EA2\u5D16\u7EDD\u58C1\u4E0A\u7684\u5D16\u5BE8\uFF0C\u5148\u6C11\u4E3A\u8EB2\u5175\u707E\u51FF\u58C1\u5EFA\u5BE8\uFF0C\u68AF\u7530\u6302\u5728\u5D16\u8170\uFF0C\u5916\u4EBA\u4E0A\u5C71\u5F97\u6709\u4EBA\u5F15\u8DEF\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
+  - <Id>k__BackingField: 119
+    <Name>k__BackingField: "\u94C1\u7827\u5BE8"
+    <Type>k__BackingField: "\u5C71\u5BE8"
+    <Population>k__BackingField: 1100
+    <Industry>k__BackingField: "\u953B\u9020"
+    <Blurb>k__BackingField: "\u94C1\u7827\u5CA9\u4E0B\u7684\u94F8\u953B\u5BE8\uFF0C\u7956\u4E0A\u5E26\u519B\u5320\u9003\u96BE\u5EFA\u5BE8\uFF0C\u79C1\u94F8\u4EF6\u6D41\u5165\u9ED1\u5E02\u540E\u6B63\u88AB\u7F09\u79C1\u76EF\u4E0A\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 1
+  - <Id>k__BackingField: 120
+    <Name>k__BackingField: "\u5B64\u5CF0\u5BE8"
+    <Type>k__BackingField: "\u5C71\u5BE8"
+    <Population>k__BackingField: 350
+    <Industry>k__BackingField: "\u77AD\u671B\u62A4\u54E8"
+    <Blurb>k__BackingField: "\u5B64\u5CF0\u5D16\u58C1\u4E0A\u7684\u62A4\u54E8\u5BE8\uFF0C\u5F53\u5E74\u4E3A\u907F\u8FB9\u5883\u51B2\u7A81\u6E83\u5175\u800C\u7B51\uFF0C\u5982\u4ECA\u66FF\u77FF\u533A\u770B\u7D22\u9053\u5854\u67B6\u3002"
+    <Decay>k__BackingField: 0
+    <Ongoing>k__BackingField: 0
