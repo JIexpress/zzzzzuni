@@ -4,7 +4,17 @@
 > ⚡ **给下一个 LLM 主控**：先读 `Docs/LLM-HANDOFF-NOTES.md`——132 个任务沉淀的全部操作手册（派发模板/变异验证法/故障处置手册/技术坑备忘/工具调用技巧/额度管理），照做即可满血接力。
 > 历史交接记录已归档 git 历史（`git show G-113:HANDOFF.md`），WORKLOG.md 有全部任务索引。
 
-**快照时间**: 2026-11-15 午（**接管轮 II：五条 backlog 清零，todo=0**）｜**刷新者**: 主控（WorkBuddy 接管 GLM 会话）｜**仓库**: `C://Users//1//Desktop//zcode//GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni
+**快照时间**: 2026-11-22（**游戏本体首接线：A-COL-01 闭环**）｜**刷新者**: 主控（ZCode 会话）｜**仓库**: `C://Users//1//Desktop//zcode//GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni
+
+## ⚡ 最新（2026-11-22：A-COL-01 殖民地模拟核心迁入 Game.Domain）
+
+- **游戏本体有了第一批真实 Domain 代码（16afa34）**：ColonyCore 模拟核心（源码在 `C:\Users\1\WorkBuddy\杂项\ColonyCore\`+`NpcSystem\`，net8 控制台 29 项自测，设计规格 14 份在 `杂项\设计\`）迁入 `Game/Domain/Colony/`——21 文件全部 C# 9 适配（块状命名空间/显式 using/零 Console），**`Game.Domain.Colony.asmdef` 仅引用 ZFrame.Core，noEngineReferences:true**（架构校验器矩阵加至 14 条目，纯度扫描 0 违规）。
+- **垂直闭环 V1-V7 全真实断言**（`Game/Tests/Domain/Colony/ColonyVerticalLoopTests.cs`，内存 fixture 固定种子 20261122）：政策颁布→文化加权怨气→挖坑 30 天爆雷 / 商人涨价 ×1.36 包装「供应紧张」→ 观察动作取得间接证据 → 信念契约 30 天沉默 61 天离开带走情报 → 镇压×2 → 组织者从参数里涌现 → **PlayerFeed(25)<Truth(83) 信息不对称** → `ColonyEventPump` 把事件经 ZFrame EventBus `Fire` 发布。
+- **验收 PASS（独立亲证）**：EditMode **1283/1283/0**（家底 1276+7 新增）；施工与验收各自做了**不同位置**的变异复红（施工改 V2 钳制值，验收改 V4 Secret 断言），还原 sha256 逐字节一致。
+- **关键技术坑（登记）**：`Rng` 必须 class 不能 struct——按值传参会冻结随机序列（市场漂移/每帧判定永远同结果）；`NpcDirectory.Origins` 被 `Settlement.TrySpawnOrganizer` 依赖不可删；Protest 事件按设计由编排层写入（引擎代码零 Protest 写入路径，规格如此——弱者不广播抗议）。
+- **已知不代表性（登记）**：V3/V7 依赖固定种子确定性（种子改动需复验）；`RelationshipGraph._fakeIntimateCount`/`RegionState._nextId` 为静态跨用例状态；GLM 内容数据（100 卡/120 地点/40 政策/12 支线/300 台词）尚未走 ConfigSystem CSV 管线（内存 fixture 代替，下一任务）。
+- **下一步（A/COL 序列）**：① GLM 五数据源转 CSV 走 ConfigService（替掉内存 fixture）② SaveSystem 接「哪些 NpcSlot 已实例化」③ Game/AI 的 TaskBoard/UtilityAI 接抗议路由与组织度涌现 ④ 月度报告（指挥代理 §8：Summary+异常项+Raw 瞒报分歧）。
+- 家底：原生 381/823,640、EditMode **1283**、PlayMode 115、arch 14 条目/0 违规；看板 **177 done / 0 todo / 1 held**。
 
 ## ⚡ 最新（2026-11-15 接管轮 IV：视锥接线 + 帧耗门禁）
 

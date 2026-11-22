@@ -1,6 +1,6 @@
 # TASK-A-COL-01 · ColonyCore 模拟核心迁入 Game.Domain.Colony + 「政策→抗议→报告」垂直闭环
 
-> 简报（主控写）｜2026-11-22｜施工：general-purpose 施工子代理｜验收：<待填>
+> 简报（主控写）｜2026-11-22｜施工：general-purpose 施工子代理｜验收：general-purpose 验收子代理（独立亲证+双变异复红）｜commit 16afa34
 
 ## 一、任务简报（唯一需求来源）
 
