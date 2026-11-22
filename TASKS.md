@@ -92,7 +92,7 @@
 | A-AI-04 | A/AI | 可供性接场景：真实锚点注册 + NPC 走过去占用 | done(验收PASS 7/7；1140+110；变异复红 sha256 还原；修自占用抖动；默认零影响) | Docs/Logs/TASK-A-AI-04.md | 89f3497 |
 | A-ART-01 | A/ART | 换掉抽象小人：接入 Mixamo Vanguard 人形（Humanoid/Idle-Run-Walk/装甲材质） | done(1140+110 全绿；SCN_Game/SCN_Anim 已换；白模已补装甲配色) | Docs/Logs/TASK-A-ART-01.md | 待填 |
 | A-R9-19 | A/URP | 色彩管线迁移（Gamma→Linear + HDR 两档 Tonemapping） | done(主控实跑验收；Linear 下 1102+88 全绿；ZRender 桥改 UNORM 视图；两档重新分层差1.48x；灯光接受新基准未重标定) | Docs/Logs/TASK-A-R9-19.md | 82daf86 |
-| A-AI-05 | A/AI | NPC 自主模式（G 键开关）+ 预约态（到达才占） | held(暂缓：简报已写、未动工；用户进入正式游戏开发，此功能后置。无半成品代码，恢复时按简报直接派施工) | Docs/Logs/TASK-A-AI-05.md | — |
+| A-AI-05 | A/AI | NPC 自主模式（G 键开关）+ 预约态（到达才占） | held(v2简报已重写，待排期——触发条件：用户要求"看见 NPC 在场景里自己动") | Docs/Logs/TASK-A-AI-05.md | — |
 
 **统计**（行扫描口径，2026-11-15 接管轮 IV）：done 176 ／ doing 0 ／ todo 0 ／ blocked 0 ／ held 1（held=A-AI-05）
 
@@ -222,3 +222,4 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | A-COL-04 | A/COL | 月度报告三档+AI执政官瞒报(指挥代理规格) | done(3910c68；MonthlyReport三档+Covert只进Raw；AiSteward过度优化加速涌现链+自我豁免；M1-M5；EditMode 1297/1297/0；验收双变异复红不同位置；主控追认R1-R3) | Docs/Logs/TASK-A-COL-04.md | 3910c68 |
 | A-COL-05 | A/COL | 垂直切片:游戏循环接线+月度报告UI | done(a1e67f7；ColonyWorldHost零场景改动挂SCN_Game；月结链EventBus.Fire；ReportPanel pure-view无prefab；EditMode 1301+PlayMode两轮119同形；主控批准Game.View+Domain.Colony引用与矩阵同步；验收C2变异复红) | Docs/Logs/TASK-A-COL-05.md | a1e67f7 |
 | A-COL-06 | A/COL | NPC自主行为:效用评分+任务板接涌现 | done(25aaadb；方案B轻量自建零新引用；五行为+泄压阀；T4涌现加速+0.621对照0；T5性能0.019s；EditMode 1306+PlayMode 119两轮同形；Enemy/AI零diff；验收泄压阀独立证实+零taskkill用户编辑器) | Docs/Logs/TASK-A-COL-06.md | 25aaadb |
+| A-COL-07 | A/COL | 报告面板迭代:滚动+异常项跳转+情报点买Raw | done(917e650；ScrollRect实测118行可滚+修行高压0装配bug；异常项按钮化Kind过滤琥珀高亮；IntelPoints 2/月+1/Raw消耗闸门+存档同步；EditMode 1311+PlayMode三轮122同形；验收S系变异独立复红6/6) | Docs/Logs/TASK-A-COL-07.md | 917e650 |

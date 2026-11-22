@@ -4,6 +4,15 @@
 > ⚡ **给下一个 LLM 主控**：先读 `Docs/LLM-HANDOFF-NOTES.md`——132 个任务沉淀的全部操作手册（派发模板/变异验证法/故障处置手册/技术坑备忘/工具调用技巧/额度管理），照做即可满血接力。
 > 历史交接记录已归档 git 历史（`git show G-113:HANDOFF.md`），WORKLOG.md 有全部任务索引。
 
+**快照时间**: 2026-11-23（**A-COL-07 面板迭代 + A-AI-05 合流改写入账**）｜**刷新者**: 主控（ZCode 会话）｜**仓库**: `C://Users//1//Desktop//zcode//GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni（已同步）
+
+## ⚡ 最新（2026-11-23：A-COL-07 面板迭代 + A-AI-05 v2 合流改写）
+
+- **报告面板三件套迭代（917e650）**：ScrollRect 滚动（118 行实测可滚，顺手修 VerticalLayoutGroup 行高压 0 装配 bug）+ 异常项按钮化跳转（切 Raw+Kind 过滤+琥珀高亮）+ **情报点玩法**（IntelPoints 初始 2/月+1，看原始记录消耗 1 点，不足置灰——「信息比钱贵」落地，AI 瞒报有了对抗成本）。EditMode **1311/1311/0**（1306+N1-N5）+ PlayMode 三轮 **122/122/0 同形**（119+C5-C7）；存档同步 IntelPoints；验收 6/6（S 系变异独立复红）。
+- **A-AI-05 v2 合流改写（文档，评估代理执行）**：推荐选项 B 采纳——原目标「NPC 自主模式 G 键」重新定义为「自主行为场景可见化」（模拟层已被 A-COL-06 满足，缺口=场景可见/预约态 Reserve/G 键 HUD，实现走 Game.View 跨域桥）；**触发条件：用户要求「看见 NPC 在场景里自己动」时按新简报派工**；v1 原文归档逐字节保留。勘误：EnemyDriveMode 系构造期战斗双脑，无自主语义（主控派单表述有误已认领）。
+- 家底：原生 381/823,640、EditMode **1311**、PlayMode **122**、arch 28/14 条目/0 违规；看板 **183 done / 0 todo / 1 held(v2 简报待排期)**。
+- **A/COL 序列候选**：三档报告选择交互深化（Standard 付费档/报告历史回看）；Colony 行为在场景层的 3D 可视化（与 A-AI-05 v2 汇合）；月度报告截图探针入门禁；真机数据加载通道（fail-soft 之外的正路径）。
+
 **快照时间**: 2026-11-22（**A-COL-06 NPC 自主行为入账**）｜**刷新者**: 主控（ZCode 会话）｜**仓库**: `C://Users//1//Desktop//zcode//GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni（已同步）
 
 ## ⚡ 最新（2026-11-22 第六批：A-COL-06 NPC 自己找事）
