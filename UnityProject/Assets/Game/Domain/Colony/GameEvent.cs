@@ -29,6 +29,8 @@ namespace Game.Domain.Colony.Sim
         Intel,         // 情报买卖与过期
         Departure,     // NPC 离开
         Reputation,    // 声望变动
+        Relation,      // 关系网事件（TASK-A-COL-09：内容表驱动，含 aftermath 延迟后果）
+        Life,          // 人生节点（TASK-A-COL-09：具名档案改写与聚落效果）
     }
 
     public class GameEvent

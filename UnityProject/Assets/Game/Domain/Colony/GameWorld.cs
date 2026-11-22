@@ -47,6 +47,14 @@ namespace Game.Domain.Colony.Sim
         public TeachingSystem Teaching = new();
         public List<PolicyDef> PolicyLibrary = new();
 
+        // ── 第二批内容引擎（TASK-A-COL-09：关系网/贸易/人生节点三表）──
+        /// <summary>
+        /// 内容引擎聚合（null = 未接内容：既有世界零开销、行为逐位不变——AutonomyEnabled 等
+        /// 既有开关语义不变）。建局由 ColonyDataLoader 在 ColonyWorldData.Content 非 null 时
+        /// 注入；进度集合进存档（Capture/Restore），Restore 后不重放。
+        /// </summary>
+        public ColonyContentEngines Content;
+
         private readonly List<(uint dueDay, EventKind kind, string where, string text, EventVisibility vis)> _delayed = new();
         private readonly Dictionary<int, uint> _migrantUntil = new();
         private readonly Dictionary<int, string> _npcRegion = new();
@@ -136,6 +144,10 @@ namespace Game.Domain.Colony.Sim
 
             // 关系网三通道：信息 / 情绪 / 组织（§15.4 每日结算）
             Relations.PropagateDaily(NamedById, Day, DailyLog, Rng);
+
+            // 第二批内容引擎（TASK-A-COL-09）：关系网/贸易/人生节点三表。
+            // Content 为 null 时零开销；引擎自身确定性扫描，不消耗 Rng 流（既有随机序列不变）。
+            Content?.SettleDaily(this);
 
             // 市场：状态表每天在动（真实感④——不看它，它也在动）
             Market.DailyDrift(this, Rng);

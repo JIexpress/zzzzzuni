@@ -89,6 +89,9 @@ namespace Game.Domain.Tests
         private static JArray Arr(JObject o, string key) =>
             o[key] as JArray ?? throw new InvalidOperationException($"ColonySaveCodec: 缺少数组节 {key}");
 
+        /// <summary>宽容读：节缺失（旧存档）时按空数组处理——TASK-A-COL-09 进度三节的存档兼容。</summary>
+        private static JArray ArrOpt(JObject o, string key) => o[key] as JArray ?? new JArray();
+
         private static string S(string v) => v ?? "";    // DTO 字符串字段不允许 JSON null 往返
 
         // ────────────────────────── 写出（DTO → JToken）──────────────────────────
@@ -234,6 +237,11 @@ namespace Game.Domain.Tests
                 ["topic"] = S(l.Topic),
                 ["line"] = S(l.Line),
             }));
+
+            // 第二批内容进度（TASK-A-COL-09）：三表已触发 Id 集合随档（Restore 不重放）。
+            root["firedRelations"] = new JArray(d.FiredRelations.Select(x => new JValue(x)));
+            root["firedTrades"] = new JArray(d.FiredTrades.Select(x => new JValue(x)));
+            root["firedLife"] = new JArray(d.FiredLife.Select(x => new JValue(x)));
             return root;
         }
 
@@ -495,6 +503,12 @@ namespace Game.Domain.Tests
                     Role = RS(o, "role"), Topic = RS(o, "topic"), Line = RS(o, "line"),
                 });
             }
+
+            // 第二批内容进度（TASK-A-COL-09）：读侧宽容——旧存档无这三节时按缺省空集读回
+            // （存档兼容；写侧恒写出，新档往返仍严格）。
+            foreach (var t in ArrOpt(root, "firedRelations")) d.FiredRelations.Add(((JValue)t).Value<string>());
+            foreach (var t in ArrOpt(root, "firedTrades")) d.FiredTrades.Add(((JValue)t).Value<string>());
+            foreach (var t in ArrOpt(root, "firedLife")) d.FiredLife.Add(((JValue)t).Value<string>());
             return d;
         }
 

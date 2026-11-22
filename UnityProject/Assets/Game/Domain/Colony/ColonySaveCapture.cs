@@ -89,6 +89,15 @@ namespace Game.Domain.Colony
             foreach (var (role, topic, line) in world.Dialogue.AllLines())
                 d.Dialogue.Add(new ColonySaveData.DialogueLineState { Role = role, Topic = topic, Line = line });
 
+            // 第二批内容进度（TASK-A-COL-09）：已触发三表事件 Id 集合随档（Restore 不重放）。
+            // Content 为 null 的世界（未接内容）留空集——五表路径行为不变。
+            if (world.Content != null)
+            {
+                d.FiredRelations.AddRange(world.Content.Relations.Fired);
+                d.FiredTrades.AddRange(world.Content.Trades.Fired);
+                d.FiredLife.AddRange(world.Content.Life.Fired);
+            }
+
             return d;
         }
 

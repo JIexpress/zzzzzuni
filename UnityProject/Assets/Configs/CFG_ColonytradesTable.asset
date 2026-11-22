@@ -1,0 +1,380 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c084c97c47b4254a9d43c77b34a2816, type: 3}
+  m_Name: CFG_ColonytradesTable
+  m_EditorClassIdentifier: 
+  _rows:
+  - <Id>k__BackingField: T01
+    <EventId>k__BackingField: 1
+    <NpcA>k__BackingField: "\u8BA1\u767E\u5DDD\uFF08\u4F1A\u8BA1\uFF09"
+    <NpcB>k__BackingField: "\u5C60\u6C38\u5E74\uFF08\u51B6\u70BC\u5DE5\uFF09"
+    <Places>k__BackingField: "\u94C1\u7827\u8425\u3001\u94C1\u7827\u57CE"
+    <EventKind>k__BackingField: "\u5E93\u5B58\u6F02\u79FB"
+    <Event>k__BackingField: "\u94C1\u7827\u8425\u5E74\u7EC8\u76D8\u70B9\uFF0C\u8BA1\u767E\u5DDD\uFF08\u4F1A\u8BA1\uFF09\u6838\u51FA\u8D26\u9762\u4E8C\u767E\u5428\u5408\u91D1\u952D\u5B9E\u5DEE\u4E8C\u5341\u5428\uFF0C\u7BA1\u5E93\u7684\u5C60\u6C38\u5E74\uFF08\u51B6\u70BC\u5DE5\uFF09\u628A\u4E8F\u7A7A\u8BB0\u6210\u8FD0\u8F93\u8017\u635F\u3002"
+    <DAGrievance>k__BackingField: 0.1
+    <DALoyalty>k__BackingField: -0.05
+    <DAOrg>k__BackingField: 0
+    <DBGrievance>k__BackingField: 0
+    <DBLoyalty>k__BackingField: -0.1
+    <DBOrg>k__BackingField: 0.05
+    <PriceImpact>k__BackingField: "\u94C1\u7827\u57CE\uFF1A\u5408\u91D1\u952D +15%"
+    <StockImpact>k__BackingField: "\u94C1\u7827\u8425\uFF1A\u5408\u91D1\u952D\u5E93\u5B58
+      -10%"
+    <Visibility>k__BackingField: Covert
+    <Latent>k__BackingField: "\u5BA1\u8BA1\u63D0\u524D\u7684\u8BDD\uFF0C\u8FD9\u7B14\u8017\u635F\u4F1A\u5728\u94C1\u7827\u7AD9\u7684\u8FC7\u79E4\u5355\u4E0A\u9732\u9985\u3002"
+  - <Id>k__BackingField: T02
+    <EventId>k__BackingField: 2
+    <NpcA>k__BackingField: "\u67F3\u4E09\u66F4\uFF08\u8D70\u79C1\u8D29\uFF09"
+    <NpcB>k__BackingField: "\u8FB9\u65E2\u767D\uFF08\u4FDD\u5B89\uFF09"
+    <Places>k__BackingField: "\u76D0\u6E56\u7AD9\u3001\u76D0\u6E56\u9547"
+    <EventKind>k__BackingField: "\u5E93\u5B58\u6F02\u79FB"
+    <Event>k__BackingField: "\u76D0\u6E56\u7AD9\u6808\u6865\u7684\u76D0\u5305\u591C\u91CC\u88AB\u67F3\u4E09\u66F4\uFF08\u8D70\u79C1\u8D29\uFF09\u7684\u9A73\u8239\u6574\u579B\u8FD0\u8D70\uFF0C\u62A4\u77FF\u961F\u628A\u4E8F\u7A7A\u62A5\u6210\u96E8\u8017\uFF0C\u5E93\u91CC\u8865\u8FDB\u78B1\u58F3\u5145\u65A4\u4E24\u3002"
+    <DAGrievance>k__BackingField: 0.05
+    <DALoyalty>k__BackingField: -0.05
+    <DAOrg>k__BackingField: 0.1
+    <DBGrievance>k__BackingField: 0.05
+    <DBLoyalty>k__BackingField: -0.05
+    <DBOrg>k__BackingField: 0.05
+    <PriceImpact>k__BackingField: "\u76D0\u6E56\u9547\uFF1A\u76D0 +10%"
+    <StockImpact>k__BackingField: "\u76D0\u6E56\u7AD9\uFF1A\u76D0\u5305\u5E93\u5B58
+      -15%"
+    <Visibility>k__BackingField: Covert
+    <Latent>k__BackingField: "\u96E8\u5B63\u4E00\u8FC7\u76D0\u579B\u89C1\u5E95\uFF0C\u5BF9\u8D26\u7684\u4EBA\u4F1A\u5148\u95EE\u6808\u6865\u591C\u73ED\u724C\u3002"
+  - <Id>k__BackingField: T03
+    <EventId>k__BackingField: 3
+    <NpcA>k__BackingField: "\u5143\u4FDD\uFF08\u5E9F\u6599\u56DE\u6536\u5546\uFF09"
+    <NpcB>k__BackingField: "\u7FDF\u9E26\u9752\uFF08\u5E9F\u6599\u56DE\u6536\u5546\uFF09"
+    <Places>k__BackingField: "\u6B8B\u57A3\u574A\u3001\u6B8B\u57A3\u57CE"
+    <EventKind>k__BackingField: "\u5E93\u5B58\u6F02\u79FB"
+    <Event>k__BackingField: "\u5143\u4FDD\uFF08\u5E9F\u6599\u56DE\u6536\u5546\uFF09\u8FDE\u591C\u7ED9\u56DB\u5341\u4EF6\u7FFB\u65B0\u6CF5\u9600\u55B7\u4E0A\u539F\u5382\u6F06\uFF0C\u7FDF\u9E26\u9752\uFF08\u5E9F\u6599\u56DE\u6536\u5546\uFF09\u62BC\u8F66\u6DF7\u8FDB\u6B8B\u57A3\u57CE\u8D27\u6808\uFF0C\u6309\u6B63\u54C1\u8BA1\u91CD\u5165\u5E93\u3002"
+    <DAGrievance>k__BackingField: 0.05
+    <DALoyalty>k__BackingField: 0
+    <DAOrg>k__BackingField: 0.05
+    <DBGrievance>k__BackingField: 0
+    <DBLoyalty>k__BackingField: -0.05
+    <DBOrg>k__BackingField: 0.05
+    <PriceImpact>k__BackingField: "\u6B8B\u57A3\u57CE\uFF1A\u6CF5\u9600 +10%"
+    <StockImpact>k__BackingField: "\u6B8B\u57A3\u57CE\uFF1A\u6CF5\u9600\u597D\u4EF6\u5E93\u5B58
+      -20%"
+    <Visibility>k__BackingField: Personal
+    <Latent>k__BackingField: "\u843D\u661F\u7AD9\u4E0A\u6708\u91C7\u8D2D\u7684\u5C31\u662F\u8FD9\u6279\u4EF6\uFF0C\u4E09\u4E2A\u6708\u5185\u51C6\u51FA\u6545\u969C\u5355\u3002"
+  - <Id>k__BackingField: T04
+    <EventId>k__BackingField: 4
+    <NpcA>k__BackingField: "\u652F\u8C26\uFF08\u4F1A\u8BA1\uFF09"
+    <NpcB>k__BackingField: "\u6D66\u516D\u6307\uFF08\u8D4C\u573A\u8001\u677F\uFF09"
+    <Places>k__BackingField: "\u53CC\u6CB3\u539F\u3001\u53CC\u6CB3\u57CE"
+    <EventKind>k__BackingField: "\u5E93\u5B58\u6F02\u79FB"
+    <Event>k__BackingField: "\u53CC\u6CB3\u539F\u7CAE\u6808\u4E8F\u7A7A\u56DB\u5341\u5428\u50A8\u5907\u7CAE\uFF0C\u652F\u8C26\uFF08\u4F1A\u8BA1\uFF09\u7B7E\u6210\u9F20\u96C0\u8017\u635F\uFF1B\u6D66\u516D\u6307\uFF08\u8D4C\u573A\u8001\u677F\uFF09\u6536\u7CAE\u62B5\u503A\u7684\u6761\u5B50\u538B\u5728\u67DC\u5E95\u6CA1\u5165\u8D26\u3002"
+    <DAGrievance>k__BackingField: 0.1
+    <DALoyalty>k__BackingField: -0.05
+    <DAOrg>k__BackingField: 0
+    <DBGrievance>k__BackingField: 0
+    <DBLoyalty>k__BackingField: -0.05
+    <DBOrg>k__BackingField: 0.05
+    <PriceImpact>k__BackingField: "\u53CC\u6CB3\u57CE\uFF1A\u7CAE +10%"
+    <StockImpact>k__BackingField: "\u53CC\u6CB3\u539F\uFF1A\u50A8\u5907\u7CAE\u5E93\u5B58
+      -20%"
+    <Visibility>k__BackingField: Covert
+    <Latent>k__BackingField: "\u79CB\u7CAE\u5BF9\u8D26\u515C\u4E0D\u4F4F\u65F6\uFF0C\u8D4C\u573A\u7684\u62B5\u503A\u6761\u5B50\u4F1A\u5148\u70E7\u3002"
+  - <Id>k__BackingField: T05
+    <EventId>k__BackingField: 5
+    <NpcA>k__BackingField: "\u621A\u6EE1\u4ED3\uFF08\u8D70\u79C1\u8D29\uFF09"
+    <NpcB>k__BackingField: "\u827E\u864E\uFF08\u8D4F\u91D1\u730E\u4EBA\uFF09"
+    <Places>k__BackingField: "\u76D0\u6E56\u9547\u3001\u8001\u9E26\u5BE8\u3001\u98CE\u53E3\u7AD9"
+    <EventKind>k__BackingField: "\u8FD0\u8F93\u961F\u5931\u8E2A"
+    <Event>k__BackingField: "\u76D0\u6E56\u9547\u4E09\u8F66\u76D0\u4EA4\u7ED9\u8001\u9E26\u5BE8\u62A4\u8FD0\u961F\u62BC\u5F80\u98CE\u53E3\u7AD9\uFF0C\u961F\u4F0D\u8D81\u5B63\u98CE\u5C01\u53E3\u628A\u76D0\u5378\u8FDB\u81EA\u5BB6\u9ED1\u5E02\uFF0C\u62A5\u6210\u98CE\u635F\u5931\u8E2A\u3002"
+    <DAGrievance>k__BackingField: 0
+    <DALoyalty>k__BackingField: -0.05
+    <DAOrg>k__BackingField: 0.1
+    <DBGrievance>k__BackingField: 0.1
+    <DBLoyalty>k__BackingField: 0
+    <DBOrg>k__BackingField: 0
+    <PriceImpact>k__BackingField: "\u53CC\u6CB3\u57CE\uFF1A\u76D0 +20%"
+    <StockImpact>k__BackingField: "\u76D0\u6E56\u9547\uFF1A\u5F85\u8FD0\u76D0 -25%"
+    <Visibility>k__BackingField: Personal
+    <Latent>k__BackingField: "\u76D0\u5546\u4E0D\u6B7B\u5FC3\uFF0C\u827E\u864E\uFF08\u8D4F\u91D1\u730E\u4EBA\uFF09\u88AB\u7B2C\u4E8C\u6B21\u96C7\u6765\u67E5\u8F66\u8F99\u3002"
+  - <Id>k__BackingField: T06
+    <EventId>k__BackingField: 6
+    <NpcA>k__BackingField: "\u547C\u5EF6\u56E4\uFF08\u8D70\u79C1\u8D29\uFF09"
+    <NpcB>k__BackingField: "\u4ED8\u4E00\u9489\uFF08\u8239\u575E\u88C5\u914D\u5DE5\uFF09"
+    <Places>k__BackingField: "\u9ED1\u6C34\u7AD9\u3001\u9ED1\u6C34\u6E2F"
+    <EventKind>k__BackingField: "\u8FD0\u8F93\u961F\u5931\u8E2A"
+    <Event>k__BackingField: "\u9A73\u8239\u961F\u5230\u9ED1\u6C34\u6E2F\u62A5\u77FF\u77F3\u77ED\u8F7D\u4E09\u6210\uFF0C\u5B9E\u60C5\u662F\u547C\u5EF6\u56E4\uFF08\u8D70\u79C1\u8D29\uFF09\u7684\u8D27\u6808\u591C\u91CC\u5378\u4E86\u4E24\u8239\uFF0C\u8FC7\u79E4\u5355\u91CD\u5F00\u8FC7\u3002"
+    <DAGrievance>k__BackingField: 0
+    <DALoyalty>k__BackingField: -0.1
+    <DAOrg>k__BackingField: 0.1
+    <DBGrievance>k__BackingField: 0.05
+    <DBLoyalty>k__BackingField: -0.05
+    <DBOrg>k__BackingField: 0.05
+    <PriceImpact>k__BackingField: "\u9ED1\u6C34\u57CE\uFF1A\u77FF\u77F3 +15%"
+    <StockImpact>k__BackingField: "\u9ED1\u6C34\u57CE\uFF1A\u77FF\u77F3\u5E93\u5B58
+      -15%"
+    <Visibility>k__BackingField: Covert
+    <Latent>k__BackingField: "\u77FF\u94FA\u7F3A\u8D27\u67E5\u5230\u79E4\u623F\uFF0C\u79E4\u623F\u624B\u91CC\u7559\u7740\u591C\u5378\u7684\u6D3E\u8239\u5355\u3002"
+  - <Id>k__BackingField: T07
+    <EventId>k__BackingField: 7
+    <NpcA>k__BackingField: "\u5371\u4EAD\uFF08\u4F1A\u8BA1\uFF09"
+    <NpcB>k__BackingField: "\u6FB9\u53F0\u955C\uFF08\u8D4F\u91D1\u730E\u4EBA\uFF09"
+    <Places>k__BackingField: "\u9752\u77F3\u57CE\u3001\u65AD\u6865\u7AD9\u3001\u6B8B\u57A3\u57CE\u3001\u53CC\u6CB3\u57CE"
+    <EventKind>k__BackingField: "\u8FD0\u8F93\u961F\u5931\u8E2A"
+    <Event>k__BackingField: "\u9752\u77F3\u57CE\u4E09\u652F\u77F3\u6599\u8F66\u961F\u53D6\u9053\u65AD\u6865\u7AD9\u4FBF\u9053\u9047\u96E8\u8BEF\u671F\u4E5D\u5929\uFF0C\u6536\u4E86\u5B9A\u91D1\u7684\u8F66\u961F\u8001\u677F\u4EBA\u8D27\u5931\u8E2A\uFF0C\u8D27\u6808\u53EA\u8FFD\u56DE\u4E00\u8F66\u3002"
+    <DAGrievance>k__BackingField: 0.15
+    <DALoyalty>k__BackingField: 0
+    <DAOrg>k__BackingField: 0
+    <DBGrievance>k__BackingField: 0.1
+    <DBLoyalty>k__BackingField: -0.05
+    <DBOrg>k__BackingField: 0
+    <PriceImpact>k__BackingField: "\u6B8B\u57A3\u57CE\uFF1A\u5EFA\u6750 +25%\uFF1B\u53CC\u6CB3\u57CE\uFF1A\u5EFA\u6750
+      +15%"
+    <StockImpact>k__BackingField: "\u6B8B\u57A3\u57CE\uFF1A\u5EFA\u6750\u5E93\u5B58
+      -20%"
+    <Visibility>k__BackingField: Public
+    <Latent>k__BackingField: "\u62BC\u8F66\u4EBA\u7684\u5BB6\u7737\u5728\u8D27\u6808\u95E8\u53E3\u5750\u4E86\u4E00\u4E2A\u6708\uFF0C\u5FEB\u5750\u51FA\u4EBA\u547D\u4E86\u3002"
+  - <Id>k__BackingField: T08
+    <EventId>k__BackingField: 8
+    <NpcA>k__BackingField: "\u6851\u5C0F\u6EE1\uFF08\u8239\u575E\u88C5\u914D\u5DE5\uFF09"
+    <NpcB>k__BackingField: "\u8D1D\u53CC\uFF08\u53A8\u5E08\uFF09"
+    <Places>k__BackingField: "\u767D\u6C99\u6E7E\u3001\u767D\u6C99\u9547\u3001\u957F\u6EE9\u6E2F"
+    <EventKind>k__BackingField: "\u8FD0\u8F93\u961F\u5931\u8E2A"
+    <Event>k__BackingField: "\u767D\u6C99\u6E7E\u8D64\u6F6E\u63D0\u524D\u4E00\u4E2A\u6708\u95F7\u6B7B\u7F51\u7BB1\u9C7C\uFF0C\u51B7\u85CF\u8239\u8239\u4E3B\u628A\u8239\u85CF\u5728\u957F\u6EE9\u6E2F\u79C1\u5356\u9C7C\u83B7\uFF0C\u767D\u6C99\u9547\u7801\u5934\u767D\u7B49\u516D\u5929\u3002"
+    <DAGrievance>k__BackingField: 0.1
+    <DALoyalty>k__BackingField: 0
+    <DAOrg>k__BackingField: 0
+    <DBGrievance>k__BackingField: 0.05
+    <DBLoyalty>k__BackingField: 0
+    <DBOrg>k__BackingField: 0
+    <PriceImpact>k__BackingField: "\u767D\u6C99\u57CE\uFF1A\u6C34\u4EA7 +20%\uFF1B\u9ED1\u6C34\u57CE\uFF1A\u6C34\u4EA7
+      +15%"
+    <StockImpact>k__BackingField: "\u767D\u6C99\u9547\uFF1A\u51BB\u9C7C\u5E93\u5B58
+      -35%"
+    <Visibility>k__BackingField: Personal
+    <Latent>k__BackingField: "\u957F\u6EE9\u6E2F\u7684\u7801\u5934\u5DE5\u8BA4\u5F97\u90A3\u6761\u8239\uFF0C\u6E14\u6C5B\u4E00\u7ED3\u5C31\u8981\u4E0A\u95E8\u8BA8\u3002"
+  - <Id>k__BackingField: T09
+    <EventId>k__BackingField: 9
+    <NpcA>k__BackingField: "\u909D\u7A57\uFF08\u519C\u827A\u5E08\uFF09"
+    <NpcB>k__BackingField: "\u82CF\u8513\u9752\uFF08\u519C\u827A\u5E08\uFF09"
+    <Places>k__BackingField: "\u53CC\u6CB3\u539F\u3001\u53CC\u6CB3\u57CE\u3001\u9ED1\u6C34\u539F\u3001\u9ED1\u6C34\u57CE"
+    <EventKind>k__BackingField: "\u4EF7\u683C\u8054\u52A8"
+    <Event>k__BackingField: "\u53CC\u6CB3\u539F\u6E20\u5C3E\u65AD\u6C34\u51CF\u4EA7\uFF0C\u53CC\u6CB3\u57CE\u7CAE\u4EF7\u4E00\u4E2A\u6708\u62AC\u4E86\u4E09\u6210\uFF1B\u9ED1\u6C34\u539F\u6E20\u9996\u5F00\u95F8\u4E30\u6536\uFF0C\u7CAE\u8D29\u987A\u52BF\u538B\u4EF7\u6536\u7CAE\u3002"
+    <DAGrievance>k__BackingField: 0.15
+    <DALoyalty>k__BackingField: 0
+    <DAOrg>k__BackingField: 0.05
+    <DBGrievance>k__BackingField: 0.1
+    <DBLoyalty>k__BackingField: 0
+    <DBOrg>k__BackingField: 0
+    <PriceImpact>k__BackingField: "\u53CC\u6CB3\u57CE\uFF1A\u7CAE +30%\uFF1B\u9ED1\u6C34\u57CE\uFF1A\u7CAE
+      -15%"
+    <StockImpact>k__BackingField: "\u53CC\u6CB3\u539F\uFF1A\u5B58\u7CAE -25%\uFF1B\u9ED1\u6C34\u539F\uFF1A\u5B58\u7CAE
+      +15%"
+    <Visibility>k__BackingField: Public
+    <Latent>k__BackingField: "\u6E20\u5C3E\u5341\u51E0\u4E2A\u6751\u7684\u8054\u540D\u72B6\u7EB8\u642D\u4E0A\u4E86\u53CC\u6CB3\u57CE\u8BAE\u5458\u7684\u8239\u3002"
+  - <Id>k__BackingField: T10
+    <EventId>k__BackingField: 10
+    <NpcA>k__BackingField: "\u534E\u7194\uFF08\u51B6\u70BC\u5DE5\uFF09"
+    <NpcB>k__BackingField: "\u90C1\u5170\uFF08\u4FDD\u5B89\uFF09"
+    <Places>k__BackingField: "\u94C1\u7827\u57CE\u3001\u77F3\u95E8\u9547"
+    <EventKind>k__BackingField: "\u4EF7\u683C\u8054\u52A8"
+    <Event>k__BackingField: "\u94C1\u7827\u57CE\u519B\u8BA2\u5355\u780D\u534A\u5168\u57CE\u6B47\u7089\uFF0C\u5408\u91D1\u8D31\u5356\u5806\u6EE1\u534A\u5E74\u4ED3\uFF1B\u77F3\u95E8\u9547\u5173\u7A0E\u65B0\u89C4\u5361\u4F4F\u8FDB\u5C71\u5546\u961F\uFF0C\u519B\u68B0\u7FFB\u500D\u62A2\u3002"
+    <DAGrievance>k__BackingField: 0.15
+    <DALoyalty>k__BackingField: -0.05
+    <DAOrg>k__BackingField: 0
+    <DBGrievance>k__BackingField: 0.05
+    <DBLoyalty>k__BackingField: 0
+    <DBOrg>k__BackingField: 0
+    <PriceImpact>k__BackingField: "\u94C1\u7827\u57CE\uFF1A\u5408\u91D1 -20%\uFF1B\u77F3\u95E8\u9547\uFF1A\u519B\u68B0
+      +40%"
+    <StockImpact>k__BackingField: "\u94C1\u7827\u57CE\uFF1A\u5408\u91D1\u5E93\u5B58
+      +30%"
+    <Visibility>k__BackingField: Public
+    <Latent>k__BackingField: "\u6B47\u7089\u7684\u7089\u5DE5\u5F80\u94C1\u7827\u5BE8\u79C1\u94F8\u4EF6\u4E0A\u8DD1\uFF0C\u7F09\u79C1\u5DF2\u7ECF\u76EF\u4E0A\u3002"
+  - <Id>k__BackingField: T11
+    <EventId>k__BackingField: 11
+    <NpcA>k__BackingField: "\u6C34\u540C\u5C18\uFF08\u6D4B\u7ED8\u5458\uFF09"
+    <NpcB>k__BackingField: "\u5E08\u94C3\uFF08\u8D4F\u91D1\u730E\u4EBA\uFF09"
+    <Places>k__BackingField: "\u843D\u661F\u57CE\u3001\u843D\u661F\u9547"
+    <EventKind>k__BackingField: "\u4EF7\u683C\u8054\u52A8"
+    <Event>k__BackingField: "\u843D\u661F\u57CE\u4E1C\u533A\u9650\u4E09\u6708\u64A4\u7A7A\uFF0C\u64A4\u79BB\u6237\u8D31\u5356\u65E7\u8D27\u519C\u5177\uFF1B\u843D\u661F\u9547\u7684\u5411\u5BFC\u884C\u4F1A\u8D81\u673A\u628A\u8FDB\u533A\u8865\u7ED9\u62AC\u4E86\u4E09\u6210\u3002"
+    <DAGrievance>k__BackingField: 0.1
+    <DALoyalty>k__BackingField: 0
+    <DAOrg>k__BackingField: 0
+    <DBGrievance>k__BackingField: 0
+    <DBLoyalty>k__BackingField: -0.05
+    <DBOrg>k__BackingField: 0.05
+    <PriceImpact>k__BackingField: "\u843D\u661F\u57CE\uFF1A\u65E7\u8D27 -25%\uFF1B\u843D\u661F\u9547\uFF1A\u8865\u7ED9
+      +30%"
+    <StockImpact>k__BackingField: "\u843D\u661F\u9547\uFF1A\u8865\u7ED9\u5E93\u5B58
+      -20%"
+    <Visibility>k__BackingField: Public
+    <Latent>k__BackingField: "\u64A4\u79BB\u6237\u8D31\u5356\u7684\u5B85\u57FA\u754C\u6869\uFF0C\u5DF2\u7ECF\u88AB\u62D4\u4E86\u4E09\u6839\u3002"
+  - <Id>k__BackingField: T12
+    <EventId>k__BackingField: 12
+    <NpcA>k__BackingField: "\u96F7\u5343\u94A7\uFF08\u51B6\u70BC\u5DE5\uFF09"
+    <NpcB>k__BackingField: "\u7EC3\u79CB\u6C34\uFF08\u6D4B\u7ED8\u5458\uFF09"
+    <Places>k__BackingField: "\u7EA2\u5D16\u9547\u3001\u7EA2\u5D16\u7AD9\u3001\u9ED1\u6C34\u57CE"
+    <EventKind>k__BackingField: "\u4EF7\u683C\u8054\u52A8"
+    <Event>k__BackingField: "\u7EA2\u5D16\u5D16\u58C1\u88C2\u7F1D\u903C\u505C\u7D22\u9053\uFF0C\u7EA2\u5D16\u9547\u77FF\u6597\u534A\u6708\u6CA1\u4E0B\u5C71\uFF1B\u9ED1\u6C34\u57CE\u51B6\u70BC\u5382\u65AD\u6599\u534A\u5F00\u5DE5\uFF0C\u7089\u6599\u4EF7\u8DDF\u7740\u62AC\u3002"
+    <DAGrievance>k__BackingField: 0.1
+    <DALoyalty>k__BackingField: 0
+    <DAOrg>k__BackingField: 0
+    <DBGrievance>k__BackingField: 0.1
+    <DBLoyalty>k__BackingField: -0.05
+    <DBOrg>k__BackingField: 0
+    <PriceImpact>k__BackingField: "\u9ED1\u6C34\u57CE\uFF1A\u77FF\u77F3 +30%\uFF1B\u94C1\u7827\u57CE\uFF1A\u7089\u6599
+      +15%"
+    <StockImpact>k__BackingField: "\u9ED1\u6C34\u57CE\uFF1A\u77FF\u77F3\u5E93\u5B58
+      -30%"
+    <Visibility>k__BackingField: Public
+    <Latent>k__BackingField: "\u7EA2\u5D16\u5821\u628A\u88C2\u7F1D\u62A5\u544A\u538B\u4E86\u534A\u4E2A\u6708\uFF0C\u8FFD\u8D23\u5148\u627E\u6D4B\u7ED8\u961F\u3002"
+  - <Id>k__BackingField: T13
+    <EventId>k__BackingField: 13
+    <NpcA>k__BackingField: "\u5F18\u4E00\u74E2\uFF08\u53A8\u5E08\uFF09"
+    <NpcB>k__BackingField: "\u4E30\u6709\u4EEA\uFF08\u4F1A\u8BA1\uFF09"
+    <Places>k__BackingField: "\u767D\u6C99\u574A\u3001\u767D\u6C99\u57CE"
+    <EventKind>k__BackingField: "\u56E4\u79EF\u5C45\u5947"
+    <Event>k__BackingField: "\u767D\u6C99\u574A\u516D\u5BB6\u76D0\u7076\u8054\u624B\u538B\u76D0\u4E0D\u51FA\uFF0C\u7B49\u53F0\u98CE\u5B63\u6E14\u6C5B\u62AC\u4EF7\uFF1B\u4E30\u6709\u4EEA\uFF08\u4F1A\u8BA1\uFF09\u628A\u65B0\u76D0\u5382\u538B\u4EF7\u4E09\u6210\u7684\u6536\u8D2D\u5355\u8D34\u4E0A\u7076\u5899\u3002"
+    <DAGrievance>k__BackingField: 0.1
+    <DALoyalty>k__BackingField: 0
+    <DAOrg>k__BackingField: 0
+    <DBGrievance>k__BackingField: 0.05
+    <DBLoyalty>k__BackingField: 0
+    <DBOrg>k__BackingField: 0.1
+    <PriceImpact>k__BackingField: "\u767D\u6C99\u57CE\uFF1A\u76D0 +25%"
+    <StockImpact>k__BackingField: "\u767D\u6C99\u57CE\uFF1A\u5E02\u552E\u76D0 -30%"
+    <Visibility>k__BackingField: Personal
+    <Latent>k__BackingField: "\u65B0\u76D0\u5382\u4E70\u901A\u7A0E\u5DEE\u67E5\u56F4\u5B58\uFF0C\u5934\u4E00\u5200\u843D\u5728\u8BB0\u8D26\u4EBA\u5934\u4E0A\u3002"
+  - <Id>k__BackingField: T14
+    <EventId>k__BackingField: 14
+    <NpcA>k__BackingField: "\u5E94\u65E0\u548E\uFF08\u4E49\u4F53\u6280\u5E08\uFF09"
+    <NpcB>k__BackingField: "\u76AE\u5B9A\u5C71\uFF08\u4FDD\u5B89\uFF09"
+    <Places>k__BackingField: "\u53CC\u6CB3\u57CE\u3001\u6B8B\u57A3\u57CE"
+    <EventKind>k__BackingField: "\u56E4\u79EF\u5C45\u5947"
+    <Event>k__BackingField: "\u4E49\u4F53\u914D\u4EF6\u914D\u7ED9\u780D\u534A\uFF0C\u5E94\u65E0\u548E\uFF08\u4E49\u4F53\u6280\u5E08\uFF09\u628A\u5230\u624B\u7684\u8D27\u538B\u8FDB\u67DC\u5E95\u53EA\u53D1\u5DE5\u4F24\u7684\u4EBA\uFF0C\u7B49\u914D\u7ED9\u6062\u590D\u518D\u51FA\u624B\u3002"
+    <DAGrievance>k__BackingField: 0.05
+    <DALoyalty>k__BackingField: -0.05
+    <DAOrg>k__BackingField: 0.05
+    <DBGrievance>k__BackingField: 0
+    <DBLoyalty>k__BackingField: -0.05
+    <DBOrg>k__BackingField: 0.05
+    <PriceImpact>k__BackingField: "\u53CC\u6CB3\u57CE\uFF1A\u4E49\u4F53\u914D\u4EF6
+      +15%\uFF1B\u6B8B\u57A3\u57CE\uFF1A\u4E49\u4F53\u914D\u4EF6 +35%"
+    <StockImpact>k__BackingField: "\u6B8B\u57A3\u57CE\uFF1A\u6D41\u901A\u914D\u4EF6
+      -25%"
+    <Visibility>k__BackingField: Covert
+    <Latent>k__BackingField: "\u4FDD\u5065\u7AD9\u5C11\u4E86\u679A\u63A5\u53E3\u8BB0\u5F55\u5728\u6848\uFF0C\u7A3D\u67E5\u4F1A\u987A\u7740\u5355\u5B50\u6478\u6765\u3002"
+  - <Id>k__BackingField: T15
+    <EventId>k__BackingField: 15
+    <NpcA>k__BackingField: "\u8983\u96E8\u65F6\uFF08\u6C34\u8D28\u51C0\u5316\u5458\uFF09"
+    <NpcB>k__BackingField: "\u94C1\u5F08\uFF08\u4FDD\u5B89\uFF09"
+    <Places>k__BackingField: "\u5BD2\u6CC9\u7AD9\u3001\u5BD2\u6CC9\u9547"
+    <EventKind>k__BackingField: "\u56E4\u79EF\u5C45\u5947"
+    <Event>k__BackingField: "\u5BD2\u6CC9\u7AD9\u8DDF\u5BD2\u6CC9\u9547\u4E3A\u6C34\u91CF\u5206\u914D\u95F9\u50F5\uFF0C\u8983\u96E8\u65F6\uFF08\u6C34\u8D28\u51C0\u5316\u5458\uFF09\u634F\u7740\u6C34\u5854\u5B58\u91CF\u6162\u6162\u653E\uFF0C\u8FC7\u8DEF\u8F66\u961F\u704C\u6C34\u8D39\u4E00\u591C\u62AC\u4E09\u6210\u3002"
+    <DAGrievance>k__BackingField: 0.05
+    <DALoyalty>k__BackingField: -0.05
+    <DAOrg>k__BackingField: 0.1
+    <DBGrievance>k__BackingField: 0.1
+    <DBLoyalty>k__BackingField: 0
+    <DBOrg>k__BackingField: 0
+    <PriceImpact>k__BackingField: "\u5BD2\u6CC9\u7AD9\uFF1A\u704C\u6C34\u8D39 +30%"
+    <StockImpact>k__BackingField: "\u5BD2\u6CC9\u7AD9\uFF1A\u6C34\u5854\u5B58\u91CF
+      -40%"
+    <Visibility>k__BackingField: Personal
+    <Latent>k__BackingField: "\u5BD2\u6CC9\u9547\u628A\u622A\u6C34\u62AC\u4EF7\u5199\u8FDB\u4E86\u4E0B\u5B63\u5408\u540C\u7684\u8C08\u5224\u6761\u6B3E\u3002"
+  - <Id>k__BackingField: T16
+    <EventId>k__BackingField: 16
+    <NpcA>k__BackingField: "\u7956\u5927\u6811\uFF08\u5E9F\u6599\u56DE\u6536\u5546\uFF09"
+    <NpcB>k__BackingField: "\u5546\u6D1B\uFF08\u4F1A\u8BA1\uFF09"
+    <Places>k__BackingField: "\u9AD8\u5CAD\u57CE\u3001\u9AD8\u5CAD\u7AD9"
+    <EventKind>k__BackingField: "\u56E4\u79EF\u5C45\u5947"
+    <Event>k__BackingField: "\u7956\u5927\u6811\uFF08\u5E9F\u6599\u56DE\u6536\u5546\uFF09\u501F\u5E9F\u6599\u5806\u573A\u7684\u540D\u76EE\u628A\u4E09\u4E2A\u6708\u7684\u7A00\u571F\u7CBE\u9009\u538B\u8FDB\u584C\u65B9\u533A\u56F4\u680F\uFF0C\u7B49\u914D\u989D\u91CD\u5F00\u5356\u597D\u4EF7\uFF0C\u8BF4\u597D\u5148\u8865\u642C\u8FC1\u6237\u7684\u6B20\u8D26\u3002"
+    <DAGrievance>k__BackingField: 0
+    <DALoyalty>k__BackingField: -0.05
+    <DAOrg>k__BackingField: 0.1
+    <DBGrievance>k__BackingField: 0.05
+    <DBLoyalty>k__BackingField: 0
+    <DBOrg>k__BackingField: 0.05
+    <PriceImpact>k__BackingField: "\u9AD8\u5CAD\u57CE\uFF1A\u7A00\u571F +40%"
+    <StockImpact>k__BackingField: "\u9AD8\u5CAD\u7AD9\uFF1A\u7A00\u571F\u5F85\u8FD0
+      -35%"
+    <Visibility>k__BackingField: Covert
+    <Latent>k__BackingField: "\u5806\u573A\u538B\u7740\u584C\u65B9\u533A\u7EA2\u7EBF\uFF0C\u822A\u6D4B\u4E00\u8FC7\u5C31\u85CF\u4E0D\u4F4F\u3002"
+  - <Id>k__BackingField: T17
+    <EventId>k__BackingField: 17
+    <NpcA>k__BackingField: "\u73ED\u71E7\uFF08\u51B6\u70BC\u5DE5\uFF09"
+    <NpcB>k__BackingField: "\u767D\u6C40\uFF08\u8D70\u79C1\u8D29\uFF09"
+    <Places>k__BackingField: "\u94C1\u7827\u5BE8\u3001\u94C1\u7827\u7AD9\u3001\u8001\u9E26\u5BE8"
+    <EventKind>k__BackingField: "\u8D70\u79C1\u66B4\u9732"
+    <Event>k__BackingField: "\u94C1\u7827\u5BE8\u7684\u79C1\u94F8\u9600\u4EF6\u5E26\u7740\u65E7\u94A2\u5370\u6DF7\u8FDB\u94C1\u7827\u7AD9\u8D27\u8FD0\u573A\u7684\u5408\u6CD5\u7089\u6599\u5916\u8FD0\uFF0C\u7F09\u79C1\u961F\u5728\u5927\u79E4\u4E0A\u79F0\u51FA\u4E86\u6279\u53F7\u3002"
+    <DAGrievance>k__BackingField: 0
+    <DALoyalty>k__BackingField: -0.1
+    <DAOrg>k__BackingField: 0.1
+    <DBGrievance>k__BackingField: 0.05
+    <DBLoyalty>k__BackingField: 0
+    <DBOrg>k__BackingField: 0.05
+    <PriceImpact>k__BackingField: "\u94C1\u7827\u57CE\uFF1A\u6B63\u54C1\u94F8\u4EF6
+      -10%\uFF1B\u8001\u9E26\u5BE8\uFF1A\u9ED1\u5E02\u94F8\u4EF6 -15%"
+    <StockImpact>k__BackingField: "\u94C1\u7827\u7AD9\uFF1A\u7089\u6599\u8FC7\u79E4\u91CF
+      -15%"
+    <Visibility>k__BackingField: Covert
+    <Latent>k__BackingField: "\u7F09\u79C1\u961F\u9493\u9C7C\u4E0D\u6536\u7F51\uFF0C\u4E13\u7B49\u94C1\u7827\u5BE8\u4E8C\u5F53\u5BB6\u7B7E\u5B57\u3002"
+  - <Id>k__BackingField: T18
+    <EventId>k__BackingField: 18
+    <NpcA>k__BackingField: "\u7B2C\u4E94\u8679\uFF08\u8D70\u79C1\u8D29\uFF09"
+    <NpcB>k__BackingField: "\u7533\u5C60\u4E00\u7532\uFF08\u8239\u575E\u88C5\u914D\u5DE5\uFF09"
+    <Places>k__BackingField: "\u957F\u6EE9\u6E7E\u3001\u9ED1\u6C34\u6E7E\u3001\u9ED1\u6C34\u6E2F"
+    <EventKind>k__BackingField: "\u8D70\u79C1\u66B4\u9732"
+    <Event>k__BackingField: "\u957F\u6EE9\u6E7E\u7684\u79C1\u76D0\u88C5\u8FDB\u7B2C\u4E94\u8679\uFF08\u8D70\u79C1\u8D29\uFF09\u5FEB\u8239\u7684\u5939\u5C42\uFF0C\u9ED1\u6C34\u6E7E\u8239\u575E\u6362\u8F74\u65F6\u88AB\u70B9\u7834\uFF1B\u8FD9\u6761\u7EBF\u501F\u6E14\u6C5B\u8DD1\u4E86\u4E24\u5E74\u3002"
+    <DAGrievance>k__BackingField: 0.1
+    <DALoyalty>k__BackingField: 0
+    <DAOrg>k__BackingField: 0.05
+    <DBGrievance>k__BackingField: 0.05
+    <DBLoyalty>k__BackingField: -0.05
+    <DBOrg>k__BackingField: 0.05
+    <PriceImpact>k__BackingField: "\u9ED1\u6C34\u57CE\uFF1A\u76D0 +15%"
+    <StockImpact>k__BackingField: "\u9ED1\u6C34\u57CE\uFF1A\u76D0\u5E93\u5B58 -15%"
+    <Visibility>k__BackingField: Covert
+    <Latent>k__BackingField: "\u5C01\u53E3\u8D39\u6210\u4E86\u628A\u67C4\uFF0C\u7B2C\u4E94\u8679\uFF08\u8D70\u79C1\u8D29\uFF09\u62FF\u5B83\u538B\u8239\u575E\u63A5\u4E0B\u4E00\u8239\u3002"
+  - <Id>k__BackingField: T19
+    <EventId>k__BackingField: 19
+    <NpcA>k__BackingField: "\u7C4D\u4E91\u5F00\uFF08\u5E9F\u6599\u56DE\u6536\u5546\uFF09"
+    <NpcB>k__BackingField: "\u95FB\u8083\uFF08\u8BB0\u8005\uFF09"
+    <Places>k__BackingField: "\u843D\u661F\u576A\u3001\u843D\u661F\u7AD9"
+    <EventKind>k__BackingField: "\u8D70\u79C1\u66B4\u9732"
+    <Event>k__BackingField: "\u843D\u661F\u576A\u6316\u51FA\u7684\u8231\u6BB5\u6B8B\u7247\u62A5\u6210\u77FF\u6E23\u8FC7\u843D\u661F\u7AD9\u7684\u79E4\uFF0C\u95FB\u8083\uFF08\u8BB0\u8005\uFF09\u4ECE\u5E9F\u7EB8\u7BD3\u91CC\u6361\u51FA\u4E09\u5F20\u5BF9\u4E0D\u4E0A\u7684\u78C5\u5355\u3002"
+    <DAGrievance>k__BackingField: 0
+    <DALoyalty>k__BackingField: -0.05
+    <DAOrg>k__BackingField: 0.1
+    <DBGrievance>k__BackingField: 0.05
+    <DBLoyalty>k__BackingField: 0
+    <DBOrg>k__BackingField: 0
+    <PriceImpact>k__BackingField: "\u843D\u661F\u57CE\uFF1A\u8231\u7247 +40%"
+    <StockImpact>k__BackingField: "\u843D\u661F\u7AD9\uFF1A\u767B\u8BB0\u6253\u635E\u4EF6
+      -20%"
+    <Visibility>k__BackingField: Covert
+    <Latent>k__BackingField: "\u78C5\u5355\u5F71\u672C\u538B\u5728\u53CC\u6CB3\u57CE\u62A5\u793E\uFF0C\u843D\u661F\u5821\u5148\u641C\u4E86\u767B\u8BB0\u5458\u7684\u94FA\u3002"
+  - <Id>k__BackingField: T20
+    <EventId>k__BackingField: 20
+    <NpcA>k__BackingField: "\u6D1B\u4E0D\u5E73\uFF08\u8D4F\u91D1\u730E\u4EBA\uFF09"
+    <NpcB>k__BackingField: "\u8D3A\u957F\u8D62\uFF08\u8D4C\u573A\u8001\u677F\uFF09"
+    <Places>k__BackingField: "\u77F3\u95E8\u7AD9\u3001\u77F3\u95E8\u9547"
+    <EventKind>k__BackingField: "\u8D70\u79C1\u66B4\u9732"
+    <Event>k__BackingField: "\u77F3\u95E8\u7AD9\u9A8C\u5173\u961F\u5F53\u8857\u6380\u4E86\u4E09\u6761\u9A6E\u579B\uFF0C\u5939\u5E26\u7684\u5408\u91D1\u576F\u4E0E\u4E49\u4F53\u82AF\u7247\u94FA\u4E86\u4E00\u5730\uFF0C\u8D3A\u957F\u8D62\uFF08\u8D4C\u573A\u8001\u677F\uFF09\u7684\u653E\u8D37\u6761\u5B50\u4E5F\u7FFB\u51FA\u6765\u3002"
+    <DAGrievance>k__BackingField: 0.05
+    <DALoyalty>k__BackingField: 0.05
+    <DAOrg>k__BackingField: 0
+    <DBGrievance>k__BackingField: 0.15
+    <DBLoyalty>k__BackingField: 0
+    <DBOrg>k__BackingField: 0.05
+    <PriceImpact>k__BackingField: "\u77F3\u95E8\u9547\uFF1A\u82AF\u7247 +30%"
+    <StockImpact>k__BackingField: "\u77F3\u95E8\u9547\uFF1A\u9ED1\u5E02\u82AF\u7247
+      -25%"
+    <Visibility>k__BackingField: Public
+    <Latent>k__BackingField: "\u88AB\u6CA1\u6536\u7684\u4E09\u5BB6\u5546\u53F7\u8054\u540D\u72B6\u544A\u9A8C\u5173\u961F\u8D8A\u6743\u3002"

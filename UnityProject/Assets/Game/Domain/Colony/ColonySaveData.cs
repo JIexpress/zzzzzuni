@@ -271,5 +271,12 @@ namespace Game.Domain.Colony
             public string Topic = "";
             public string Line = "";
         }
+
+        // ── 第二批内容进度（TASK-A-COL-09）：已触发的三表事件 Id 集合——Restore 不重放。
+        //    内容表本体不入档（建局输入，可由配置管线重投影）；进度才随档。
+        //    旧存档 JSON 无这三节 → codec 侧按缺省空集读回（存档兼容，登记）。
+        public List<string> FiredRelations = new();
+        public List<string> FiredTrades = new();
+        public List<string> FiredLife = new();
     }
 }

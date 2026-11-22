@@ -76,6 +76,57 @@ namespace Game.View.Colony
             return data;
         }
 
+        /// <summary>
+        /// 第二批内容三表（TASK-A-COL-09：colonyRelations/colonyTrades/colonyLife）→
+        /// ColonyContentBundle 投影（1:1，无业务逻辑）。调用方把它塞进 ColonyWorldData.Content
+        /// 后，ColonyDataLoader.BuildWorld 注入 GameWorld.Content 挂点（三引擎每日结算）。
+        /// 与五表 ToWorldData 分离：五表调用方（含生产宿主）不强制接内容——
+        /// ColonyWorldData.Content 为 null 时建局行为与 A-COL-02 逐位一致。
+        /// </summary>
+        public static ColonyContentBundle ToContentBundle(IConfigService config)
+        {
+            if (config == null) throw new ArgumentNullException(nameof(config));
+
+            var bundle = new ColonyContentBundle();
+            foreach (var r in Require<ColonyRelationsConfigRow>(config))
+            {
+                bundle.Relations.Add(new ColonyRelationEventInput
+                {
+                    Id = r.Id, EventId = r.EventId,
+                    NpcA = r.NpcA, NpcB = r.NpcB, PairType = r.PairType, Topic = r.Topic, Event = r.Event,
+                    DA_Grievance = r.DAGrievance, DA_Loyalty = r.DALoyalty, DA_Org = r.DAOrg,
+                    DB_Grievance = r.DBGrievance, DB_Loyalty = r.DBLoyalty, DB_Org = r.DBOrg,
+                    Visibility = r.Visibility, Latent = r.Latent, Aftermath = r.Aftermath,
+                });
+            }
+
+            foreach (var r in Require<ColonyTradesConfigRow>(config))
+            {
+                bundle.Trades.Add(new ColonyTradeEventInput
+                {
+                    Id = r.Id, EventId = r.EventId,
+                    NpcA = r.NpcA, NpcB = r.NpcB, Places = r.Places, EventKind = r.EventKind, Event = r.Event,
+                    DA_Grievance = r.DAGrievance, DA_Loyalty = r.DALoyalty, DA_Org = r.DAOrg,
+                    DB_Grievance = r.DBGrievance, DB_Loyalty = r.DBLoyalty, DB_Org = r.DBOrg,
+                    PriceImpact = r.PriceImpact, StockImpact = r.StockImpact,
+                    Visibility = r.Visibility, Latent = r.Latent,
+                });
+            }
+
+            foreach (var r in Require<ColonyLifeConfigRow>(config))
+            {
+                bundle.Life.Add(new ColonyLifeEventInput
+                {
+                    Id = r.Id, Name = r.Name, Npc = r.Npc, EventType = r.EventType,
+                    Trigger = r.Trigger, Text = r.Text,
+                    RewriteField = r.RewriteField, RewriteText = r.RewriteText,
+                    SettlementEffect = r.SettlementEffect,
+                });
+            }
+
+            return bundle;
+        }
+
 #if UNITY_EDITOR
         /// <summary>
         /// 编辑器通道：五张 CFG_*Table 资产按 A-CONF-02 约定路径加载进共享 ConfigService
@@ -91,6 +142,18 @@ namespace Game.View.Colony
             LoadTable<QuestsConfigRow>(config, "quests");
             LoadTable<DialogueConfigRow>(config, "dialogue");
             return ToWorldData(config);
+        }
+
+        /// <summary>
+        /// 编辑器通道：第二批内容三表资产加载 + 投影（TASK-A-COL-09）。缺表即抛
+        /// （fail-fast，与 LoadWorldData 同纪律）。E 系数据驱动测试与后续宿主接线共用。
+        /// </summary>
+        public static ColonyContentBundle LoadContentBundle(IConfigService config)
+        {
+            LoadTable<ColonyRelationsConfigRow>(config, "colonyRelations");
+            LoadTable<ColonyTradesConfigRow>(config, "colonyTrades");
+            LoadTable<ColonyLifeConfigRow>(config, "colonyLife");
+            return ToContentBundle(config);
         }
 
         /// <summary>按 A-CONF-02 约定路径加载已提交的表资产（路径由产品代码推导，不手写）。</summary>

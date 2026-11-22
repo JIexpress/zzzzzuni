@@ -90,6 +90,13 @@ namespace Game.Domain.Colony
         public List<ColonyPolicyInput> Policies = new();
         public List<ColonyQuestInput> Quests = new();
         public List<ColonyDialogueInput> Dialogue = new();
+
+        /// <summary>
+        /// 第二批内容三表（TASK-A-COL-09：关系网 40/贸易 20/人生节点 190）。null = 未接内容
+        /// （既有五表建局路径零变化、行为逐位不变）；非 null 时 BuildWorld 注入 GameWorld.Content
+        /// 挂点。内容本身不入存档（进度集合才入——ColonySaveData.FiredRelations/Trades/Life）。
+        /// </summary>
+        public ColonyContentBundle Content;
     }
 
     /// <summary>
@@ -237,6 +244,9 @@ namespace Game.Domain.Colony
             w.PolicyLibrary = data.Policies.Select(BuildPolicyDef).ToList();
             w.Quests.Library = data.Quests.Select((q, i) => BuildQuestDef(q, i, mainNames)).ToList();
             w.Dialogue.Load(data.Dialogue.Select(d => (d.Role, d.Topic, d.Line)));
+
+            // ④ 第二批内容引擎（TASK-A-COL-09）：三表非 null 才注入挂点（五表路径零变化）
+            if (data.Content != null) w.Content = new ColonyContentEngines(data.Content);
 
             return w;
         }

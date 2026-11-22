@@ -163,6 +163,14 @@ namespace Game.Domain.Colony
             w.RestoreDelayedEntries(d.Delayed.Select(e =>
                 (e.DueDay, (EventKind)e.Kind, e.Where, e.Text, (EventVisibility)e.Vis)));
 
+            // ⑩ 第二批内容进度（TASK-A-COL-09）：三表已触发集合回填（内容空表——内容是建局
+            //    输入不入档，调用方 Attach 回填后继续模拟，已触发不重放）。无进度时保持 null
+            //    （与建局未接内容的世界同形，五表路径行为不变）。
+            if (d.FiredRelations.Count > 0 || d.FiredTrades.Count > 0 || d.FiredLife.Count > 0)
+            {
+                w.Content = ColonyContentEngines.FromProgress(d.FiredRelations, d.FiredTrades, d.FiredLife);
+            }
+
             return w;
         }
 
