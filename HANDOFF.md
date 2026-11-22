@@ -4,6 +4,17 @@
 > ⚡ **给下一个 LLM 主控**：先读 `Docs/LLM-HANDOFF-NOTES.md`——132 个任务沉淀的全部操作手册（派发模板/变异验证法/故障处置手册/技术坑备忘/工具调用技巧/额度管理），照做即可满血接力。
 > 历史交接记录已归档 git 历史（`git show G-113:HANDOFF.md`），WORKLOG.md 有全部任务索引。
 
+**快照时间**: 2026-11-22（**A-COL-05 垂直切片入账：打开游戏看见世界在转**）｜**刷新者**: 主控（ZCode 会话）｜**仓库**: `C://Users//1//Desktop//zcode//GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni（已同步至 4b9626c+本次）
+
+## ⚡ 最新（2026-11-22 第五批：A-COL-05 框架与游戏本体正式会师）
+
+- **垂直切片闭环（a1e67f7）**：`ColonyWorldHost`（View 层，RuntimeInitializeOnLoadMethod+sceneLoaded 门控挂 SCN_Game，**零场景/零 Bootstrap 改动**；GameLoopDriver TickQueue Logic 段注册；1 秒=1 游戏日可配；月结链 ApplyMonthlyPolicy(默认 Aggressive)→Compose→EventBus.Fire）→ `ReportPresenter`（纯 C# P 层）→ `ReportPanelView`（UIManager pure-view 通道代码构建 UGUI，无 prefab；Tab 热键；Toggle 查原始记录=玩家主动检查玩法）。生产侧 `ColonyConfigAdapter`（A-COL-02 裁决：View 承担 ConfigService→DTO 投影）。
+- **测试家底**：EditMode **1301/1301/0**（1297+P1-P4）+ PlayMode **两轮 119/119/0 同形**（115+C1-C4，取证隔离：宿主销毁+面板离栈断言）+ arch exit 0（Game.View.asmdef +Domain.Colony 引用、校验器矩阵同步——主控批准，View→Domain 依赖方向正确）。DebugFastForward 加速钩子（正式构建零副作用）。
+- **验收**：独立亲证全部数字+C2 月份断言变异复红（先落仓外备份 sha256，零滞留）；Docs/Parity PNG 5 项为 PlayMode 噪声 git checkout 丢弃。
+- **已知不代表性（登记）**：表加载走编辑器通道（真机 build fail-soft，真机路径后续）；报告面板无滚动（Raw ~80 行超屏，UI 迭代项）。
+- **下一步候选**：①Raw 面板滚动+异常项点击跳转 ②月度报告接「三档选择」交互（玩家选 Summary 还是花钱买 Raw——指挥代理 §1.2）③TaskBoard/UtilityAI 接组织度涌现（NPC 自主行为消费 Game/AI）④月度报告的 View 截图探针入门禁。
+- 家底：原生 381/823,640、EditMode **1301**、PlayMode **119**、arch 28/14 条目/0 违规；看板 **181 done / 0 todo / 1 held**。
+
 **快照时间**: 2026-11-22（**A-COL-04 月度报告+AI 瞒报入账**）｜**刷新者**: 主控（ZCode 会话）｜**仓库**: `C://Users//1//Desktop//zcode//GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni
 
 ## ⚡ 最新（2026-11-22 第四批：A-COL-04 月度报告三档 + AI 执政官瞒报）

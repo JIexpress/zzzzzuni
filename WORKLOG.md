@@ -4,6 +4,7 @@
 
 | 日期 | 任务 | 结果 | commit |
 |---|---|---|---|
+| 2026-11-22 | A-COL-05 垂直切片:游戏循环+报告UI | done：施工→验收 PASS(P1-P4+C1-C4;EditMode 1301+PlayMode 119两轮同形;场景零手改;C2变异复红零滞留) | a1e67f7 |
 | 2026-11-22 | A-COL-04 月度报告三档+AI瞒报 | done：施工→验收 PASS(M1-M5;EditMode 1297全绿;双变异复红不同位置;变异滞留事故如实登记+无损还原) | 3910c68 |
 | 2026-11-22 | A-COL-03 Colony存档读档+确定性实例化 | done：施工→验收 PASS(S1-S5;EditMode 1292全绿;双变异复红不同位置;读档世界不残缺追认) | (见G-185) |
 | 2026-11-22 | A-COL-02 GLM数据走ConfigService+数据驱动建局 | done：施工→验收 PASS(D1-D4;EditMode 1287全绿;3452cells 0mismatch;变异复红不同位置;Domain零配置依赖裁决) | b16429e |
