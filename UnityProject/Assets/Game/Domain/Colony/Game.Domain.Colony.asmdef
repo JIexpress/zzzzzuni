@@ -1,0 +1,16 @@
+{
+    "name": "Game.Domain.Colony",
+    "rootNamespace": "Game.Domain.Colony",
+    "references": [
+        "ZFrame.Core"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}

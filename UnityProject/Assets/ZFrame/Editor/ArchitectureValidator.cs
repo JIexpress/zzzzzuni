@@ -80,6 +80,13 @@ namespace ZFrame.Editor
                 {
                     AllowedReferences = new[] { "ZFrame.Core", "ZFrame.Data", "ZFrame.Gameplay" },
                 },
+                // TASK-A-COL-01（主控批注 2026-11-22，白名单追加项）：Colony 模拟核心程序集，
+                // 仅引用 ZFrame.Core（事件总线），noEngineReferences=true 零引擎依赖
+                // （纯度扫描 Assets/Game/Domain 与 EditMode 已验证；照 X-ARCH-01 先例补条目）。
+                ["Game.Domain.Colony"] = new AsmdefRule
+                {
+                    AllowedReferences = new[] { "ZFrame.Core" },
+                },
                 ["Game.View"] = new AsmdefRule
                 {
                     AllowedReferences = new[]
