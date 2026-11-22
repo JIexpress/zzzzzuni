@@ -4,6 +4,17 @@
 > ⚡ **给下一个 LLM 主控**：先读 `Docs/LLM-HANDOFF-NOTES.md`——132 个任务沉淀的全部操作手册（派发模板/变异验证法/故障处置手册/技术坑备忘/工具调用技巧/额度管理），照做即可满血接力。
 > 历史交接记录已归档 git 历史（`git show G-113:HANDOFF.md`），WORKLOG.md 有全部任务索引。
 
+**快照时间**: 2026-11-22（**A-COL-06 NPC 自主行为入账**）｜**刷新者**: 主控（ZCode 会话）｜**仓库**: `C://Users//1//Desktop//zcode//GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni（已同步）
+
+## ⚡ 最新（2026-11-22 第六批：A-COL-06 NPC 自己找事）
+
+- **用户原始需求「NPC 不是按预设跑，而是自己找事」落地（25aaadb）**：`ColonyActionScorer`（公开可测评分公式：人格/怨气/组织度/地位→行为分）+ `ColonyTaskBoard`（轻量自建）+ `ColonyDailyBehavior`（挂 GameWorld.DailyTick 既有循环）。五行为：Work/Protest/Recruit/Gossip/Rest，**泄压阀防全员抗议**（T2 Work 占比 43.2%∈[40,90] 区间断言）。T4 涌现加速对照：开启自主行为 +0.621 vs 关闭 0；T5 性能红线 30 天×100 人 0.019s（<50ms）。
+- **方案裁决（施工选择+验收核对）**：方案 B 轻量自建——Game/AI TaskBoard 系小队战斗语义（Vec2/秒级过期/认领互斥），复用需泛化改造 Enemy 消费方（禁止）；方案 A 需 Colony 加 Game.Domain 引用，arch 矩阵钉死其只引 ZFrame.Core（必违规）。
+- **验收**：6 次 Unity 启动独立亲证；变异第三位置（ProtestVent 泄压阀 0.4→0）→ RED 时 Work 占比 16.57% 崩穿下限——**泄压阀机制被独立证实**；施工第一处变异哑弹（RecruitOrgGain→0 不可区分）如实登记重做。全程零 taskkill 用户编辑器（两次锁残留均为施工批处理自身，命令行核实）。
+- **主控认可四项**：Raw 折叠显示契约（Truth/Referenced 仍全量）、T4 下限断言、T2 裕度 3.2pp、中途两红已修（边去重/UGUI 顶点溢出）。
+- 家底：原生 381/823,640、EditMode **1306**、PlayMode **119**、arch 28/14 条目/0 违规；看板 **182 done / 0 todo / 1 held**。
+- **A/COL 序列候选**：报告面板滚动+异常项跳转；三档报告选择交互（花钱买 Raw）；月度报告 View 截图探针入门禁；A-AI-05（held）NPC 自主模式 G 键与 Colony 自主行为合流评估。
+
 **快照时间**: 2026-11-22（**A-COL-05 垂直切片入账：打开游戏看见世界在转**）｜**刷新者**: 主控（ZCode 会话）｜**仓库**: `C://Users//1//Desktop//zcode//GameFramework`｜**远程**: github.com/JIexpress/zzzzzuni（已同步至 4b9626c+本次）
 
 ## ⚡ 最新（2026-11-22 第五批：A-COL-05 框架与游戏本体正式会师）

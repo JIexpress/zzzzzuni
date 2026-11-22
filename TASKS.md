@@ -221,3 +221,4 @@ Track B(续): R8(愿望清单前 4 项落地：FrameGovernor / Vulkan r5 / Addre
 | A-COL-03 | A/COL | Colony存档读档+确定性实例化(SaveSystem payload桥) | done(纯Domain Capture/Restore;背景层不入档种子重放S2逐位一致;S1-S5;EditMode 1292/1292/0;主控追认asmdef+Newtonsoft与DTO三节追加;验收变异S3不同位置) | Docs/Logs/TASK-A-COL-03.md | dfeb0f3+369b3cd |
 | A-COL-04 | A/COL | 月度报告三档+AI执政官瞒报(指挥代理规格) | done(3910c68；MonthlyReport三档+Covert只进Raw；AiSteward过度优化加速涌现链+自我豁免；M1-M5；EditMode 1297/1297/0；验收双变异复红不同位置；主控追认R1-R3) | Docs/Logs/TASK-A-COL-04.md | 3910c68 |
 | A-COL-05 | A/COL | 垂直切片:游戏循环接线+月度报告UI | done(a1e67f7；ColonyWorldHost零场景改动挂SCN_Game；月结链EventBus.Fire；ReportPanel pure-view无prefab；EditMode 1301+PlayMode两轮119同形；主控批准Game.View+Domain.Colony引用与矩阵同步；验收C2变异复红) | Docs/Logs/TASK-A-COL-05.md | a1e67f7 |
+| A-COL-06 | A/COL | NPC自主行为:效用评分+任务板接涌现 | done(25aaadb；方案B轻量自建零新引用；五行为+泄压阀；T4涌现加速+0.621对照0；T5性能0.019s；EditMode 1306+PlayMode 119两轮同形；Enemy/AI零diff；验收泄压阀独立证实+零taskkill用户编辑器) | Docs/Logs/TASK-A-COL-06.md | 25aaadb |
